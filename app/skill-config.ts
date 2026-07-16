@@ -146,15 +146,15 @@ export const DEFAULT_SKILLS: SkillConfig[] = [
 
   skill("mage-fireball", "화염구", "mage", "패들 반사 횟수 충전", "다음 파괴 시 화염 폭발", "충전된 공이 블럭을 파괴하면 주변에 화염 폭발 피해를 줍니다.", [6, 5, 4]),
   skill("mage-lightning", "연쇄 번개", "mage", "패들 반사 횟수 충전", "주변 블럭 연쇄 공격", "충전된 공이 적중한 블럭에서 주변 블럭 LV+1개로 번개가 연결됩니다.", [7, 5, 3]),
-  skill("mage-freeze", "빙결", "mage", "패들 반사 횟수 충전", "블럭 하강 일시 정지", "충전 완료 시 블럭 하강 타이머를 2+LV초 동안 정지합니다.", [12, 9, 6]),
+  skill("mage-freeze", "빙결", "mage", "패들 반사 횟수 충전", "웨이브 타이머 일시 정지", "충전 완료 시 웨이브 제한시간의 감소를 2+LV초 동안 정지합니다.", [12, 9, 6]),
   skill("mage-black-hole", "블랙홀", "mage", "패들 반사 횟수 충전", "상단에 중력장 생성", "충전 완료 시 맵 상단에 공을 끌어당기는 블랙홀을 생성합니다.", [14, 11, 8]),
   skill("mage-mana-blast", "마력 폭발", "mage", "패들 반사 횟수 충전", "가까운 블럭 광역 피해", "충전 완료 시 공 주변의 가까운 블럭 3+LV개에 마력 피해를 줍니다.", [10, 8, 6]),
-  skill("mage-elemental-storm", "원소 폭풍", "mage", "패들 반사 횟수 충전", "화염·번개·빙결 동시 충전", "현재 공에 화염과 번개를 충전하고 블럭 하강을 즉시 정지합니다.", [18, 14, 10], true),
+  skill("mage-elemental-storm", "원소 폭풍", "mage", "패들 반사 횟수 충전", "화염·번개·빙결 동시 충전", "현재 공에 화염과 번개를 충전하고 웨이브 타이머를 즉시 정지합니다.", [18, 14, 10], true),
   skill("mage-meteor", "메테오", "mage", "패들 반사 횟수 충전", "최고 체력 블럭 대형 폭발", "가장 체력이 높은 블럭에 8+LV×4 피해와 대형 폭발을 가합니다.", [20, 16, 12], true),
   passiveSkill("common-magnet", "아이템 자석", "아이템 흡수 범위 증가", "패들 주변의 아이템을 끌어당기는 범위가 증가합니다.", [70, 120, 180], "px"),
   passiveSkill("common-luck", "행운", "아이템 추가 드롭 확률 증가", "아이템이 없는 브릭을 파괴했을 때 추가로 아이템이 생성될 확률이 증가합니다.", [8, 14, 20], "%"),
   passiveSkill("common-wide", "패들 확장", "패들 길이 증가", "플레이어 패들의 실제 충돌 범위와 표시 길이가 증가합니다.", [20, 35, 50], "px"),
-  passiveSkill("common-xp", "학습 가속", "브릭 파괴 경험치 증가", "브릭을 파괴할 때 즉시 획득하는 기본 경험치가 추가로 증가합니다.", [1, 2, 3], " XP"),
+  passiveSkill("common-xp", "시간 확장", "웨이브 제한시간 증가", "새 웨이브가 시작될 때 제한시간이 추가됩니다.", [2, 3, 4], "초"),
   passiveSkill("common-combo", "콤보 안정화", "콤보 유지 시간 증가", "브릭을 파괴한 뒤 콤보가 끊기기까지의 시간이 증가합니다.", [0.6, 1.2, 2], "초"),
 ];
 
@@ -168,7 +168,8 @@ export function normalizeSkillConfigs(saved: unknown): SkillConfig[] {
     const savedSkill = entries.find((entry) => entry && typeof entry === "object" && "id" in entry && entry.id === base.id) as Partial<SkillConfig> | undefined;
     const values = Array.isArray(savedSkill?.levels) ? savedSkill.levels.map(Number) : [];
     const levels = values.length === 3 && values.every(Number.isFinite) ? values as [number, number, number] : base.levels;
-    return { ...base, ...savedSkill, id: base.id, category: base.category, color: base.color, owner: "paddle", ballCost: 0, ultimate: base.ultimate, levels };
+    const migrated = base.id === "common-xp" ? base : savedSkill;
+    return { ...base, ...migrated, id: base.id, category: base.category, color: base.color, owner: "paddle", ballCost: 0, ultimate: base.ultimate, levels: base.id === "common-xp" ? base.levels : levels };
   });
 }
 

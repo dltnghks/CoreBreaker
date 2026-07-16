@@ -40,11 +40,11 @@ function evaluate(groups: GroupStats[], runsPerVariant: number) {
   if (!groups.every((group) => group.count >= runsPerVariant)) return { label: "수집 중", tone: "collecting", detail: `${groups.reduce((sum, group) => sum + group.count, 0)}/${runsPerVariant * 4}회 완료` };
   const baseline = groups[0];
   const level3 = groups[3];
-  if (baseline.completionRate >= 80) return { label: "판정 불가", tone: "ceiling", detail: "기준군도 W100을 대부분 통과합니다. 난이도를 먼저 높여야 합니다." };
+  if (baseline.completionRate >= 80) return { label: "판정 불가", tone: "ceiling", detail: "기준군도 W20을 대부분 통과합니다. 난이도를 먼저 높여야 합니다." };
   const waveGain = level3.averageWave - baseline.averageWave;
   const completionGain = level3.completionRate - baseline.completionRate;
-  if (waveGain >= 15 || completionGain >= 30) return { label: "과성능 후보", tone: "high", detail: `LV3 평균 +${waveGain.toFixed(1)}W · 완료율 ${completionGain >= 0 ? "+" : ""}${completionGain.toFixed(0)}%p` };
-  if (waveGain <= 3 && completionGain <= 5) return { label: "저성능 후보", tone: "low", detail: `LV3 상승 ${waveGain.toFixed(1)}W · ${completionGain.toFixed(0)}%p` };
+  if (waveGain >= 4 || completionGain >= 30) return { label: "과성능 후보", tone: "high", detail: `LV3 평균 +${waveGain.toFixed(1)}W · 완료율 ${completionGain >= 0 ? "+" : ""}${completionGain.toFixed(0)}%p` };
+  if (waveGain <= 1 && completionGain <= 5) return { label: "저성능 후보", tone: "low", detail: `LV3 상승 ${waveGain.toFixed(1)}W · ${completionGain.toFixed(0)}%p` };
   return { label: "적정 후보", tone: "fit", detail: `LV3 상승 ${waveGain.toFixed(1)}W · 완료율 +${completionGain.toFixed(0)}%p` };
 }
 
@@ -102,7 +102,7 @@ export default function SkillBench() {
   const groups = useMemo(() => ([0, 1, 2, 3] as const).map((level) => statFor(level, matchingRuns)), [matchingRuns]);
   const verdict = useMemo(() => config.environment === "original"
     ? groups[0].count >= config.runsPerVariant
-      ? { label: "기준 측정 완료", tone: "fit", detail: `평균 ${groups[0].averageWave.toFixed(1)}W · W100 ${groups[0].completionRate.toFixed(0)}%` }
+      ? { label: "기준 측정 완료", tone: "fit", detail: `평균 ${groups[0].averageWave.toFixed(1)}W · W20 ${groups[0].completionRate.toFixed(0)}%` }
       : { label: "기준 수집 중", tone: "collecting", detail: `${groups[0].count}/${config.runsPerVariant}회 완료` }
     : evaluate(groups, config.runsPerVariant), [config.environment, config.runsPerVariant, groups]);
   const rankings = useMemo(() => selectedIds.map((id) => {
@@ -138,7 +138,7 @@ export default function SkillBench() {
   const currentSkill = skills.find((skill) => skill.id === progress.currentSkillId);
   const experimentCount = config.environment === "original" ? config.runsPerVariant : selectedIds.length * config.runsPerVariant * 4;
   const environmentCopy = config.environment === "original"
-    ? "스킬 획득을 완전히 차단하고 게임 자체의 난이도와 W100 도달률을 측정합니다."
+    ? "스킬 획득을 완전히 차단하고 게임 자체의 난이도와 W20 도달률을 측정합니다."
     : config.environment === "isolated"
       ? "대상 스킬만 시작 레벨로 부여하고 플레이 중 다른 스킬 획득을 차단합니다."
       : "대상 스킬을 시작 레벨로 부여하고 플레이 중 다른 스킬 획득을 허용합니다.";
@@ -146,7 +146,7 @@ export default function SkillBench() {
   return (
     <section className={styles.skillBench} aria-label="스킬 레벨 비교 벤치">
       <div className={styles.benchHeader}>
-        <div><p>CONTROLLED W100 EXPERIMENT</p><h2>BATCH SKILL BENCH</h2></div>
+        <div><p>CONTROLLED W20 EXPERIMENT</p><h2>BATCH SKILL BENCH</h2></div>
         <div className={`${styles.benchVerdict} ${styles[verdict.tone]}`}><strong>{verdict.label}</strong><span>{config.environment === "original" ? "ORIGINAL" : selectedSkill.name} · {verdict.detail}</span></div>
       </div>
 
@@ -184,15 +184,15 @@ export default function SkillBench() {
       </div>
 
       {config.environment !== "original" && config.mode === "batch" && <div className={styles.benchRanking} role="table" aria-label="스킬 배치 평가 요약">
-        <div><span>스킬</span><span>완료</span><span>LV3 WAVE Δ</span><span>W100 Δ</span><span>판정</span></div>
+        <div><span>스킬</span><span>완료</span><span>LV3 WAVE Δ</span><span>W20 Δ</span><span>판정</span></div>
         {rankings.map(({ skill, groups: skillGroups, verdict: skillVerdict }) => <button type="button" key={skill.id} onClick={() => setConfig((current) => ({ ...current, skillId: skill.id }))}><strong>{skill.name}</strong><span>{skillGroups.reduce((sum, group) => sum + group.count, 0)}/{config.runsPerVariant * 4}</span><span>{(skillGroups[3].averageWave - skillGroups[0].averageWave).toFixed(1)}</span><span>{(skillGroups[3].completionRate - skillGroups[0].completionRate).toFixed(0)}%p</span><em className={styles[skillVerdict.tone]}>{skillVerdict.label}</em></button>)}
       </div>}
 
       <div className={styles.benchTable} role="table" aria-label={`${config.environment === "original" ? "오리지널" : selectedSkill.name} 레벨별 봇 테스트 결과`}>
-        <div className={styles.benchTableHead} role="row"><span>실험군</span><span>완료</span><span>평균 웨이브</span><span>W100 완료율</span><span>평균 점수</span><span>파괴 브릭</span><span>최대 콤보</span><span>최대 공</span><span>잔여 코어</span></div>
+        <div className={styles.benchTableHead} role="row"><span>실험군</span><span>완료</span><span>평균 웨이브</span><span>W20 완료율</span><span>평균 점수</span><span>파괴 브릭</span><span>최대 콤보</span><span>최대 공</span><span>잔여 코어</span></div>
         {displayGroups.map((group) => <div key={group.level} className={styles.benchTableRow} role="row">
           <strong>{config.environment === "original" ? "NO SKILL" : group.level === 0 ? "기준군" : `LV${group.level}`}</strong><span>{group.count}/{config.runsPerVariant}</span>
-          <span><i style={{ "--bench-fill": `${Math.min(100, group.averageWave)}%` } as CSSProperties} /><b>{group.averageWave.toFixed(1)}</b></span>
+          <span><i style={{ "--bench-fill": `${Math.min(100, group.averageWave / 20 * 100)}%` } as CSSProperties} /><b>{group.averageWave.toFixed(1)}</b></span>
           <span><i style={{ "--bench-fill": `${group.completionRate}%` } as CSSProperties} /><b>{group.completionRate.toFixed(0)}%</b></span>
           <span><b>{Math.round(group.averageScore).toLocaleString("ko-KR")}</b></span><span><b>{group.averageBricks.toFixed(1)}</b></span><span><b>{group.averageCombo.toFixed(1)}</b></span>
           <span><i style={{ "--bench-fill": `${group.averageMaxBalls / maxBalls * 100}%` } as CSSProperties} /><b>{group.averageMaxBalls.toFixed(1)}</b></span>

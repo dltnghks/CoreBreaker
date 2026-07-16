@@ -5,9 +5,10 @@ import { GameAudio } from "./game-audio";
 import { DEFAULT_SKILLS, ENCHANT_MODE_LABELS, levelValue, NORMAL_SKILLS, normalizeSkillConfigs, SKILL_COLORS, SKILL_STORAGE_KEY, skillConfigMap, ULTIMATE_SKILLS, type ClassSkillId, type SkillCategory, type SkillConfig, type UpgradeId } from "./skill-config";
 import { BALANCE_STORAGE_KEY, BOT_LIVE_STORAGE_KEY, BOT_RESULTS_STORAGE_KEY, DEFAULT_BALANCE_CONFIG, DEFAULT_SKILL_BENCH_CONFIG, DEFAULT_SKILL_BENCH_PROGRESS, normalizeBalanceConfig, normalizeSkillBenchConfig, normalizeSkillBenchProgress, SKILL_BENCH_PROGRESS_KEY, SKILL_BENCH_STORAGE_KEY, type BalanceConfig, type BotWaveSample, type SkillBenchConfig, type SkillBenchProgress } from "./balance-config";
 import { BENCHMARK_STORAGE_KEY, benchmarkFeatures, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConfig, type BenchmarkConfig } from "./benchmark-config";
+import { MAX_WAVE, waveDefinition } from "./wave-config";
 
 type PayloadId = "pierce" | "blast" | "glass" | "link";
-type ItemKind = "xp" | "xp-core" | "multiball" | "combo" | "barrier" | "repair" | "strike";
+type ItemKind = "multiball" | "combo" | "barrier" | "repair" | "strike";
 type BrickKind = "normal" | "boss-armor" | "boss-core" | "boss-minion";
 type BrickTrait = "standard" | "guard" | "shield";
 type BossRewardId = ClassSkillId;
@@ -104,8 +105,6 @@ type GameState = {
   ghostPaddles: number[];
   elapsed: number;
   score: number;
-  xp: number;
-  xpNeed: number;
   level: number;
   combo: number;
   maxCombo: number;
@@ -151,7 +150,7 @@ type GameState = {
 
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
 type Flash = { text: string; x: number; y: number; life: number; color: string };
-type GameEffect = { kind: "ring" | "beam" | "blast"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string };
+type GameEffect = { kind: "ring" | "beam" | "blast" | "drop"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string };
 type PaddleCounter = { reflections: number; barrierReflections: number; missileReflections: number; safetyTimer: number; gravityTimer: number; directKills: number; pierceKills: number; feverMilestone: number; lastShotTimer: number; combo: number; comboTimer: number; skillReflections: Partial<Record<ClassSkillId, number>> };
 
 const W = 900;
@@ -162,17 +161,14 @@ const GHOST_PADDLE_Y = H - 42;
 const BALL_FLOOR_Y = H - 4;
 const BRICK_ROW_Y = 74;
 const BRICK_ROW_STEP = 34;
-const STARTING_ROWS = 4;
-const STARTING_ROW_INTERVAL = 8;
-const MIN_ROW_INTERVAL = 4.5;
+const STARTING_ROW_INTERVAL = 60;
 const MAX_GHOSTS = 10;
 const MAX_ACTIVE_GHOSTS = 3;
 const MAX_CORE_HP = 8;
-const BOSS_INTERVAL = 20;
-const BOSS_TIME_LIMIT = 45;
+const BOSS_INTERVAL = 10;
 const NORMAL_STAGE_MULTIBALL_WAVES = [2, 4, 6, 8, 11, 13, 16, 18];
 const BOSS_MULTIBALL_BUDGET = 2;
-const BOT_EVALUATION_WAVE = 100;
+const BOT_EVALUATION_WAVE = MAX_WAVE;
 const BASE_BALL_VX = 240;
 const BASE_BALL_VY = 320;
 const PLAYER_BALL_COLOR = "#fff27a";
@@ -215,8 +211,6 @@ const SKILL_ICONS: Partial<Record<UpgradeId, string>> = {
 };
 const PADDLE_UPGRADES = new Set<UpgradeId>(DEFAULT_SKILLS.map((entry) => entry.id));
 const ITEM_DATA: Record<ItemKind, { label: string; symbol: string; color: string }> = {
-  xp: { label: "XP", symbol: "◇", color: "#5ce8e0" },
-  "xp-core": { label: "XP CORE", symbol: "◆", color: "#8afff5" },
   multiball: { label: "MULTI BALL", symbol: "+", color: "#ffcf4a" },
   combo: { label: "COMBO", symbol: "∞", color: "#c18cff" },
   barrier: { label: "BARRIER", symbol: "▣", color: "#58a6ff" },
@@ -318,18 +312,13 @@ function syncBallPayloadDisplay(ball: Ball, upgrades: UpgradeId[] = []) {
   ball.color = ball.temporaryTime > 0 ? previousColor : chargedSkill ? classSkillColor(chargedSkill) : attackColor(ball.attackPower);
 }
 
-function rowIntervalFor(wave: number, ghostCount: number, balance: BalanceConfig) {
-  return Math.max(balance.rowMinInterval, balance.rowStartInterval - (wave - 1) * balance.rowAcceleration - ghostCount * 0.18);
-}
-
 function pickBrickDrop(): ItemKind | null {
-  if (environmentRandom() >= 0.42) return null;
+  if (environmentRandom() >= 0.28) return null;
   const roll = environmentRandom();
-  if (roll < 0.56) return "xp";
-  if (roll < 0.66) return "xp-core";
-  if (roll < 0.8) return "combo";
-  if (roll < 0.88) return "barrier";
-  if (roll < 0.95) return "repair";
+  if (roll < 0.34) return "combo";
+  if (roll < 0.57) return "barrier";
+  if (roll < 0.77) return "repair";
+  if (roll < 0.9) return "multiball";
   return "strike";
 }
 
@@ -383,6 +372,32 @@ function makeBrickRow(row: number, wave = 1, ghostCount = 0, balance = DEFAULT_B
   return bricks;
 }
 
+function makeWaveBricks(waveNumber: number, balance = DEFAULT_BALANCE_CONFIG): Brick[] {
+  const definition = waveDefinition(waveNumber);
+  if (definition.boss) return makeBossBricks(definition.boss === "final" ? 2 : 1, 0, balance);
+  const cols = 12;
+  const gap = 7;
+  const margin = 36;
+  const width = (W - margin * 2 - gap * (cols - 1)) / cols;
+  const baseHp = 1 + Math.floor((waveNumber - 1) / 5);
+  const multiballCells = definition.pattern.flatMap((row, rowIndex) => [...row].map((cell, col) => ({ cell, rowIndex, col }))).filter(({ cell }) => cell !== ".");
+  const multiballKey = hasScheduledMultiball(waveNumber) && multiballCells.length > 0
+    ? multiballCells[Math.floor(environmentRandom() * multiballCells.length)]
+    : null;
+  return definition.pattern.flatMap((row, rowIndex) => [...row].flatMap((cell, col) => {
+    if (cell === ".") return [];
+    const trait: BrickTrait = cell === "g" ? "guard" : cell === "s" ? "shield" : "standard";
+    const hpBonus = cell === "h" ? 1 : cell === "s" ? 2 : 0;
+    const maxHp = baseHp + hpBonus;
+    return [{
+      x: margin + col * (width + gap), y: BRICK_ROW_Y + rowIndex * BRICK_ROW_STEP, w: width, h: 24,
+      hp: maxHp, maxHp, hue: 178 + waveNumber * 9 + col * 2, alive: true, kind: "normal" as const,
+      drop: multiballKey?.rowIndex === rowIndex && multiballKey.col === col ? "multiball" as const : pickBrickDrop(),
+      ...brickRuntimeState(trait),
+    }];
+  }));
+}
+
 function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfig): Brick[] {
   const cols = 4;
   const rows = 3;
@@ -397,7 +412,7 @@ function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfi
     x: startX, y: startY, w: width, h: height,
     hp: coreHp, maxHp: coreHp,
     hue: 345, alive: true, kind: "boss-core",
-    drop: "xp-core",
+    drop: "repair",
     ...brickRuntimeState(),
   }];
 }
@@ -421,7 +436,7 @@ function makeBossAttackBricks(stage: number, forcedMultiballs = 0): Brick[] {
 }
 
 function makeInitialBricks(ghostCount: number, balance: BalanceConfig): Brick[] {
-  return Array.from({ length: STARTING_ROWS }, (_, row) => makeBrickRow(row, row + 1, ghostCount, balance)).flat();
+  return makeWaveBricks(1, balance);
 }
 
 function makePlayerBall(upgrades: UpgradeId[], x = W / 2): Ball {
@@ -433,7 +448,7 @@ function makePlayerBall(upgrades: UpgradeId[], x = W / 2): Ball {
 
 function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameState {
   const balls: Ball[] = [makePlayerBall([])];
-  const rowInterval = rowIntervalFor(1, activeGhosts.length, balance);
+  const rowInterval = waveDefinition(1).timeLimit;
   return {
     balls,
     bricks: makeInitialBricks(activeGhosts.length, balance),
@@ -442,8 +457,6 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     ghostPaddles: activeGhosts.map((_, index) => W * (index + 0.5) / activeGhosts.length),
     elapsed: 0,
     score: 0,
-    xp: 0,
-    xpNeed: 8,
     level: 1,
     combo: 0,
     maxCombo: 0,
@@ -494,10 +507,11 @@ function formatScore(value: number) {
 
 function hudFromGame(game: GameState) {
   return {
-    score: game.score, time: game.elapsed, level: game.level, xp: game.xp, xpNeed: game.xpNeed,
+    score: game.score, time: game.elapsed, level: game.level,
     combo: game.combo, bricks: game.bricksBroken, balls: game.balls.filter((ball) => ball.owner === "player").length,
     wave: game.wave, nextRow: Math.max(0, game.rowTimer), coreHp: game.coreHp, maxCoreHp: game.maxCoreHp,
     bossActive: game.bossActive, bossPending: game.bossPending, nextBossWave: game.nextBossWave, bossTimeRemaining: Math.max(0, game.bossTimeRemaining),
+    waveName: waveDefinition(game.wave).name, aliveBricks: game.bricks.filter((brick) => brick.alive).length,
   };
 }
 
@@ -575,7 +589,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const [ghosts, setGhosts] = useState<GhostRecord[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [mode, setMode] = useState<"lobby" | "playing" | "levelup" | "bossreward" | "result">("lobby");
-  const [hud, setHud] = useState({ score: 0, time: 0, level: 1, xp: 0, xpNeed: 8, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_ROW_INTERVAL, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0 });
+  const [hud, setHud] = useState({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_ROW_INTERVAL, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0 });
   const [choices, setChoices] = useState<UpgradeChoice[]>([]);
   const [rerollsLeft, setRerollsLeft] = useState(1);
   const [result, setResult] = useState<GameState | null>(null);
@@ -943,7 +957,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
       if (!activeBenchmark.skills) {
         game.upgrades = [];
-        game.xp = 0;
       }
       if (!activeBenchmark.bosses) {
         game.bossActive = false;
@@ -954,16 +967,18 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     }
     game.elapsed += dt;
     game.freezeTimer = Math.max(0, game.freezeTimer - dt);
-    if (game.freezeTimer <= 0) game.rowTimer -= dt;
+    if (game.freezeTimer <= 0) {
+      game.rowTimer -= dt;
+      if (game.bossActive) game.bossTimeRemaining -= dt;
+    }
     if (game.bossActive) {
-      game.bossTimeRemaining -= dt;
       game.bossSkillTimer -= dt;
       if (game.bossSkillTimer <= 0) {
         const forcedMultiballs = Math.min(BOSS_MULTIBALL_BUDGET, game.bossMultiballsRemaining);
         game.bricks.push(...makeBossAttackBricks(game.bossStage, forcedMultiballs));
         game.bossMultiballsRemaining -= forcedMultiballs;
         game.bossSkillTimer = Math.max(2.6, balanceConfigRef.current.bossAttackInterval - game.bossStage * balanceConfigRef.current.bossAttackAcceleration);
-        game.flashes.push({ text: "BOSS SKILL // BLOCK RAIN", x: W / 2, y: 190, life: 1, color: "#ff9658" });
+        game.flashes.push({ text: "BOSS SKILL // REINFORCEMENTS", x: W / 2, y: 190, life: 1, color: "#ff9658" });
         game.effects.push({ kind: "ring", x: W / 2, y: 150, x2: W / 2, y2: 150, size: 180, life: 0.8, maxLife: 0.8, color: "#ff9658" });
       }
     }
@@ -1051,7 +1066,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const neutralFloor = { id: "neutral-floor", x: W / 2, y: BALL_FLOOR_Y, width: W, upgrades: [] as UpgradeId[], name: "NEUTRAL FLOOR" };
     const paddleFor = (id: string) => paddles.find((paddle) => paddle.id === id) ?? (id === neutralFloor.id ? neutralFloor : paddles[0]);
     const counterFor = (id: string) => game.paddleCounters[id] ??= newPaddleCounter();
-    const pressurePenalty = paddles.reduce((sum, paddle) => sum + upgradeLevel(paddle.upgrades, "pressure") * 0.12, 0);
     const emitEffect = (kind: GameEffect["kind"], x: number, y: number, color: string, size = 45, x2 = x, y2 = y, duration = 0.5) => {
       game.effects.push({ kind, x, y, x2, y2, size, life: duration, maxLife: duration, color });
     };
@@ -1206,20 +1220,17 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const multiplier = 1 + Math.min(4, game.combo * (0.05 + chainLevel * 0.015));
       const points = 100 * multiplier * (ball.owner === "ghost" ? 0.75 : 1) * speedBonus;
       game.score += points;
-      const baseXp = 1 + skillValue("common-xp", upgradeLevel(sourcePaddle.upgrades, "common-xp"));
-      game.xp += baseXp;
       game.flashes.push({ text: `+${Math.floor(points)}`, x: brick.x + brick.w / 2, y: brick.y, life: 0.55, color: ball.color });
-      game.flashes.push({ text: `XP +${baseXp}`, x: brick.x + brick.w / 2, y: brick.y + brick.h + 8, life: 0.45, color: classSkillColor("common-xp") });
       for (let p = 0; p < 7; p++) game.particles.push({ x: brick.x + brick.w / 2, y: brick.y + brick.h / 2, vx: (effectRandom() - 0.5) * 180, vy: (effectRandom() - 0.7) * 150, life: 0.45 + effectRandom() * 0.4, color: `hsl(${brick.hue} 95% 68%)` });
       let earnedDrop = brick.drop;
       const luckChance = skillValue("common-luck", upgradeLevel(sourcePaddle.upgrades, "common-luck")) / 100;
-      if (!earnedDrop && luckChance > 0 && decisionRandom() < luckChance) earnedDrop = pickBrickDrop() ?? "xp";
+      if (!earnedDrop && luckChance > 0 && decisionRandom() < luckChance) earnedDrop = pickBrickDrop() ?? "combo";
       const pressureChance = skillValue("pressure", upgradeLevel(sourcePaddle.upgrades, "pressure")) / 100;
-      if (!earnedDrop && pressureChance > 0 && decisionRandom() < pressureChance) earnedDrop = pickBrickDrop() ?? "xp";
+      if (!earnedDrop && pressureChance > 0 && decisionRandom() < pressureChance) earnedDrop = pickBrickDrop() ?? "combo";
       const dropX = brick.x + brick.w / 2;
       const dropY = brick.y + brick.h / 2;
       if (earnedDrop && game.items.length < 120) {
-        game.items.push({ id: Date.now() + effectRandom(), x: dropX, y: dropY, vy: earnedDrop === "xp" ? 88 : 105, alive: true, kind: earnedDrop });
+        game.items.push({ id: Date.now() + effectRandom(), x: dropX, y: dropY, vy: 105, alive: true, kind: earnedDrop });
       }
 
       const feverLevel = upgradeLevel(sourcePaddle.upgrades, "fever");
@@ -1331,14 +1342,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const playerBalls = game.balls.filter((ball) => ball.owner === "player");
         const source = playerBalls.find((ball) => ball.sourcePaddleId === catcher.id) ?? playerBalls[0];
         const itemData = ITEM_DATA[item.kind];
-        emitEffect("ring", item.x, catcher.y, itemData.color, item.kind === "xp" ? 24 : 42, item.x, catcher.y, 0.45);
-        emitBurst(item.x, catcher.y, itemData.color, item.kind === "xp" ? 4 : 10, 150);
-        audioRef.current?.play("item", item.kind === "xp-core" || item.kind === "multiball" ? 1.4 : 1);
-        if (item.kind === "xp" || item.kind === "xp-core") {
-          const gained = item.kind === "xp-core" ? 5 : 1;
-          game.xp += gained;
-          game.flashes.push({ text: `${catcher.name} // XP +${gained}`, x: item.x, y: catcher.y - 24, life: 0.9, color: itemData.color });
-        } else if (item.kind === "combo") {
+        emitEffect("ring", item.x, catcher.y, itemData.color, 42, item.x, catcher.y, 0.45);
+        emitBurst(item.x, catcher.y, itemData.color, 10, 150);
+        audioRef.current?.play("item", item.kind === "multiball" ? 1.4 : 1);
+        if (item.kind === "combo") {
           const counter = counterFor(catcher.id);
           if (game.combo > 0) game.comboTimer = Math.max(game.comboTimer, 4.5);
           if (counter.combo > 0) counter.comboTimer = Math.max(counter.comboTimer, 4.5);
@@ -1833,68 +1840,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
     }
 
-    const descendBossGateBricks = () => {
-      game.bricks = game.bricks.filter((brick) => brick.alive);
-      game.bricks.forEach((brick) => { brick.y += BRICK_ROW_STEP; });
-      const breached = game.bricks.filter((brick) => brick.y + brick.h >= PLAYER_LINE_Y);
-      let coreDamage = 0;
-      breached.forEach((brick) => {
-        const centerX = brick.x + brick.w / 2;
-        const defender = [...paddles].sort((a, b) => Math.abs(a.x - centerX) - Math.abs(b.x - centerX))[0];
-        brick.alive = false;
-        if (defender && (game.paddleBarriers[defender.id] ?? 0) > 0) {
-          game.paddleBarriers[defender.id]--;
-          audioRef.current?.play("barrier");
-          game.flashes.push({ text: `${defender.name} // BOSS GATE GUARD`, x: centerX, y: PLAYER_LINE_Y - 12, life: 0.9, color: ITEM_DATA.barrier.color });
-          emitEffect("ring", centerX, PLAYER_LINE_Y, ITEM_DATA.barrier.color, 64, centerX, PLAYER_LINE_Y, 0.6);
-          return;
-        }
-        coreDamage += brick.maxHp >= 3 ? 2 : 1;
-      });
-      coreDamage = Math.min(3, coreDamage);
-      if (coreDamage > 0) {
-        game.coreHp = Math.max(0, game.coreHp - coreDamage);
-        audioRef.current?.play("core-damage", coreDamage);
-        impactFeedback(8 + coreDamage, "#ff6b87", 0.34, 0.2);
-        game.combo = 0;
-        game.flashes.push({ text: `BOSS GATE BREACH // CORE -${coreDamage}`, x: W / 2, y: H - 105, life: 1.3, color: "#ff6b87" });
-        emitEffect("beam", 20, PLAYER_LINE_Y, "#ff6b87", 12, W - 20, PLAYER_LINE_Y, 0.65);
-        if (game.coreHp <= 0) {
-          game.failed = true;
-          game.failureReason = "core";
-          setHud(hudFromGame(game));
-          finishRun();
-          return false;
-        }
-      }
-      game.rowTimer = game.rowInterval;
-      game.flashes.push({ text: `BOSS GATE // BRICKS DESCEND // ${game.rowInterval.toFixed(1)}s`, x: W / 2, y: 54, life: 1.05, color: "#ffcf4a" });
-      emitEffect("beam", 20, BRICK_ROW_Y, "#ffcf4a", 5, W - 20, BRICK_ROW_Y, 0.4);
-      return true;
-    };
-
-    const seedNormalBoard = () => {
-      const ghostCount = activeGhostsRef.current.length;
-      const firstWave = game.wave + 1;
-      const rowCount = Math.min(4, Math.max(0, game.nextBossWave - game.wave - 1));
-      game.bricks = Array.from({ length: rowCount }, (_, row) => makeBrickRow(row, firstWave + row, ghostCount, balanceConfigRef.current)).flat();
-      game.wave += rowCount;
-      game.bossPending = game.wave + 1 >= game.nextBossWave;
-      if (game.bossPending) game.wave = game.nextBossWave;
-      game.rowInterval = Math.max(balanceConfigRef.current.rowMinInterval, rowIntervalFor(game.wave, ghostCount, balanceConfigRef.current) - pressurePenalty);
-      game.rowTimer = game.rowInterval;
-      game.bossTimeRemaining = 0;
-      game.bossSkillTimer = 0;
-      game.bossMultiballsRemaining = 0;
-      if (game.autoGuard) game.paddleBarriers.player = Math.max(1, game.paddleBarriers.player ?? 0);
-    };
-    const beginBoss = () => {
-      game.bossActive = true;
-      game.bossPending = false;
-      game.bossStage++;
-      game.wave = game.nextBossWave;
-      game.bricks = makeBossBricks(game.bossStage, activeGhostsRef.current.length, balanceConfigRef.current);
-      game.items = [];
+    const resetBallsForWave = () => {
+      game.balls = game.balls.filter((ball) => ball.owner === "player" && ball.temporaryTime <= 0);
+      if (game.balls.length === 0) game.balls.push(makePlayerBall(game.upgrades, game.paddleX));
       const ballCount = game.balls.length;
       const paddleWidth = effectivePaddleWidth(game.paddleWidth, game.upgrades);
       const spread = Math.min(paddleWidth * 0.78, Math.max(0, (ballCount - 1) * 12));
@@ -1909,39 +1857,58 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ball.missileTime = 0;
         ball.missileHitCooldown = 0;
       });
-      game.bossTimeRemaining = Math.max(20, balanceConfigRef.current.bossTimeLimit - (game.bossStage - 1) * 2);
-      game.bossSkillTimer = 2.5;
-      game.bossMultiballsRemaining = BOSS_MULTIBALL_BUDGET;
-      game.rowInterval = Math.max(4, balanceConfigRef.current.bossAttackInterval - game.bossStage * 0.12 - pressurePenalty);
-      game.rowTimer = game.rowInterval;
-      if (game.autoGuard) game.paddleBarriers.player = Math.max(1, game.paddleBarriers.player ?? 0);
-      game.flashes.push({ text: `BOSS ${game.bossStage} // BALLS RESET // CORE FORTRESS`, x: W / 2, y: H / 2, life: 2, color: "#ff6b87" });
-      audioRef.current?.play("boss", game.bossStage);
-      impactFeedback(9, "#ff6b87", 0.42, 0.22);
     };
 
-    const bossPartsDestroyed = game.bossActive && !game.bricks.some((brick) => brick.alive && (brick.kind === "boss-core" || brick.kind === "boss-armor"));
-    if (bossPartsDestroyed) {
-        const bossBonus = 8000 + game.bossStage * 2500 + Math.floor(game.bossTimeRemaining * 200);
-        game.score += bossBonus;
-        game.bossActive = false;
-        game.flashes.push({ text: `BOSS DESTROYED // +${bossBonus.toLocaleString()}`, x: W / 2, y: H / 2, life: 1.8, color: "#ffcf4a" });
+    const startWave = (waveNumber: number) => {
+      const definition = waveDefinition(waveNumber);
+      const bossEnabled = !benchmarkMode || activeBenchmark.bosses;
+      const timeBonus = skillValue("common-xp", upgradeLevel(game.upgrades, "common-xp"));
+      game.wave = waveNumber;
+      game.level = waveNumber;
+      game.bossActive = definition.boss !== null && bossEnabled;
+      game.bossPending = false;
+      game.bossStage = definition.boss === "final" ? 2 : definition.boss === "mid" ? 1 : game.bossStage;
+      game.nextBossWave = waveNumber < 10 ? 10 : 20;
+      game.bricks = definition.boss && !bossEnabled
+        ? makeBrickRow(0, waveNumber, 0, balanceConfigRef.current)
+        : makeWaveBricks(waveNumber, balanceConfigRef.current);
+      game.items = [];
+      game.safetyBlocks = [];
+      game.gravityWells = [];
+      game.rowInterval = definition.timeLimit + timeBonus;
+      game.rowTimer = game.rowInterval;
+      game.bossTimeRemaining = game.bossActive ? game.rowInterval : 0;
+      game.bossSkillTimer = game.bossActive ? 5 : 0;
+      game.bossMultiballsRemaining = game.bossActive ? BOSS_MULTIBALL_BUDGET : 0;
+      resetBallsForWave();
+      if (game.autoGuard) game.paddleBarriers.player = Math.max(1, game.paddleBarriers.player ?? 0);
+      game.flashes.push({ text: `WAVE ${waveNumber} // ${definition.name} // ${game.rowInterval}s`, x: W / 2, y: H / 2, life: 1.8, color: game.bossActive ? "#ff6b87" : "#ffcf4a" });
+      if (game.bossActive) {
+        audioRef.current?.play("boss", game.bossStage);
+        impactFeedback(9, "#ff6b87", 0.42, 0.22);
+      }
+    };
+
+    const completeWave = (cleared: boolean) => {
+      const completedWave = game.wave;
+      const wasBoss = game.bossActive;
+      const bonus = cleared ? 1200 + completedWave * 180 + Math.floor((wasBoss ? game.bossTimeRemaining : game.rowTimer) * 80) : 0;
+      game.score += bonus;
+      game.bossActive = false;
+      if (cleared) {
+        game.flashes.push({ text: `WAVE ${completedWave} CLEAR // +${bonus.toLocaleString()}`, x: W / 2, y: H / 2, life: 1.5, color: "#ffcf4a" });
+      }
+      if (completedWave >= MAX_WAVE) {
+        game.flashes.push({ text: cleared ? "FINAL CORE DESTROYED" : "FINAL WAVE SURVIVED", x: W / 2, y: H / 2 + 38, life: 2, color: "#72f1b8" });
+        finishRun();
+        return;
+      }
+      startWave(completedWave + 1);
+      if (wasBoss && cleared) {
         audioRef.current?.play("boss-clear", game.bossStage);
         impactFeedback(11, "#ffcf4a", 0.48, 0.24);
-        const evaluationWave = benchmarkMode ? benchmarkConfigRef.current.targetWave : BOT_EVALUATION_WAVE;
-        if (botActiveRef.current && game.wave >= evaluationWave) {
-          game.flashes.push({ text: `W${evaluationWave} EVALUATION COMPLETE`, x: W / 2, y: H / 2 + 40, life: 2, color: "#72f1b8" });
-          finishRun();
-          return;
-        }
-        game.nextBossWave += BOSS_INTERVAL;
-        seedNormalBoard();
         if (botActiveRef.current) {
-          if (botSkillBenchActiveRef.current && skillBenchConfigRef.current.environment !== "ecosystem") {
-            game.flashes.push({ text: "CONTROLLED BENCH // BOSS REWARD SKIPPED", x: W / 2, y: H / 2 + 40, life: 1.5, color: "#8492a9" });
-          } else {
-            applyBossReward(botPolicyRef.current === "survival" ? "mage-elemental-storm" : "archer-arrow-rain");
-          }
+          if (!botSkillBenchActiveRef.current || skillBenchConfigRef.current.environment === "ecosystem") applyBossReward(botPolicyRef.current === "survival" ? "mage-elemental-storm" : "archer-arrow-rain");
           setHud(hudFromGame(game));
           return;
         }
@@ -1949,16 +1916,39 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         setMode("bossreward");
         setHud(hudFromGame(game));
         return;
+      }
+      levelUp();
+    };
+
+    const waveCleared = game.bossActive
+      ? !game.bricks.some((brick) => brick.alive && (brick.kind === "boss-core" || brick.kind === "boss-armor"))
+      : game.bricks.every((brick) => !brick.alive);
+    if (waveCleared) {
+      completeWave(true);
+      return;
     }
 
-    if (game.bossActive && game.bossTimeRemaining <= 0) {
-      game.coreHp = Math.max(0, game.coreHp - 4);
-      audioRef.current?.play("core-damage", 2);
-      impactFeedback(12, "#ff3f6c", 0.46, 0.25);
+    const timeRemaining = game.bossActive ? game.bossTimeRemaining : game.rowTimer;
+    if (timeRemaining <= 0) {
+      const survivors = game.bricks.filter((brick) => brick.alive);
+      const threat = survivors.reduce((sum, brick) => sum + (brick.kind === "boss-core" ? Math.max(4, Math.ceil(brick.hp / 8)) : brick.trait === "shield" ? 2 : 1), 0);
+      let coreDamage = Math.min(6, Math.max(1, Math.ceil(threat / 8)));
+      const barrier = game.paddleBarriers.player ?? 0;
+      const blocked = Math.min(coreDamage, barrier);
+      game.paddleBarriers.player = barrier - blocked;
+      coreDamage -= blocked;
+      survivors.forEach((brick, index) => {
+        brick.alive = false;
+        if (index < 36) emitEffect("drop", brick.x + brick.w / 2, brick.y + brick.h / 2, "#ff6b87", brick.w, W / 2, PLAYER_LINE_Y, 0.72);
+      });
       game.combo = 0;
-      game.bossActive = false;
-      game.nextBossWave += BOSS_INTERVAL;
-      game.flashes.push({ text: "TIME UP // CORE -4 // NO REWARD", x: W / 2, y: H / 2, life: 1.7, color: "#ff6b87" });
+      game.comboTimer = 0;
+      if (coreDamage > 0) {
+        game.coreHp = Math.max(0, game.coreHp - coreDamage);
+        audioRef.current?.play("core-damage", coreDamage);
+        impactFeedback(10 + coreDamage, "#ff3f6c", 0.46, 0.25);
+      }
+      game.flashes.push({ text: `TIME UP // ${survivors.length} BRICKS DROP // CORE -${coreDamage}${blocked ? ` // BLOCK ${blocked}` : ""}`, x: W / 2, y: H / 2, life: 1.8, color: "#ff6b87" });
       if (game.coreHp <= 0) {
         game.failed = true;
         game.failureReason = "core";
@@ -1966,118 +1956,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         finishRun();
         return;
       }
-      if (botActiveRef.current && game.wave >= BOT_EVALUATION_WAVE) {
-        finishRun();
-        return;
-      }
-      seedNormalBoard();
-    }
-
-    if (!game.bossActive && game.bricks.every((brick) => !brick.alive)) {
-      if (game.bossPending || game.wave >= game.nextBossWave) {
-        beginBoss();
-      } else {
-        seedNormalBoard();
-        const clearBonus = 2000 + game.wave * 150;
-        game.score += clearBonus;
-        game.flashes.push({ text: `BOARD CLEAR // 4 WAVES +${clearBonus.toLocaleString()}`, x: W / 2, y: H / 2, life: 1.6, color: "#fff27a" });
-      }
-    }
-
-    if (game.rowTimer <= 0) {
-      if (game.bossPending) {
-        if (!descendBossGateBricks()) return;
-      } else if (!game.bossActive && game.wave + 1 >= game.nextBossWave) {
-        game.wave = game.nextBossWave;
-        game.bossPending = true;
-        game.rowTimer = game.rowInterval;
-        game.flashes.push({ text: "BOSS GATE // CLEAR ALL BRICKS", x: W / 2, y: 54, life: 1.6, color: "#ffcf4a" });
-        emitEffect("beam", 20, BRICK_ROW_Y, "#ffcf4a", 8, W - 20, BRICK_ROW_Y, 0.65);
-      } else if (game.bossActive) {
-        game.bricks.forEach((brick) => { if (brick.alive && brick.kind === "boss-minion") brick.y += BRICK_ROW_STEP; });
-        const breached = game.bricks.filter((brick) => brick.alive && brick.kind === "boss-minion" && brick.y + brick.h >= PLAYER_LINE_Y);
-        let coreDamage = 0;
-        breached.forEach((brick) => {
-          const centerX = brick.x + brick.w / 2;
-          const defender = [...paddles].sort((a, b) => Math.abs(a.x - centerX) - Math.abs(b.x - centerX))[0];
-          brick.alive = false;
-          if (defender && (game.paddleBarriers[defender.id] ?? 0) > 0) {
-            game.paddleBarriers[defender.id]--;
-            audioRef.current?.play("barrier");
-            game.flashes.push({ text: `${defender.name} // GUARD`, x: centerX, y: PLAYER_LINE_Y - 12, life: 0.9, color: ITEM_DATA.barrier.color });
-            emitEffect("ring", centerX, PLAYER_LINE_Y, ITEM_DATA.barrier.color, 64, centerX, PLAYER_LINE_Y, 0.6);
-            return;
-          }
-          coreDamage += brick.maxHp >= 3 ? 2 : 1;
-        });
-        coreDamage = Math.min(3, coreDamage);
-        if (coreDamage > 0) {
-          game.coreHp = Math.max(0, game.coreHp - coreDamage);
-          audioRef.current?.play("core-damage", coreDamage);
-          impactFeedback(8 + coreDamage, "#ff6b87", 0.34, 0.2);
-          game.combo = 0;
-          game.flashes.push({ text: `BLOCK RAIN HIT // CORE -${coreDamage}`, x: W / 2, y: H - 105, life: 1.2, color: "#ff6b87" });
-          emitEffect("beam", 20, PLAYER_LINE_Y, "#ff6b87", 12, W - 20, PLAYER_LINE_Y, 0.65);
-          if (game.coreHp <= 0) {
-            game.failed = true;
-            game.failureReason = "core";
-            setHud(hudFromGame(game));
-            finishRun();
-            return;
-          }
-        }
-        game.rowTimer = game.rowInterval;
-        game.flashes.push({ text: `BLOCK RAIN DESCENT // ${game.rowInterval.toFixed(1)}s`, x: W / 2, y: 54, life: 0.9, color: "#ff9658" });
-        emitEffect("beam", 20, BRICK_ROW_Y, "#ff9658", 6, W - 20, BRICK_ROW_Y, 0.45);
-      } else {
-      game.bricks = game.bricks.filter((brick) => brick.alive);
-      game.bricks.forEach((brick) => { brick.y += BRICK_ROW_STEP; });
-      const breached = game.bricks.filter((brick) => brick.y + brick.h >= PLAYER_LINE_Y);
-      let coreDamage = 0;
-      breached.forEach((brick) => {
-        const centerX = brick.x + brick.w / 2;
-        const defender = [...paddles].sort((a, b) => Math.abs(a.x - centerX) - Math.abs(b.x - centerX))[0];
-        brick.alive = false;
-        if (defender && (game.paddleBarriers[defender.id] ?? 0) > 0) {
-          game.paddleBarriers[defender.id]--;
-          audioRef.current?.play("barrier");
-          game.flashes.push({ text: `${defender.name} // GUARD`, x: centerX, y: PLAYER_LINE_Y - 12, life: 0.9, color: ITEM_DATA.barrier.color });
-          emitEffect("ring", centerX, PLAYER_LINE_Y, ITEM_DATA.barrier.color, 64, centerX, PLAYER_LINE_Y, 0.6);
-          return;
-        }
-        coreDamage += brick.maxHp >= 3 ? 2 : 1;
-      });
-      coreDamage = Math.min(3, coreDamage);
-      if (coreDamage > 0) {
-        game.coreHp = Math.max(0, game.coreHp - coreDamage);
-        audioRef.current?.play("core-damage", coreDamage);
-        impactFeedback(8 + coreDamage, "#ff6b87", 0.34, 0.2);
-        game.combo = 0;
-        game.flashes.push({ text: `CORE HIT // -${coreDamage}`, x: W / 2, y: H - 105, life: 1.3, color: "#ff6b87" });
-        emitEffect("beam", 20, PLAYER_LINE_Y, "#ff6b87", 12, W - 20, PLAYER_LINE_Y, 0.65);
-        if (game.coreHp <= 0) {
-          game.failed = true;
-          game.failureReason = "core";
-          setHud(hudFromGame(game));
-          finishRun();
-          return;
-        }
-      }
-      game.wave++;
-      game.bricks.push(...makeBrickRow(0, game.wave, activeGhostsRef.current.length, balanceConfigRef.current));
-      game.rowInterval = Math.max(balanceConfigRef.current.rowMinInterval, rowIntervalFor(game.wave, activeGhostsRef.current.length, balanceConfigRef.current) - pressurePenalty);
-      game.rowTimer = game.rowInterval;
-      if (game.autoGuard) game.paddleBarriers.player = Math.max(1, game.paddleBarriers.player ?? 0);
-      game.flashes.push({ text: `WAVE ${game.wave} // ROW DOWN`, x: W / 2, y: 54, life: 1.05, color: "#ffcf4a" });
-      emitEffect("beam", 20, BRICK_ROW_Y, "#ffcf4a", 5, W - 20, BRICK_ROW_Y, 0.4);
-      }
-    }
-
-    if (game.xp >= game.xpNeed) {
-      game.xp -= game.xpNeed;
-      game.level++;
-      game.xpNeed = 8 + (game.level - 1) * 4;
-      levelUp();
+      completeWave(false);
+      return;
     }
 
     if (benchmarkMode && botActiveRef.current && !activeBenchmark.bosses && game.wave >= benchmarkConfigRef.current.targetWave) {
@@ -2159,7 +2039,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
       if (brick.drop) {
         const dropData = ITEM_DATA[brick.drop];
-        ctx.shadowBlur = brick.drop === "xp-core" ? 16 : 8;
+        ctx.shadowBlur = brick.drop === "multiball" ? 16 : 8;
         ctx.shadowColor = dropData.color;
         ctx.strokeStyle = dropData.color;
         ctx.lineWidth = 2;
@@ -2248,7 +2128,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     ctx.fillStyle = lineColor;
     ctx.font = "900 11px monospace";
     ctx.textAlign = "left";
-    ctx.fillText(`CORE LINE // HP ${game.coreHp}/${game.maxCoreHp}${barrierSummary ? ` // BARRIER ${barrierSummary}` : ""} // ${game.bossPending ? `BOSS GATE · DESCENT ${Math.max(0, game.rowTimer).toFixed(1)}s` : `${game.bossActive ? "BLOCK RAIN" : "NEXT ROW"} ${Math.max(0, game.rowTimer).toFixed(1)}s`}`, 24, PLAYER_LINE_Y - 8);
+    const activeWaveTime = game.bossActive ? game.bossTimeRemaining : game.rowTimer;
+    ctx.fillText(`CORE LINE // HP ${game.coreHp}/${game.maxCoreHp}${barrierSummary ? ` // BARRIER ${barrierSummary}` : ""} // W${game.wave} TIME ${Math.max(0, activeWaveTime).toFixed(1)}s`, 24, PLAYER_LINE_Y - 8);
 
     game.gravityWells.forEach((well) => {
       const pulse = 0.78 + Math.sin(game.elapsed * 8) * 0.12;
@@ -2405,6 +2286,14 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       if (owned.length === 0) {
         ctx.fillStyle = ownerColor;
         ctx.fillRect(x - width / 2 + 5, y + 4, width - 10, 3);
+      } else if (effect.kind === "drop") {
+        const fallY = effect.y + (effect.y2 - effect.y) * progress * progress;
+        const driftX = effect.x + (effect.x2 - effect.x) * progress * 0.18;
+        ctx.globalAlpha = Math.max(0.18, remaining);
+        ctx.fillStyle = effect.color;
+        ctx.fillRect(driftX - effect.size / 2, fallY - 8, effect.size, 16);
+        ctx.globalAlpha = remaining * 0.45;
+        ctx.fillRect(driftX - effect.size * 0.36, effect.y, effect.size * 0.72, Math.max(2, fallY - effect.y));
       } else {
         const slot = Math.min(20, (width - 8) / perRow);
         owned.forEach((upgrade, index) => {
@@ -2531,18 +2420,18 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
     game.items.forEach((item) => {
       const data = ITEM_DATA[item.kind];
-      const size = item.kind === "xp" ? 6 : item.kind === "xp-core" ? 10 : 9;
+      const size = item.kind === "multiball" ? 10 : 9;
       ctx.save();
       ctx.translate(item.x, item.y);
       ctx.rotate(Math.PI / 4);
-      ctx.shadowBlur = item.kind === "xp-core" ? 22 : 14;
+      ctx.shadowBlur = item.kind === "multiball" ? 22 : 14;
       ctx.shadowColor = data.color;
       ctx.fillStyle = data.color;
       ctx.fillRect(-size, -size, size * 2, size * 2);
       ctx.rotate(-Math.PI / 4);
       ctx.shadowBlur = 0;
       ctx.fillStyle = "#07101b";
-      ctx.font = `900 ${item.kind === "xp" ? 8 : 11}px monospace`;
+      ctx.font = "900 11px monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(data.symbol, 0, 1);
@@ -2875,8 +2764,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             <div><span>COMBO</span><strong>{hud.combo}</strong></div>
             <div><span>BALLS</span><strong>{hud.balls}</strong></div>
             <div className={hud.coreHp <= 3 ? "core-cell core-critical" : "core-cell"}><span>CORE</span><strong>{hud.coreHp}/{hud.maxCoreHp}</strong></div>
-            <div className="xp-cell"><span>EXPERIENCE</span><div className="xp-track"><i style={{ width: `${Math.min(100, (hud.xp / hud.xpNeed) * 100)}%` }} /></div><small>{hud.xp} / {hud.xpNeed}</small></div>
-            <div><span>{hud.bossActive ? `BOSS ${Math.ceil(hud.wave / BOSS_INTERVAL)} · TIME` : hud.bossPending ? `WAVE ${hud.wave} · BOSS GATE` : `WAVE ${hud.wave} · BOSS IN ${Math.max(0, hud.nextBossWave - hud.wave)}`}</span><strong className={(hud.bossActive ? hud.bossTimeRemaining : hud.nextRow) < 5 ? "core-critical" : ""}>{(hud.bossActive ? hud.bossTimeRemaining : hud.nextRow).toFixed(1)}s</strong></div>
+            <div className="xp-cell"><span>WAVE PATTERN</span><strong>{hud.waveName}</strong><small>{hud.aliveBricks} BRICKS LEFT</small></div>
+            <div><span>WAVE {hud.wave}/{MAX_WAVE} · TIME</span><strong className={(hud.bossActive ? hud.bossTimeRemaining : hud.nextRow) < 10 ? "core-critical" : ""}>{(hud.bossActive ? hud.bossTimeRemaining : hud.nextRow).toFixed(1)}s</strong></div>
           </div>
 
           <div className="game-frame">
@@ -2894,17 +2783,17 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
             {mode === "lobby" && (
               <div className="overlay lobby-overlay">
-                <p className="overlay-kicker">{benchmarkMode ? `CONTROLLED STAGE ${benchmarkConfig.stage} · ${benchmarkConfig.runs} RUNS` : "ENDLESS COMBO. DESCENDING ROWS. ONE LINE."}</p>
-                <h2>{benchmarkMode ? <>환경 적용 완료<br />봇 테스트를 시작하세요.</> : <>콤보를 이어가며<br />끝없이 버티세요.</>}</h2>
-                <p>{benchmarkMode ? `활성 요소: ${Object.entries(activeBenchmarkFeatures).filter(([, enabled]) => enabled).map(([key]) => key.toUpperCase()).join(" · ") || "ORIGINAL ONLY"}` : "구멍이 있는 블록 라인을 공략하고, 20웨이브마다 중앙에 등장하는 4×3 보스를 제한시간 안에 파괴하세요."}</p>
-                {!benchmarkMode && <button className="primary-button" onClick={() => startRun(false)}>무한 플레이 시작 <span>→</span></button>}
+                <p className="overlay-kicker">{benchmarkMode ? `CONTROLLED STAGE ${benchmarkConfig.stage} · ${benchmarkConfig.runs} RUNS` : "20 WAVES. 60 SECONDS. BREAK OR DEFEND."}</p>
+                <h2>{benchmarkMode ? <>환경 적용 완료<br />봇 테스트를 시작하세요.</> : <>패턴을 돌파하고<br />코어를 지키세요.</>}</h2>
+                <p>{benchmarkMode ? `활성 요소: ${Object.entries(activeBenchmarkFeatures).filter(([, enabled]) => enabled).map(([key]) => key.toUpperCase()).join(" · ") || "ORIGINAL ONLY"}` : "웨이브마다 고정 패턴을 60초 동안 공략하세요. 시간이 끝나면 남은 모든 블록이 코어를 공격하고 다음 웨이브가 시작됩니다."}</p>
+                {!benchmarkMode && <button className="primary-button" onClick={() => startRun(false)}>20 웨이브 시작 <span>→</span></button>}
                 <small>{benchmarkMode ? "오른쪽 플레이테스트 봇에서 실행합니다." : "마우스·터치 또는 A / D 키로 패들을 움직이세요."}</small>
               </div>
             )}
 
             {mode === "levelup" && (
               <div className="overlay level-overlay">
-                <p className="overlay-kicker">LEVEL {gameRef.current?.level} // SIGNAL UPGRADE</p>
+                <p className="overlay-kicker">WAVE REWARD // SIGNAL UPGRADE</p>
                 <h2>조합을 선택하세요</h2>
                 <div className="upgrade-grid">
                   <p className="upgrade-ball-summary">직업 스킬은 패들 반사로 충전 · 공용 스킬은 획득 즉시 상시 적용 · 궁극기는 보스 보상 전용</p>
@@ -2964,7 +2853,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                 <h2>{formatScore(result.score)}</h2>
                 <p className="score-label">FINAL SCORE</p>
                 <div className="result-stats">
-                  <div><span>LEVEL</span><strong>{result.level}</strong></div>
+                  <div><span>WAVE</span><strong>{result.wave}/{MAX_WAVE}</strong></div>
                   <div><span>SURVIVAL</span><strong>{result.elapsed.toFixed(1)}s</strong></div>
                   <div><span>BRICKS</span><strong>{result.bricksBroken}</strong></div>
                   <div><span>MAX COMBO</span><strong>{result.maxCombo}</strong></div>
@@ -2980,7 +2869,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             <span className="tray-title">CURRENT BUILD</span>
             <div className="build-items">
               {(gameRef.current ? upgradeCounts(gameRef.current.upgrades) : []).map((u) => <span key={u.id} style={{ borderColor: u.color, color: u.color }}>{u.tag} <b>×{u.count}</b></span>)}
-              {(!gameRef.current || gameRef.current.upgrades.length === 0) && <em>레벨업하면 조합이 여기에 기록됩니다.</em>}
+              {(!gameRef.current || gameRef.current.upgrades.length === 0) && <em>웨이브 보상을 선택하면 조합이 여기에 기록됩니다.</em>}
             </div>
             <div className="controls">MOVE <kbd>A</kbd><kbd>D</kbd> / POINTER</div>
           </div>

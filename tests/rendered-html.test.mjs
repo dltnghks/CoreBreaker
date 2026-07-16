@@ -20,15 +20,14 @@ test("server-renders the Echo Breaker playtest", async () => {
   assert.match(html, /ECHO BREAKER/);
   assert.match(html, /LIVE GAMEPLAY/);
   assert.doesNotMatch(html, /고스트 보관함/);
-  assert.match(html, /무한 플레이 시작/);
-  assert.match(html, /ENDLESS COMBO\. DESCENDING ROWS\. ONE LINE\./);
-  assert.match(html, /XP CORE/);
+  assert.match(html, /20 웨이브 시작/);
+  assert.match(html, /20 WAVES\. 60 SECONDS\. BREAK OR DEFEND\./);
   assert.match(html, /MULTI BALL/);
   assert.match(html, /BARRIER/);
   assert.match(html, /REPAIR/);
   assert.match(html, /STRIKE/);
   assert.match(html, /CORE/);
-  assert.match(html, /20웨이브마다 중앙에 등장하는 4×3 보스를 제한시간 안에 파괴/);
+  assert.match(html, /시간이 끝나면 남은 모든 블록이 코어를 공격/);
   assert.doesNotMatch(html, /플레이테스트 봇/);
   assert.match(html, /href="\/benchmark"/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|react-loading-skeleton/);
@@ -133,7 +132,7 @@ test("adds synthesized game audio and a persistent mute control", async () => {
   assert.match(audio, /createBufferSource\(\)/);
 });
 
-test("uses a stationary 4x3 time-attack boss with descending minions", async () => {
+test("uses stationary 4x3 time-attack bosses with reinforcement bricks", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const cols = 4;/);
   assert.match(source, /const rows = 3;/);
@@ -141,28 +140,31 @@ test("uses a stationary 4x3 time-attack boss with descending minions", async () 
   assert.match(source, /return \[\{/);
   assert.match(source, /bossTimeRemaining/);
   assert.match(source, /brick\.kind === "boss-minion"/);
-  assert.match(source, /BOSS SKILL \/\/ BLOCK RAIN/);
+  assert.match(source, /BOSS SKILL \/\/ REINFORCEMENTS/);
 });
 
-test("spawns partial brick rows and schedules bosses every 20 waves", async () => {
+test("defines 20 fixed brick patterns with bosses at waves 10 and 20", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /const BOSS_INTERVAL = 20;/);
-  assert.match(source, /const brickCount = Math\.min\(9, 7 \+ Math\.floor\(environmentRandom\(\) \* 3\)\);/);
-  assert.match(source, /if \(!activeColumns\.has\(col\)\) continue;/);
+  const waves = await readFile(new URL("../app/wave-config.ts", import.meta.url), "utf8");
+  assert.match(source, /import \{ MAX_WAVE, waveDefinition \}/);
+  assert.match(source, /makeWaveBricks\(waveNumber/);
+  assert.match(waves, /export const WAVE_TIME_LIMIT = 60/);
+  assert.match(waves, /wave\(10, "MID BOSS/);
+  assert.match(waves, /wave\(20, "FINAL BOSS/);
+  const patternRows = [...waves.matchAll(/"([.nhgs]+)"/g)].map((match) => match[1]);
+  assert.ok(patternRows.length > 40);
+  patternRows.forEach((row) => assert.equal(row.length, 12));
 });
 
-test("waits for a full board clear at the boss gate", async () => {
+test("ends a wave on clear or drops every surviving brick at time up", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /bossPending: boolean/);
-  assert.match(source, /game\.bossPending = true/);
-  assert.match(source, /if \(game\.bossPending \|\| game\.wave >= game\.nextBossWave\)/);
-  assert.match(source, /BOSS GATE \/\/ CLEAR ALL BRICKS/);
-  assert.match(source, /game\.bossPending = false/);
-  assert.match(source, /const descendBossGateBricks =/);
-  assert.match(source, /BOSS GATE \/\/ BRICKS DESCEND/);
-  assert.match(source, /BOSS GATE BREACH \/\/ CORE/);
-  assert.match(source, /if \(!descendBossGateBricks\(\)\) return/);
-  assert.doesNotMatch(source, /!game\.bossActive && game\.wave \+ 1 >= game\.nextBossWave\) \{\s*beginBoss\(\)/);
+  assert.match(source, /const waveCleared = game\.bossActive/);
+  assert.match(source, /if \(waveCleared\) \{\s*completeWave\(true\)/);
+  assert.match(source, /const survivors = game\.bricks\.filter\(\(brick\) => brick\.alive\)/);
+  assert.match(source, /Math\.ceil\(threat \/ 8\)/);
+  assert.match(source, /TIME UP \/\/ \$\{survivors\.length\} BRICKS DROP/);
+  assert.match(source, /emitEffect\("drop"/);
+  assert.match(source, /completeWave\(false\)/);
 });
 
 test("adds guard and shield brick traits with distinct damage rules", async () => {
@@ -184,10 +186,10 @@ test("respawns a ball at the cost of one core health", async () => {
   assert.match(source, /BALL LOST \/\/ CORE -1 \/\/ RESPAWN/);
 });
 
-test("uses slower wave pacing and skill-specific combat effects", async () => {
+test("uses fixed 60 second wave pacing and skill-specific combat effects", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /const STARTING_ROW_INTERVAL = 8;/);
-  assert.match(source, /const MIN_ROW_INTERVAL = 4\.5;/);
+  assert.match(source, /const STARTING_ROW_INTERVAL = 60;/);
+  assert.match(source, /game\.rowInterval = definition\.timeLimit \+ timeBonus/);
   assert.match(source, /type GameEffect =/);
   assert.match(source, /HORIZONTAL ENCHANT/);
   assert.match(source, /emitEffect\("beam"/);
@@ -219,12 +221,12 @@ test.skip("converts legacy line clears into enchant waves and randomizes nearby 
   assert.doesNotMatch(gameSource, /forEach\(\(target\) => destroyBrick\(target, ball, false, 0\)\)/);
 });
 
-test("grants base experience immediately and only drops bonus experience items", async () => {
+test("removes experience progression and rewards skills after waves", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /const baseXp = 1 \+ skillValue\("common-xp"/);
-  assert.match(source, /game\.xp \+= baseXp;/);
+  assert.doesNotMatch(source, /game\.xp \+=/);
+  assert.doesNotMatch(source, /"xp-core"/);
   assert.match(source, /if \(earnedDrop && game\.items\.length < 120\)/);
-  assert.doesNotMatch(source, /kind: "xp" \}\);\s*\}\s*if \(earnedDrop/);
+  assert.match(source, /levelUp\(\);/);
 });
 
 test("colors balls by attack power and renders paddle skills as icons", async () => {
@@ -266,13 +268,14 @@ test.skip("uses legacy percentage fracture, upper gravity wells, and homing pier
   assert.match(gameSource, /const turn = Math\.max\(-5\.4 \* dt/);
 });
 
-test("resets every active ball above the player paddle when a boss starts", async () => {
+test("resets permanent balls above the paddle whenever a wave starts", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const ballCount = game\.balls\.length/);
   assert.match(source, /game\.balls\.forEach\(\(ball, index\) =>/);
   assert.match(source, /ball\.y = PLAYER_PADDLE_Y - ball\.radius - 3/);
   assert.match(source, /ball\.vy = -Math\.sqrt/);
-  assert.match(source, /BOSS \$\{game\.bossStage\} \/\/ BALLS RESET/);
+  assert.match(source, /const resetBallsForWave =/);
+  assert.match(source, /ball\.temporaryTime <= 0/);
 });
 
 test("runs a no-ghost playtest bot and persists balance metrics", async () => {
@@ -308,11 +311,10 @@ test("connects the benchmark wave simulator to live bot telemetry", async () => 
   assert.match(simulator, /BOT_LIVE_STORAGE_KEY/);
 });
 
-test("finishes bot evaluations after resolving the wave 100 boss", async () => {
+test("finishes bot evaluations at the wave 20 final boss", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /const BOT_EVALUATION_WAVE = 100/);
-  assert.match(source, /botActiveRef\.current && game\.wave >= evaluationWave/);
-  assert.match(source, /W\$\{evaluationWave\} EVALUATION COMPLETE/);
+  assert.match(source, /const BOT_EVALUATION_WAVE = MAX_WAVE/);
+  assert.match(source, /completedWave >= MAX_WAVE/);
   assert.match(source, /evaluationComplete: game\.wave >= \(benchmarkMode \? benchmarkConfigRef\.current\.targetWave : BOT_EVALUATION_WAVE\)/);
   assert.match(source, /TARGET W\{benchmarkConfig\.targetWave\}/);
   assert.match(source, /BENCHMARK START/);
@@ -387,7 +389,7 @@ test("separates original, isolated, and ecosystem experiment roles", async () =>
   assert.match(source, /bench\.environment === "original" \? \["original"\]/);
   assert.match(source, /skillBenchConfigRef\.current\.environment !== "ecosystem"/);
   assert.match(source, /ORIGINAL \/\/ NO SKILLS/);
-  assert.match(source, /CONTROLLED BENCH \/\/ BOSS REWARD SKIPPED/);
+  assert.match(source, /!botSkillBenchActiveRef\.current \|\| skillBenchConfigRef\.current\.environment === "ecosystem"/);
   assert.match(bench, />ORIGINAL</);
   assert.match(bench, />ISOLATED</);
   assert.match(bench, />ECOSYSTEM</);
@@ -468,17 +470,14 @@ test.skip("unlocks legacy fixed-cost skills after the first boss and offers one 
   const config = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
   const lab = await readFile(new URL("../app/skill-lab/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const PRE_BOSS_SKILL_IDS = new Set<UpgradeId>/);
-  assert.match(source, /ballEconomyUnlocked \|\| PRE_BOSS_SKILL_IDS\.has\(upgrade\.id\)/);
-  assert.match(source, /game\.bossRewards\.length > 0/);
-  assert.match(source, /BALL CORE ONLINE \/\/ SACRIFICE SKILLS UNLOCKED/);
-  assert.match(source, /activeSkillMap\[upgrade\.id\]\.ballCost/);
+  assert.match(source, /bench\.environment === "original"/);
+  assert.match(source, /skillBenchConfigRef\.current\.environment !== "ecosystem"/);
   assert.match(source, /const \[rerollsLeft, setRerollsLeft\] = useState\(1\)/);
   assert.match(source, /const rerollUpgradeChoices = useCallback/);
   assert.match(source, /리롤 \{rerollsLeft\}\/1/);
   assert.match(source, /선택 건너뛰기/);
-  assert.match(config, /ballCost: 0 \| 1 \| 2/);
-  assert.match(config, /const DEFAULT_BALL_COSTS/);
-  assert.match(lab, /첫 보스 이후 볼 소모 비용/);
+  assert.match(config, /environment: SkillBenchEnvironment/);
+  assert.match(lab, /ORIGINAL/);
 });
 
 test("uses a fixed multiball item budget for every boss stage", async () => {
@@ -488,9 +487,9 @@ test("uses a fixed multiball item budget for every boss stage", async () => {
   assert.match(source, /function hasScheduledMultiball/);
   assert.match(source, /col === multiballColumn \? "multiball" : pickBrickDrop\(\)/);
   assert.match(source, /index < forcedMultiballs \? "multiball"/);
-  assert.match(source, /game\.bossMultiballsRemaining = BOSS_MULTIBALL_BUDGET/);
+  assert.match(source, /game\.bossMultiballsRemaining = game\.bossActive \? BOSS_MULTIBALL_BUDGET : 0/);
   const randomDrop = source.slice(source.indexOf("function pickBrickDrop"), source.indexOf("function hasScheduledMultiball"));
-  assert.doesNotMatch(randomDrop, /return "multiball"/);
+  assert.match(randomDrop, /return "multiball"/);
 });
 
 test("renders the warrior archer mage Skill Lab", async () => {

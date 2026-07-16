@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Echo Breaker - Playtest",
-  description: "An endless combo brick breaker with continuously descending rows.",
+  description: "A 20-wave brick breaker with fixed patterns, 60-second rounds, and core defense.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
