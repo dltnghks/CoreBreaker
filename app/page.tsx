@@ -62,6 +62,7 @@ type Ball = {
   gravityRescueCooldown: number;
   skillCharges: Partial<Record<ClassSkillId, number>>;
   temporaryTime: number;
+  waveBonus: boolean;
 };
 
 type Brick = {
@@ -174,6 +175,7 @@ const BOT_EVALUATION_WAVE = MAX_WAVE;
 const BASE_BALL_VX = 240;
 const BASE_BALL_VY = 320;
 const PLAYER_BALL_COLOR = "#fff27a";
+const WAVE_MULTIBALL_COLOR = "#9aa3b2";
 let environmentRandom = () => Math.random();
 let decisionRandom = () => Math.random();
 let effectRandom = () => Math.random();
@@ -311,7 +313,7 @@ function syncBallPayloadDisplay(ball: Ball, upgrades: UpgradeId[] = []) {
   const enchantPower = (ball.payloads.blast ?? 0) * 0.65 + (ball.payloads.link ?? 0) * 0.35 + (ball.payloads.glass ?? 0) * 0.25 + Math.min(1.5, ball.pierce * 0.2);
   ball.attackPower = 1 + corrosionPower + enchantPower;
   const chargedSkill = (Object.keys(ball.skillCharges) as ClassSkillId[]).find((id) => (ball.skillCharges[id] ?? 0) > 0);
-  ball.color = ball.temporaryTime > 0 ? previousColor : chargedSkill ? classSkillColor(chargedSkill) : attackColor(ball.attackPower);
+  ball.color = ball.waveBonus ? WAVE_MULTIBALL_COLOR : ball.temporaryTime > 0 ? previousColor : chargedSkill ? classSkillColor(chargedSkill) : attackColor(ball.attackPower);
 }
 
 function pickBrickDrop(): ItemKind | null {
@@ -453,7 +455,7 @@ function makeInitialBricks(ghostCount: number, balance: BalanceConfig): Brick[] 
 
 function makePlayerBall(upgrades: UpgradeId[], x = W / 2): Ball {
   const speed = 1 + upgrades.filter((u) => u === "speed").length * 0.12;
-  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8, owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, skillCharges: {}, temporaryTime: 0 };
+  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8, owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, skillCharges: {}, temporaryTime: 0, waveBonus: false };
   syncBallPayloadDisplay(ball, upgrades);
   return ball;
 }
@@ -972,7 +974,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.bossSkillTimer ??= 0;
     game.bossMultiballsRemaining ??= 0;
     game.bossPending ??= false;
-    game.balls.forEach((ball) => { ball.sourcePaddleId ??= "player"; ball.attackPower ??= 1; ball.missileTime ??= 0; ball.missileHitCooldown ??= 0; ball.skillCharges ??= {}; ball.temporaryTime ??= 0; });
+    game.balls.forEach((ball) => { ball.sourcePaddleId ??= "player"; ball.attackPower ??= 1; ball.missileTime ??= 0; ball.missileHitCooldown ??= 0; ball.skillCharges ??= {}; ball.temporaryTime ??= 0; ball.waveBonus ??= false; });
     game.freezeTimer ??= 0;
     game.shakeStrength ??= 0;
     game.shakeTime ??= 0;
@@ -1483,17 +1485,18 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             payload: null,
             payloadLevel: 0,
             payloads: {},
-            color: PLAYER_BALL_COLOR,
+            color: WAVE_MULTIBALL_COLOR,
             sourcePaddleId: catcher.id,
             missileTime: 0,
             missileHitCooldown: 0,
             gravityRescueCooldown: 0,
             skillCharges: {},
             temporaryTime: 0,
+            waveBonus: true,
           };
           const grantedPayloads = grantPaddlePayloads(newBall, catcher.upgrades);
           game.balls.push(newBall);
-          emitEffect("ring", catcher.x, catcher.y, "#ffcf4a", 58, catcher.x, catcher.y, 0.55);
+          emitEffect("ring", catcher.x, catcher.y, WAVE_MULTIBALL_COLOR, 58, catcher.x, catcher.y, 0.55);
           const doubleLevel = upgradeLevel(catcher.upgrades, "double-drop");
           const doubleChance = skillValue("double-drop", doubleLevel) / 100;
           if (doubleChance > 0 && decisionRandom() < doubleChance) {
@@ -1965,8 +1968,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     }
 
     const resetBallsForWave = () => {
-      game.balls = game.balls.filter((ball) => ball.owner === "player" && ball.temporaryTime <= 0);
-      if (game.balls.length === 0) game.balls.push(makePlayerBall(game.upgrades, game.paddleX));
+      game.balls = game.balls.filter((ball) => ball.owner === "player" && ball.temporaryTime <= 0 && !ball.waveBonus);
+      while (game.balls.length < game.wave) game.balls.push(makePlayerBall(game.upgrades, game.paddleX));
       const ballCount = game.balls.length;
       const paddleWidth = effectivePaddleWidth(game.paddleWidth, game.upgrades);
       const spread = Math.min(paddleWidth * 0.78, Math.max(0, (ballCount - 1) * 12));
@@ -2498,18 +2501,19 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     drawCounterRail(W / 2, H - 14, "player", game.upgrades);
     drawSkillPanel(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, game.upgrades, PLAYER_BALL_COLOR);
     game.balls.filter((ball) => ball.owner === "player").forEach((ball) => {
+      const drawColor = ball.waveBonus ? WAVE_MULTIBALL_COLOR : ball.color;
       const speed = Math.max(1, Math.hypot(ball.vx, ball.vy));
       for (let trail = 4; trail >= 1; trail--) {
         ctx.globalAlpha = 0.045 + (5 - trail) * 0.035;
-        ctx.fillStyle = ball.color;
+        ctx.fillStyle = drawColor;
         ctx.beginPath();
         ctx.arc(ball.x - (ball.vx / speed) * trail * 7, ball.y - (ball.vy / speed) * trail * 7, Math.max(2, ball.radius - trail * 1.15), 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.globalAlpha = 1;
       ctx.shadowBlur = 24;
-      ctx.shadowColor = ball.color;
-      ctx.fillStyle = ball.color;
+      ctx.shadowColor = drawColor;
+      ctx.fillStyle = drawColor;
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
       ctx.fill();

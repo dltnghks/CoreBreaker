@@ -284,14 +284,24 @@ test.skip("uses legacy percentage fracture, upper gravity wells, and homing pier
   assert.match(gameSource, /const turn = Math\.max\(-5\.4 \* dt/);
 });
 
-test("resets permanent balls above the paddle whenever a wave starts", async () => {
+test("resets wave balls above the paddle and adds one base ball per wave", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const ballCount = game\.balls\.length/);
   assert.match(source, /game\.balls\.forEach\(\(ball, index\) =>/);
   assert.match(source, /ball\.y = PLAYER_PADDLE_Y - ball\.radius - 3/);
   assert.match(source, /ball\.vy = -Math\.sqrt/);
   assert.match(source, /const resetBallsForWave =/);
-  assert.match(source, /ball\.temporaryTime <= 0/);
+  assert.match(source, /ball\.temporaryTime <= 0 && !ball\.waveBonus/);
+  assert.match(source, /while \(game\.balls\.length < game\.wave\) game\.balls\.push\(makePlayerBall/);
+});
+
+test("renders item multiballs gray and removes them after the wave", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /const WAVE_MULTIBALL_COLOR = "#9aa3b2"/);
+  assert.match(source, /waveBonus: boolean/);
+  assert.match(source, /waveBonus: true/);
+  assert.match(source, /const drawColor = ball\.waveBonus \? WAVE_MULTIBALL_COLOR : ball\.color/);
+  assert.match(source, /!ball\.waveBonus/);
 });
 
 test("runs a no-ghost playtest bot and persists balance metrics", async () => {
