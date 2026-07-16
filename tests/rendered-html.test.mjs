@@ -151,7 +151,7 @@ test("defines 20 fixed brick patterns with bosses at waves 10 and 20", async () 
   assert.match(waves, /export const WAVE_TIME_LIMIT = 60/);
   assert.match(waves, /wave\(10, "MID BOSS/);
   assert.match(waves, /wave\(20, "FINAL BOSS/);
-  const patternRows = [...waves.matchAll(/"([.nhgs]+)"/g)].map((match) => match[1]);
+  const patternRows = [...waves.matchAll(/"([.nhgexcr]+)"/g)].map((match) => match[1]);
   assert.ok(patternRows.length > 40);
   patternRows.forEach((row) => assert.equal(row.length, 12));
 });
@@ -160,24 +160,39 @@ test("ends a wave on clear or drops every surviving brick at time up", async () 
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const waveCleared = game\.bossActive/);
   assert.match(source, /if \(waveCleared\) \{\s*completeWave\(true\)/);
-  assert.match(source, /const survivors = game\.bricks\.filter\(\(brick\) => brick\.alive\)/);
+  assert.match(source, /const allSurvivors = game\.bricks\.filter\(\(brick\) => brick\.alive\)/);
+  assert.match(source, /const survivors = allSurvivors\.filter\(isDamageableBrick\)/);
   assert.match(source, /Math\.ceil\(threat \/ 8\)/);
   assert.match(source, /TIME UP \/\/ \$\{survivors\.length\} BRICKS DROP/);
   assert.match(source, /emitEffect\("drop"/);
   assert.ok(source.indexOf('effect.kind === "drop"') > source.indexOf("game.effects.forEach((effect)"));
-  assert.match(source, /completeWave\(false\)/);
+  assert.match(source, /completeWave\(false, coreDamage, blocked, survivors\.length\)/);
 });
 
-test("adds guard and shield brick traits with distinct damage rules", async () => {
+test("adds six stage brick traits with distinct combat rules", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /type BrickTrait = "standard" \| "guard" \| "shield"/);
-  assert.match(source, /traitRoll < guardChance \? "guard"/);
-  assert.match(source, /trait === "shield"/);
+  assert.match(source, /type BrickTrait = "standard" \| "guard" \| "explosive" \| "indestructible" \| "healer" \| "reflector"/);
   assert.match(source, /const absorbGuardHit =/);
   assert.match(source, /GUARD \/\/ HIT NULLIFIED/);
-  assert.match(source, /brick\.trait === "shield" \? 1 : Math\.max/);
+  assert.match(source, /brick\.trait === "explosive"/);
+  assert.match(source, /EXPLOSIVE \/\/ BALL LAUNCHED/);
+  assert.match(source, /brick\.trait === "indestructible"/);
+  assert.match(source, /healer\.healTimer = 3/);
+  assert.match(source, /HEAL PULSE \/\/ \+1/);
+  assert.match(source, /brick\.trait === "reflector" && ball\.vy < 0/);
   assert.match(source, /fillText\(brick\.guardReady \? "G1" : "G0"/);
-  assert.match(source, /fillText\("SHD"/);
+  assert.doesNotMatch(source, /"shield"/);
+});
+
+test("selects two starting skills and settles core damage before wave rewards", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /"initialskills"/);
+  assert.match(source, /STARTING SKILL/);
+  assert.match(source, /selected\.length < 2/);
+  assert.match(source, /"settlement"/);
+  assert.match(source, /WAVE \{settlement\.wave\} SETTLEMENT/);
+  assert.match(source, /setMode\("settlement"\)/);
+  assert.match(source, /스킬 보상 받기/);
 });
 
 test("respawns a ball at the cost of one core health", async () => {

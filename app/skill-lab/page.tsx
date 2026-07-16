@@ -24,7 +24,7 @@ const skillStyle = (skill: SkillConfig) => ({ "--category-color": skill.color })
 
 const SYNERGIES: Array<{ ids: string[]; label: string }> = [
   { ids: ["warrior-smash", "warrior-shockwave"], label: "강타로 파괴한 블록에서 충격파 발생" },
-  { ids: ["warrior-crush", "warrior-execute"], label: "가드와 쉴드를 분쇄한 뒤 저체력 블록 처형" },
+  { ids: ["warrior-crush", "warrior-execute"], label: "가드와 특수 블록을 분쇄한 뒤 저체력 블록 처형" },
   { ids: ["archer-rapid", "archer-ricochet"], label: "늘어난 화살이 주변 블록으로 연속 도탄" },
   { ids: ["archer-pierce", "archer-weakpoint"], label: "치명타 화살이 여러 블록을 관통" },
   { ids: ["mage-fireball", "mage-lightning"], label: "화염 폭발과 연쇄 번개가 동시에 확산" },

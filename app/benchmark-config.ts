@@ -26,7 +26,7 @@ export const BENCHMARK_STAGES: Array<{ stage: BenchmarkStage; name: string; desc
   { stage: 0, name: "ORIGINAL", description: "공·패들·일반 브릭만 사용" },
   { stage: 1, name: "+ PRESSURE", description: "60초 제한시간과 CORE 낙하 피해 추가" },
   { stage: 2, name: "+ ITEMS", description: "전투 드롭 아이템 추가" },
-  { stage: 3, name: "+ BRICK TYPES", description: "가드·실드 브릭 추가" },
+  { stage: 3, name: "+ BRICK TYPES", description: "가드·폭발·파괴 불가·회복·반사 브릭 추가" },
   { stage: 4, name: "+ SKILLS", description: "웨이브 보상과 패들 스킬 추가" },
   { stage: 5, name: "+ BOSSES", description: "W10·W20 보스와 궁극기 보상 추가" },
 ];

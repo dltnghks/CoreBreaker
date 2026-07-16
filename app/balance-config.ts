@@ -6,7 +6,6 @@ export type BalanceConfig = {
   hardHpWaveStep: number;
   hardChanceGrowth: number;
   guardChanceGrowth: number;
-  shieldChanceGrowth: number;
   bossBaseHp: number;
   bossHpPerStage: number;
   bossTimeLimit: number;
@@ -85,7 +84,6 @@ export const DEFAULT_BALANCE_CONFIG: BalanceConfig = {
   hardHpWaveStep: 6,
   hardChanceGrowth: 0.045,
   guardChanceGrowth: 0.004,
-  shieldChanceGrowth: 0.0035,
   bossBaseHp: 48,
   bossHpPerStage: 12,
   bossTimeLimit: 45,
@@ -101,7 +99,6 @@ const LIMITS: Record<keyof BalanceConfig, [number, number]> = {
   hardHpWaveStep: [2, 12],
   hardChanceGrowth: [0, 0.08],
   guardChanceGrowth: [0, 0.012],
-  shieldChanceGrowth: [0, 0.012],
   bossBaseHp: [20, 120],
   bossHpPerStage: [0, 40],
   bossTimeLimit: [20, 90],

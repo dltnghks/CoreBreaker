@@ -29,7 +29,6 @@ const CONTROLS: ControlSpec[] = [
   { key: "baseHpWaveStep", label: "기본 체력 +1 주기", min: 2, max: 10, step: 1, unit: "W" },
   { key: "hardChanceGrowth", label: "강화 블록 증가", min: 0, max: 0.08, step: 0.005, unit: "/W" },
   { key: "guardChanceGrowth", label: "가드 증가", min: 0, max: 0.01, step: 0.0005, unit: "/W" },
-  { key: "shieldChanceGrowth", label: "쉴드 증가", min: 0, max: 0.01, step: 0.0005, unit: "/W" },
   { key: "bossBaseHp", label: "보스 기본 체력", min: 20, max: 100, step: 2, unit: "HP" },
   { key: "bossHpPerStage", label: "보스 단계 성장", min: 0, max: 30, step: 1, unit: "HP" },
   { key: "bossTimeLimit", label: "보스 제한시간", min: 25, max: 75, step: 1, unit: "초" },
