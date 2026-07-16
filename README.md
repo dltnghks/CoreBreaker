@@ -1,98 +1,53 @@
-# vinext-starter
+# ECHO BREAKER
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+내려오는 블럭을 파괴하며 직업 스킬 빌드를 완성하는 무한 진행형 브릭 브레이커 프로토타입입니다. 전사·궁수·법사 스킬, 공용 패시브, 20웨이브 보스, 아이템·블럭 특성, 플레이테스트 봇과 단계별 벤치마크를 포함합니다.
 
-## Prerequisites
+## 주요 화면
 
-- Node.js `>=22.13.0`
+- `/` — 실제 게임플레이
+- `/benchmark` — 누적 기능 벤치마크와 봇 테스트
+- `/skill-lab` — 스킬 수치 편집과 개별 영향력 실험
 
-## Quick Start
+## 문서
+
+- [게임 기획서](docs/GAME_DESIGN.md)
+
+## 실행
+
+Node.js `22.13.0` 이상이 필요합니다.
 
 ```bash
 npm install
 npm run dev
+```
+
+Windows PowerShell에서 package script의 환경변수 문법이 동작하지 않으면 다음 명령을 사용합니다.
+
+```powershell
+.\node_modules\.bin\vinext.cmd dev
+```
+
+## 검증
+
+```bash
 npm run build
+npm test
 ```
 
-This starter does not use `wrangler.jsonc`.
+Windows PowerShell:
 
-## Included Shape
-
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```powershell
+.\node_modules\.bin\vinext.cmd build
+node --test tests/rendered-html.test.mjs
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+## 현재 개발 단계
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+- 핵심 게임 루프 구현 완료
+- 직업·공용 스킬 26종 구현
+- 보스 궁극기 보상 구조 구현
+- 화면 흔들림·스킬 이펙트·합성 사운드 구현
+- Skill LAB·W100 봇 벤치마크 파이프라인 구현
+- 현재 작업: 스킬 역할, 발동 빈도, 시너지와 궁극기 밸런스 구체화
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+기능 변경은 구현과 테스트가 끝난 뒤 기획 문서를 함께 갱신하고 기능 단위로 커밋합니다.
