@@ -164,6 +164,7 @@ test("ends a wave on clear or drops every surviving brick at time up", async () 
   assert.match(source, /Math\.ceil\(threat \/ 8\)/);
   assert.match(source, /TIME UP \/\/ \$\{survivors\.length\} BRICKS DROP/);
   assert.match(source, /emitEffect\("drop"/);
+  assert.ok(source.indexOf('effect.kind === "drop"') > source.indexOf("game.effects.forEach((effect)"));
   assert.match(source, /completeWave\(false\)/);
 });
 

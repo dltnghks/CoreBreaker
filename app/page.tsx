@@ -2286,14 +2286,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       if (owned.length === 0) {
         ctx.fillStyle = ownerColor;
         ctx.fillRect(x - width / 2 + 5, y + 4, width - 10, 3);
-      } else if (effect.kind === "drop") {
-        const fallY = effect.y + (effect.y2 - effect.y) * progress * progress;
-        const driftX = effect.x + (effect.x2 - effect.x) * progress * 0.18;
-        ctx.globalAlpha = Math.max(0.18, remaining);
-        ctx.fillStyle = effect.color;
-        ctx.fillRect(driftX - effect.size / 2, fallY - 8, effect.size, 16);
-        ctx.globalAlpha = remaining * 0.45;
-        ctx.fillRect(driftX - effect.size * 0.36, effect.y, effect.size * 0.72, Math.max(2, fallY - effect.y));
       } else {
         const slot = Math.min(20, (width - 8) / perRow);
         owned.forEach((upgrade, index) => {
@@ -2473,6 +2465,14 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ctx.beginPath();
         ctx.arc(effect.x, effect.y, radius, 0, Math.PI * 2);
         ctx.stroke();
+      } else if (effect.kind === "drop") {
+        const fallY = effect.y + (effect.y2 - effect.y) * progress * progress;
+        const driftX = effect.x + (effect.x2 - effect.x) * progress * 0.18;
+        ctx.globalAlpha = Math.max(0.18, remaining);
+        ctx.fillStyle = effect.color;
+        ctx.fillRect(driftX - effect.size / 2, fallY - 8, effect.size, 16);
+        ctx.globalAlpha = remaining * 0.45;
+        ctx.fillRect(driftX - effect.size * 0.36, effect.y, effect.size * 0.72, Math.max(2, fallY - effect.y));
       } else {
         ctx.lineWidth = Math.max(2, effect.size * remaining);
         ctx.beginPath();
