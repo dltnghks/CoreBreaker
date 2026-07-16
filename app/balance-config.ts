@@ -47,7 +47,7 @@ export type SkillBenchProgress = {
   updatedAt: number;
 };
 
-export const BALANCE_STORAGE_KEY = "echo-breaker-balance-v1";
+export const BALANCE_STORAGE_KEY = "echo-breaker-balance-v2";
 export const BOT_RESULTS_STORAGE_KEY = "echo-breaker-bot-results-v1";
 export const BOT_LIVE_STORAGE_KEY = "echo-breaker-bot-live-v1";
 export const SKILL_BENCH_STORAGE_KEY = "echo-breaker-skill-bench-v1";
@@ -80,15 +80,15 @@ export const DEFAULT_BALANCE_CONFIG: BalanceConfig = {
   rowStartInterval: 8,
   rowMinInterval: 4.5,
   rowAcceleration: 0.12,
-  baseHpWaveStep: 5,
-  hardHpWaveStep: 6,
-  hardChanceGrowth: 0.045,
+  baseHpWaveStep: 3,
+  hardHpWaveStep: 4,
+  hardChanceGrowth: 0.055,
   guardChanceGrowth: 0.004,
-  bossBaseHp: 48,
-  bossHpPerStage: 12,
+  bossBaseHp: 220,
+  bossHpPerStage: 120,
   bossTimeLimit: 45,
-  bossAttackInterval: 5.2,
-  bossAttackAcceleration: 0.3,
+  bossAttackInterval: 4.2,
+  bossAttackAcceleration: 0.4,
 };
 
 const LIMITS: Record<keyof BalanceConfig, [number, number]> = {
@@ -99,8 +99,8 @@ const LIMITS: Record<keyof BalanceConfig, [number, number]> = {
   hardHpWaveStep: [2, 12],
   hardChanceGrowth: [0, 0.08],
   guardChanceGrowth: [0, 0.012],
-  bossBaseHp: [20, 120],
-  bossHpPerStage: [0, 40],
+  bossBaseHp: [40, 500],
+  bossHpPerStage: [0, 240],
   bossTimeLimit: [20, 90],
   bossAttackInterval: [2.5, 10],
   bossAttackAcceleration: [0, 0.8],

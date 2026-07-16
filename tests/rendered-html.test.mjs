@@ -23,9 +23,6 @@ test("server-renders the Echo Breaker playtest", async () => {
   assert.match(html, /20 웨이브 시작/);
   assert.match(html, /20 WAVES\. 60 SECONDS\. BREAK OR DEFEND\./);
   assert.match(html, /MULTI BALL/);
-  assert.match(html, /BARRIER/);
-  assert.match(html, /REPAIR/);
-  assert.match(html, /STRIKE/);
   assert.match(html, /CORE/);
   assert.match(html, /시간이 끝나면 남은 모든 블록이 코어를 공격/);
   assert.doesNotMatch(html, /플레이테스트 봇/);
@@ -159,14 +156,30 @@ test("defines 20 fixed brick patterns with bosses at waves 10 and 20", async () 
 test("ends a wave on clear or drops every surviving brick at time up", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const waveCleared = game\.bossActive/);
-  assert.match(source, /if \(waveCleared\) \{\s*completeWave\(true\)/);
+  assert.match(source, /game\.waveResolution = \{ timer: 0\.9, maxTimer: 0\.9, cleared: true/);
   assert.match(source, /const allSurvivors = game\.bricks\.filter\(\(brick\) => brick\.alive\)/);
   assert.match(source, /const survivors = allSurvivors\.filter\(isDamageableBrick\)/);
   assert.match(source, /Math\.ceil\(threat \/ 8\)/);
-  assert.match(source, /TIME UP \/\/ \$\{survivors\.length\} BRICKS DROP/);
+  assert.match(source, /BLOCK SETTLEMENT \/\/ \$\{survivors\.length\} THREATS/);
   assert.match(source, /emitEffect\("drop"/);
   assert.ok(source.indexOf('effect.kind === "drop"') > source.indexOf("game.effects.forEach((effect)"));
-  assert.match(source, /completeWave\(false, coreDamage, blocked, survivors\.length\)/);
+  assert.match(source, /game\.coreHp = Math\.max\(0, game\.coreHp - resolution\.coreDamage\)/);
+  assert.match(source, /completeWave\(resolution\.cleared, resolution\.coreDamage/);
+  assert.ok(source.indexOf("game.coreHp = Math.max(0, game.coreHp - resolution.coreDamage)") > source.indexOf("if (game.waveResolution)"));
+});
+
+test("raises post-wave-5 density, brick health, and boss health", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const waves = await readFile(new URL("../app/wave-config.ts", import.meta.url), "utf8");
+  const balance = await readFile(new URL("../app/balance-config.ts", import.meta.url), "utf8");
+  assert.match(waves, /wave\(6,[^\n]+\["....cccc....", "..hhhhhhhh..", "nnnnnnnnnnnn"/);
+  assert.match(waves, /wave\(11,[^\n]+"..xx....xx.."\]\)/);
+  assert.match(waves, /wave\(19,[^\n]+"xxnnnnnnnnxx"\]\)/);
+  assert.match(source, /Math\.round\(balance\.baseHpWaveStep\)/);
+  assert.match(balance, /baseHpWaveStep: 3/);
+  assert.match(balance, /bossBaseHp: 220/);
+  assert.match(balance, /bossHpPerStage: 120/);
+  assert.match(balance, /echo-breaker-balance-v2/);
 });
 
 test("adds six stage brick traits with distinct combat rules", async () => {
@@ -515,7 +528,9 @@ test("uses a fixed multiball item budget for every boss stage", async () => {
   assert.match(source, /index < forcedMultiballs \? "multiball"/);
   assert.match(source, /game\.bossMultiballsRemaining = game\.bossActive \? BOSS_MULTIBALL_BUDGET : 0/);
   const randomDrop = source.slice(source.indexOf("function pickBrickDrop"), source.indexOf("function hasScheduledMultiball"));
-  assert.match(randomDrop, /return "multiball"/);
+  assert.match(randomDrop, /return null/);
+  assert.match(source, /type ItemKind = "multiball"/);
+  assert.doesNotMatch(source.slice(source.indexOf("const ITEM_DATA"), source.indexOf("const ITEM_KINDS")), /COMBO|BARRIER|REPAIR|STRIKE/);
 });
 
 test("renders the warrior archer mage Skill Lab", async () => {

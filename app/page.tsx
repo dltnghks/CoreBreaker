@@ -8,7 +8,7 @@ import { BENCHMARK_STORAGE_KEY, benchmarkFeatures, DEFAULT_BENCHMARK_CONFIG, nor
 import { MAX_WAVE, waveDefinition } from "./wave-config";
 
 type PayloadId = "pierce" | "blast" | "glass" | "link";
-type ItemKind = "multiball" | "combo" | "barrier" | "repair" | "strike";
+type ItemKind = "multiball";
 type BrickKind = "normal" | "boss-armor" | "boss-core" | "boss-minion";
 type BrickTrait = "standard" | "guard" | "explosive" | "indestructible" | "healer" | "reflector";
 type BossRewardId = ClassSkillId;
@@ -148,6 +148,7 @@ type GameState = {
   botMetrics: BotMetrics;
   botWaveSamples: BotWaveSample[];
   botSampleKey: string;
+  waveResolution: WaveResolution | null;
 };
 
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
@@ -155,6 +156,7 @@ type Flash = { text: string; x: number; y: number; life: number; color: string }
 type GameEffect = { kind: "ring" | "beam" | "blast" | "drop"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string };
 type PaddleCounter = { reflections: number; barrierReflections: number; missileReflections: number; safetyTimer: number; gravityTimer: number; directKills: number; pierceKills: number; feverMilestone: number; lastShotTimer: number; combo: number; comboTimer: number; skillReflections: Partial<Record<ClassSkillId, number>> };
 type WaveSettlement = { wave: number; waveName: string; cleared: boolean; wasBoss: boolean; survivors: number; coreDamage: number; blocked: number; coreHp: number; finalWave: boolean };
+type WaveResolution = { timer: number; maxTimer: number; cleared: boolean; wasBoss: boolean; survivors: number; coreDamage: number; blocked: number };
 
 const W = 900;
 const H = 600;
@@ -176,6 +178,7 @@ const BASE_BALL_VX = 240;
 const BASE_BALL_VY = 320;
 const PLAYER_BALL_COLOR = "#fff27a";
 const WAVE_MULTIBALL_COLOR = "#9aa3b2";
+const BARRIER_COLOR = "#58a6ff";
 let environmentRandom = () => Math.random();
 let decisionRandom = () => Math.random();
 let effectRandom = () => Math.random();
@@ -216,10 +219,6 @@ const SKILL_ICONS: Partial<Record<UpgradeId, string>> = {
 const PADDLE_UPGRADES = new Set<UpgradeId>(DEFAULT_SKILLS.map((entry) => entry.id));
 const ITEM_DATA: Record<ItemKind, { label: string; symbol: string; color: string }> = {
   multiball: { label: "MULTI BALL", symbol: "+", color: "#ffcf4a" },
-  combo: { label: "COMBO", symbol: "∞", color: "#c18cff" },
-  barrier: { label: "BARRIER", symbol: "▣", color: "#58a6ff" },
-  repair: { label: "REPAIR", symbol: "♥", color: "#72f1b8" },
-  strike: { label: "STRIKE", symbol: "▼", color: "#ff6b87" },
 };
 const ITEM_KINDS = Object.keys(ITEM_DATA) as ItemKind[];
 
@@ -317,13 +316,7 @@ function syncBallPayloadDisplay(ball: Ball, upgrades: UpgradeId[] = []) {
 }
 
 function pickBrickDrop(): ItemKind | null {
-  if (environmentRandom() >= 0.28) return null;
-  const roll = environmentRandom();
-  if (roll < 0.34) return "combo";
-  if (roll < 0.57) return "barrier";
-  if (roll < 0.77) return "repair";
-  if (roll < 0.9) return "multiball";
-  return "strike";
+  return null;
 }
 
 function hasScheduledMultiball(wave: number) {
@@ -384,7 +377,7 @@ function makeWaveBricks(waveNumber: number, balance = DEFAULT_BALANCE_CONFIG): B
   const gap = 7;
   const margin = 36;
   const width = (W - margin * 2 - gap * (cols - 1)) / cols;
-  const baseHp = 1 + Math.floor((waveNumber - 1) / 5);
+  const baseHp = 1 + Math.floor((waveNumber - 1) / Math.max(1, Math.round(balance.baseHpWaveStep)));
   const multiballCells = definition.pattern.flatMap((row, rowIndex) => [...row].map((cell, col) => ({ cell, rowIndex, col }))).filter(({ cell }) => cell !== ".");
   const multiballKey = hasScheduledMultiball(waveNumber) && multiballCells.length > 0
     ? multiballCells[Math.floor(environmentRandom() * multiballCells.length)]
@@ -397,7 +390,7 @@ function makeWaveBricks(waveNumber: number, balance = DEFAULT_BALANCE_CONFIG): B
       : cell === "c" ? "healer"
       : cell === "r" ? "reflector"
       : "standard";
-    const hpBonus = cell === "h" ? 1 : cell === "c" ? 1 : 0;
+    const hpBonus = cell === "h" ? 1 + Math.floor((waveNumber - 1) / 8) : cell === "c" ? 2 : 0;
     const maxHp = baseHp + hpBonus;
     return [{
       x: margin + col * (width + gap), y: BRICK_ROW_Y + rowIndex * BRICK_ROW_STEP, w: width, h: 24,
@@ -422,7 +415,7 @@ function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfi
     x: startX, y: startY, w: width, h: height,
     hp: coreHp, maxHp: coreHp,
     hue: 345, alive: true, kind: "boss-core",
-    drop: "repair",
+    drop: "multiball",
     ...brickRuntimeState(),
   }];
 }
@@ -512,6 +505,7 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     botMetrics: { maxBalls: 1, ballLosses: 0, missileActivations: 0, safetySaves: 0, gravityRescues: 0 },
     botWaveSamples: [],
     botSampleKey: "",
+    waveResolution: null,
   };
 }
 
@@ -970,6 +964,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.botMetrics ??= { maxBalls: 1, ballLosses: 0, missileActivations: 0, safetySaves: 0, gravityRescues: 0 };
     game.botWaveSamples ??= [];
     game.botSampleKey ??= "";
+    game.waveResolution ??= null;
     game.bossTimeRemaining ??= 0;
     game.bossSkillTimer ??= 0;
     game.bossMultiballsRemaining ??= 0;
@@ -1277,9 +1272,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       for (let p = 0; p < 7; p++) game.particles.push({ x: brick.x + brick.w / 2, y: brick.y + brick.h / 2, vx: (effectRandom() - 0.5) * 180, vy: (effectRandom() - 0.7) * 150, life: 0.45 + effectRandom() * 0.4, color: `hsl(${brick.hue} 95% 68%)` });
       let earnedDrop = brick.drop;
       const luckChance = skillValue("common-luck", upgradeLevel(sourcePaddle.upgrades, "common-luck")) / 100;
-      if (!earnedDrop && luckChance > 0 && decisionRandom() < luckChance) earnedDrop = pickBrickDrop() ?? "combo";
+      if (!earnedDrop && luckChance > 0 && decisionRandom() < luckChance) earnedDrop = "multiball";
       const pressureChance = skillValue("pressure", upgradeLevel(sourcePaddle.upgrades, "pressure")) / 100;
-      if (!earnedDrop && pressureChance > 0 && decisionRandom() < pressureChance) earnedDrop = pickBrickDrop() ?? "combo";
+      if (!earnedDrop && pressureChance > 0 && decisionRandom() < pressureChance) earnedDrop = "multiball";
       const dropX = brick.x + brick.w / 2;
       const dropY = brick.y + brick.h / 2;
       if (earnedDrop && game.items.length < 120) {
@@ -1446,33 +1441,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const itemData = ITEM_DATA[item.kind];
         emitEffect("ring", item.x, catcher.y, itemData.color, 42, item.x, catcher.y, 0.45);
         emitBurst(item.x, catcher.y, itemData.color, 10, 150);
-        audioRef.current?.play("item", item.kind === "multiball" ? 1.4 : 1);
-        if (item.kind === "combo") {
-          const counter = counterFor(catcher.id);
-          if (game.combo > 0) game.comboTimer = Math.max(game.comboTimer, 4.5);
-          if (counter.combo > 0) counter.comboTimer = Math.max(counter.comboTimer, 4.5);
-          game.flashes.push({ text: `${catcher.name} // COMBO BATTERY`, x: item.x, y: catcher.y - 24, life: 0.9, color: itemData.color });
-        } else if (item.kind === "barrier") {
-          game.paddleBarriers[catcher.id] = Math.min(3, (game.paddleBarriers[catcher.id] ?? 0) + 1);
-          game.flashes.push({ text: `${catcher.name} // BARRIER +1`, x: item.x, y: catcher.y - 24, life: 0.9, color: itemData.color });
-        } else if (item.kind === "repair") {
-          const repaired = Math.min(1, game.maxCoreHp - game.coreHp);
-          game.coreHp += repaired;
-          if (repaired === 0) game.score += 500;
-          game.flashes.push({ text: repaired ? `${catcher.name} // CORE +1` : `${catcher.name} // FULL CORE +500`, x: item.x, y: catcher.y - 24, life: 0.9, color: itemData.color });
-        } else if (item.kind === "strike" && source) {
-          const aliveBricks = game.bricks.filter((brick) => brick.alive && isDamageableBrick(brick));
-          const lowestY = Math.max(...aliveBricks.map((brick) => brick.y), -Infinity);
-          const target = aliveBricks
-            .filter((brick) => brick.y === lowestY)
-            .sort((a, b) => Math.abs(a.x + a.w / 2 - catcher.x) - Math.abs(b.x + b.w / 2 - catcher.x))[0];
-          if (target) {
-            if (!absorbGuardHit(target)) target.hp -= 3;
-            game.flashes.push({ text: `${catcher.name} // STRIKE -3`, x: target.x + target.w / 2, y: target.y, life: 1, color: itemData.color });
-            emitEffect("beam", catcher.x, catcher.y, itemData.color, 10, target.x + target.w / 2, target.y + target.h / 2, 0.45);
-            if (target.hp <= 0) destroyBrick(target, source, false, 0);
-          }
-        } else if (item.kind === "multiball" && source) {
+        audioRef.current?.play("item", 1.4);
+        if (source) {
           const overdrive = 1 + Math.min(0.18, catcher.upgrades.filter((id) => id === "speed").length * 0.06);
           const newBall: Ball = {
             ...source,
@@ -1506,7 +1476,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           const catcherComboLevel = catcher.upgrades.filter((id) => id === "chain").length;
           if (catcherComboLevel > 0) game.comboTimer = Math.max(game.comboTimer, 1.8 + catcherComboLevel * 0.45);
           const payloadSummary = grantedPayloads.map(({ id, level }) => `${PAYLOAD_LABELS[id]}${level}`).join("+");
-          game.flashes.push({ text: `${catcher.name} // MULTI BALL +1${payloadSummary ? ` // ${payloadSummary}` : ""}`, x: item.x, y: catcher.y - 24, life: 1, color: "#ffcf4a" });
+          game.flashes.push({ text: `${catcher.name} // MULTI BALL +1${payloadSummary ? ` // ${payloadSummary}` : ""}`, x: item.x, y: catcher.y - 24, life: 1, color: WAVE_MULTIBALL_COLOR });
         }
         item.alive = false;
       }
@@ -1748,8 +1718,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           if (barrierLevel > 0 && ++paddleCounter.barrierReflections >= skillValue("barrier-skill", barrierLevel)) {
             paddleCounter.barrierReflections = 0;
             game.paddleBarriers[paddle.id] = Math.max(1, game.paddleBarriers[paddle.id] ?? 0);
-            game.flashes.push({ text: `${paddle.name} // BARRIER READY`, x: paddle.x, y: paddle.y - 30, life: 0.9, color: ITEM_DATA.barrier.color });
-            emitEffect("ring", paddle.x, paddle.y, ITEM_DATA.barrier.color, paddle.width * 0.7, paddle.x, paddle.y, 0.75);
+            game.flashes.push({ text: `${paddle.name} // BARRIER READY`, x: paddle.x, y: paddle.y - 30, life: 0.9, color: BARRIER_COLOR });
+            emitEffect("ring", paddle.x, paddle.y, BARRIER_COLOR, paddle.width * 0.7, paddle.x, paddle.y, 0.75);
           }
           if (grantedPayloads.length > 0) {
             const summary = grantedPayloads.map(({ id, level }) => `${PAYLOAD_LABELS[id]}${level}`).join("+");
@@ -2007,6 +1977,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.bossTimeRemaining = game.bossActive ? game.rowInterval : 0;
       game.bossSkillTimer = game.bossActive ? 5 : 0;
       game.bossMultiballsRemaining = game.bossActive ? BOSS_MULTIBALL_BUDGET : 0;
+      game.waveResolution = null;
       resetBallsForWave();
       if (game.autoGuard) game.paddleBarriers.player = Math.max(1, game.paddleBarriers.player ?? 0);
       game.flashes.push({ text: `WAVE ${waveNumber} // ${definition.name} // ${game.rowInterval}s`, x: W / 2, y: H / 2, life: 1.8, color: game.bossActive ? "#ff6b87" : "#ffcf4a" });
@@ -2016,9 +1987,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
     };
 
-    const completeWave = (cleared: boolean, coreDamage = 0, blocked = 0, survivors = 0) => {
+    const completeWave = (cleared: boolean, coreDamage = 0, blocked = 0, survivors = 0, wasBossOverride?: boolean) => {
       const completedWave = game.wave;
-      const wasBoss = game.bossActive;
+      const wasBoss = wasBossOverride ?? game.bossActive;
       const completedWaveName = waveDefinition(completedWave).name;
       const bonus = cleared ? 1200 + completedWave * 180 + Math.floor((wasBoss ? game.bossTimeRemaining : game.rowTimer) * 80) : 0;
       game.score += bonus;
@@ -2059,11 +2030,42 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       setMode("settlement");
     };
 
+    if (game.waveResolution) {
+      game.waveResolution.timer -= dt;
+      if (game.waveResolution.timer > 0) return;
+      const resolution = game.waveResolution;
+      game.waveResolution = null;
+      const barrier = game.paddleBarriers.player ?? 0;
+      game.paddleBarriers.player = Math.max(0, barrier - resolution.blocked);
+      if (resolution.coreDamage > 0) {
+        game.coreHp = Math.max(0, game.coreHp - resolution.coreDamage);
+        audioRef.current?.play("core-damage", resolution.coreDamage);
+        impactFeedback(11 + resolution.coreDamage, "#ff3f6c", 0.5, 0.28);
+        game.flashes.push({ text: `CORE DAMAGE // -${resolution.coreDamage}`, x: W / 2, y: PLAYER_LINE_Y - 42, life: 1.2, color: "#ff3f6c" });
+      } else {
+        game.flashes.push({ text: "CORE SAFE // DAMAGE 0", x: W / 2, y: PLAYER_LINE_Y - 42, life: 1.1, color: "#72f1b8" });
+      }
+      setHud(hudFromGame(game));
+      if (game.coreHp <= 0) {
+        game.failed = true;
+        game.failureReason = "core";
+        finishRun();
+        return;
+      }
+      completeWave(resolution.cleared, resolution.coreDamage, resolution.blocked, resolution.survivors, resolution.wasBoss);
+      return;
+    }
+
     const waveCleared = game.bossActive
       ? !game.bricks.some((brick) => brick.alive && (brick.kind === "boss-core" || brick.kind === "boss-armor"))
       : game.bricks.every((brick) => !brick.alive || brick.trait === "indestructible");
     if (waveCleared) {
-      completeWave(true);
+      const wasBoss = game.bossActive;
+      game.bossActive = false;
+      game.items = [];
+      game.waveResolution = { timer: 0.9, maxTimer: 0.9, cleared: true, wasBoss, survivors: 0, coreDamage: 0, blocked: 0 };
+      emitEffect("ring", W / 2, PLAYER_LINE_Y, "#72f1b8", 220, W / 2, PLAYER_LINE_Y, 0.85);
+      game.flashes.push({ text: "BLOCK SETTLEMENT // THREAT 0", x: W / 2, y: H / 2, life: 1.1, color: "#72f1b8" });
       return;
     }
 
@@ -2075,28 +2077,18 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       let coreDamage = threat > 0 ? Math.min(6, Math.max(1, Math.ceil(threat / 8))) : 0;
       const barrier = game.paddleBarriers.player ?? 0;
       const blocked = Math.min(coreDamage, barrier);
-      game.paddleBarriers.player = barrier - blocked;
       coreDamage -= blocked;
+      const wasBoss = game.bossActive;
+      game.bossActive = false;
       allSurvivors.forEach((brick) => { brick.alive = false; });
       survivors.forEach((brick, index) => {
-        if (index < 36) emitEffect("drop", brick.x + brick.w / 2, brick.y + brick.h / 2, "#ff6b87", brick.w, W / 2, PLAYER_LINE_Y, 0.72);
+        if (index < 60) emitEffect("drop", brick.x + brick.w / 2, brick.y + brick.h / 2, "#ff6b87", brick.w, W / 2, PLAYER_LINE_Y, 1.15);
       });
+      game.items = [];
       game.combo = 0;
       game.comboTimer = 0;
-      if (coreDamage > 0) {
-        game.coreHp = Math.max(0, game.coreHp - coreDamage);
-        audioRef.current?.play("core-damage", coreDamage);
-        impactFeedback(10 + coreDamage, "#ff3f6c", 0.46, 0.25);
-      }
-      game.flashes.push({ text: `TIME UP // ${survivors.length} BRICKS DROP // CORE -${coreDamage}${blocked ? ` // BLOCK ${blocked}` : ""}`, x: W / 2, y: H / 2, life: 1.8, color: "#ff6b87" });
-      if (game.coreHp <= 0) {
-        game.failed = true;
-        game.failureReason = "core";
-        setHud(hudFromGame(game));
-        finishRun();
-        return;
-      }
-      completeWave(false, coreDamage, blocked, survivors.length);
+      game.waveResolution = { timer: 1.2, maxTimer: 1.2, cleared: false, wasBoss, survivors: survivors.length, coreDamage, blocked };
+      game.flashes.push({ text: `BLOCK SETTLEMENT // ${survivors.length} THREATS`, x: W / 2, y: H / 2, life: 1.4, color: "#ff6b87" });
       return;
     }
 
@@ -2277,7 +2269,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ...activeGhostsRef.current.map((_, index) => ({ label: `G${index + 1}`, count: game.paddleBarriers[`ghost-${index}`] ?? 0 })),
     ].filter((entry) => entry.count > 0);
     const barrierSummary = barrierEntries.map((entry) => `${entry.label}×${entry.count}`).join(" ");
-    const lineColor = barrierEntries.length > 0 ? ITEM_DATA.barrier.color : game.coreHp <= 3 || dangerRatio > 0.72 ? "#ff6b87" : "rgba(255,107,135,.62)";
+    const lineColor = barrierEntries.length > 0 ? BARRIER_COLOR : game.coreHp <= 3 || dangerRatio > 0.72 ? "#ff6b87" : "rgba(255,107,135,.62)";
     ctx.strokeStyle = lineColor;
     ctx.shadowColor = lineColor;
     ctx.shadowBlur = barrierEntries.length > 0 ? 20 : 0;
@@ -2673,6 +2665,30 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ctx.fillText(f.text, f.x, f.y);
     });
     ctx.globalAlpha = 1;
+
+    if (game.waveResolution) {
+      const resolutionProgress = 1 - Math.max(0, game.waveResolution.timer / game.waveResolution.maxTimer);
+      ctx.save();
+      ctx.fillStyle = "rgba(3,6,14,.58)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = game.waveResolution.cleared ? "#72f1b8" : "#ff6b87";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(W / 2 - 220, H / 2 - 68, 440, 136);
+      ctx.fillStyle = "rgba(6,11,24,.94)";
+      ctx.fillRect(W / 2 - 218, H / 2 - 66, 436, 132);
+      ctx.fillStyle = game.waveResolution.cleared ? "#72f1b8" : "#ff8da1";
+      ctx.font = "900 12px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("BLOCK SETTLEMENT", W / 2, H / 2 - 34);
+      ctx.fillStyle = "#ecf2ff";
+      ctx.font = "900 26px monospace";
+      ctx.fillText(game.waveResolution.cleared ? "CORE DAMAGE 0" : `${game.waveResolution.survivors} BRICKS → CORE -${game.waveResolution.coreDamage}`, W / 2, H / 2 + 4);
+      ctx.fillStyle = "rgba(157,180,225,.18)";
+      ctx.fillRect(W / 2 - 160, H / 2 + 30, 320, 7);
+      ctx.fillStyle = game.waveResolution.cleared ? "#72f1b8" : "#ff6b87";
+      ctx.fillRect(W / 2 - 160, H / 2 + 30, 320 * resolutionProgress, 7);
+      ctx.restore();
+    }
 
     if (game.combo >= 3) {
       ctx.textAlign = "right";
