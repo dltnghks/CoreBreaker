@@ -2362,10 +2362,16 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ctx.lineTo(brick.x + brick.w - 1, reflectorPlateY - 2);
           ctx.stroke();
           ctx.shadowBlur = 0;
-          ctx.fillStyle = "#03202d";
-          ctx.font = "900 8px monospace";
-          ctx.textAlign = "center";
-          ctx.fillText("↑ REFLECT", brick.x + brick.w / 2, brick.y + brick.h);
+          ctx.strokeStyle = "#03202d";
+          ctx.lineWidth = 2;
+          for (let chevron = 0; chevron < 3; chevron++) {
+            const chevronX = brick.x + brick.w * (0.28 + chevron * 0.22);
+            ctx.beginPath();
+            ctx.moveTo(chevronX - 4, brick.y + brick.h - 2);
+            ctx.lineTo(chevronX, reflectorPlateY - 5);
+            ctx.lineTo(chevronX + 4, brick.y + brick.h - 2);
+            ctx.stroke();
+          }
           ctx.strokeStyle = `rgba(217,248,255,${reflectorShieldPulse})`;
           ctx.fillStyle = `rgba(101,220,255,${reflectorShieldPulse})`;
           ctx.lineWidth = 2;
@@ -2384,10 +2390,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           }
           ctx.restore();
         }
-        ctx.fillStyle = brickColor;
-        ctx.font = brick.trait === "healer" ? "900 14px monospace" : "900 8px monospace";
-        ctx.textAlign = "right";
-        ctx.fillText(traitLabel, brick.x + brick.w - 6, brick.y + 16);
+        if (brick.trait !== "reflector") {
+          ctx.fillStyle = brickColor;
+          ctx.font = brick.trait === "healer" ? "900 14px monospace" : "900 8px monospace";
+          ctx.textAlign = "right";
+          ctx.fillText(traitLabel, brick.x + brick.w - 6, brick.y + 16);
+        }
       }
       if (brick.drop) {
         const dropData = ITEM_DATA[brick.drop];
@@ -2460,10 +2468,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ctx.strokeStyle = "rgba(4,8,20,.95)";
         ctx.lineWidth = 4;
         ctx.fillStyle = "#ffffff";
-        ctx.font = "900 18px monospace";
+        ctx.font = brick.trait === "reflector" ? "900 16px monospace" : "900 18px monospace";
         ctx.textAlign = "center";
-        ctx.strokeText(hpText, brick.x + brick.w / 2, brick.y + brick.h / 2 + 6);
-        ctx.fillText(hpText, brick.x + brick.w / 2, brick.y + brick.h / 2 + 6);
+        const hpBaselineY = brick.trait === "reflector" ? brick.y + 13 : brick.y + brick.h / 2 + 6;
+        ctx.strokeText(hpText, brick.x + brick.w / 2, hpBaselineY);
+        ctx.fillText(hpText, brick.x + brick.w / 2, hpBaselineY);
       }
     });
 
