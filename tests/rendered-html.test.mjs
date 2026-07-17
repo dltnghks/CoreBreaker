@@ -224,6 +224,9 @@ test("adds six stage brick traits with distinct combat rules", async () => {
   assert.match(source, /healer\.healTimer = 3/);
   assert.match(source, /HEAL PULSE \/\/ \+1/);
   assert.match(source, /brick\.trait === "reflector" && ball\.vy < 0/);
+  assert.match(source, /const reflectorShieldPulse/);
+  assert.match(source, /ctx\.fillText\("↑ BLOCK"/);
+  assert.match(source, /reflectorPlateY/);
   assert.match(source, /fillText\(brick\.guardReady \? "G1" : "G0"/);
   assert.doesNotMatch(source, /"shield"/);
 });

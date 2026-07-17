@@ -2276,8 +2276,41 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ctx.stroke();
         }
         if (brick.trait === "reflector") {
-          ctx.fillStyle = "rgba(101,220,255,.3)";
-          ctx.fillRect(brick.x + 4, brick.y + brick.h - 6, brick.w - 8, 3);
+          const reflectorShieldPulse = 0.55 + (Math.sin(game.elapsed * 7 + brick.x * 0.03) + 1) * 0.2;
+          const reflectorPlateY = brick.y + brick.h - 9;
+          ctx.save();
+          ctx.shadowColor = "#65dcff";
+          ctx.shadowBlur = 8 + reflectorShieldPulse * 8;
+          ctx.fillStyle = `rgba(101,220,255,${0.28 + reflectorShieldPulse * 0.28})`;
+          ctx.fillRect(brick.x + 2, reflectorPlateY, brick.w - 4, 8);
+          ctx.strokeStyle = "#d9f8ff";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(brick.x + 2, reflectorPlateY);
+          ctx.lineTo(brick.x + brick.w - 2, reflectorPlateY);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = "#06111d";
+          ctx.font = "900 7px monospace";
+          ctx.textAlign = "center";
+          ctx.fillText("↑ BLOCK", brick.x + brick.w / 2, brick.y + brick.h - 2);
+          ctx.strokeStyle = `rgba(217,248,255,${reflectorShieldPulse})`;
+          ctx.fillStyle = `rgba(101,220,255,${reflectorShieldPulse})`;
+          ctx.lineWidth = 1.5;
+          for (let marker = 0; marker < 3; marker++) {
+            const markerX = brick.x + brick.w * (0.24 + marker * 0.26);
+            const markerBottom = brick.y + brick.h + 5 - reflectorShieldPulse * 2;
+            ctx.beginPath();
+            ctx.moveTo(markerX, markerBottom);
+            ctx.lineTo(markerX, brick.y + brick.h + 1);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(markerX - 2.5, brick.y + brick.h + 3);
+            ctx.lineTo(markerX, brick.y + brick.h);
+            ctx.lineTo(markerX + 2.5, brick.y + brick.h + 3);
+            ctx.stroke();
+          }
+          ctx.restore();
         }
         ctx.fillStyle = brickColor;
         ctx.font = brick.trait === "healer" ? "900 14px monospace" : "900 8px monospace";
