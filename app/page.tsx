@@ -330,6 +330,22 @@ function syncBallPayloadDisplay(ball: Ball, upgrades: UpgradeId[] = []) {
   ball.color = ballBodyColor(ball);
 }
 
+function clearBallEnchantments(ball: Ball) {
+  ball.pierce = 0;
+  ball.maxPierce = 0;
+  ball.blast = 0;
+  ball.payload = null;
+  ball.payloadLevel = 0;
+  ball.payloads = {};
+  ball.attackPower = 1;
+  ball.color = ballBodyColor(ball);
+  ball.missileTime = 0;
+  ball.missileHitCooldown = 0;
+  ball.gravityRescueCooldown = 0;
+  ball.skillCharges = {};
+  ball.visualSkill = null;
+}
+
 function pickBrickDrop(): ItemKind | null {
   return null;
 }
@@ -1490,6 +1506,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         target.hp = Math.min(target.maxHp, target.hp + 1);
         healed++;
         emitEffect("beam", centerX, centerY, "#72f1b8", 4, target.x + target.w / 2, target.y + target.h / 2, 0.5);
+        emitEffect("ring", target.x + target.w / 2, target.y + target.h / 2, "#72f1b8", 30, target.x + target.w / 2, target.y + target.h / 2, 0.55);
+        game.flashes.push({ text: "+1", x: target.x + target.w / 2, y: target.y - 7, life: 0.9, color: "#72f1b8" });
       });
       if (healed > 0) {
         emitEffect("ring", centerX, centerY, "#72f1b8", 120, centerX, centerY, 0.65);
@@ -1869,20 +1887,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ball.y = BALL_FLOOR_Y - ball.radius;
         ball.vx = (ball.vx < 0 ? -1 : 1) * BASE_BALL_VX;
         ball.vy = -BASE_BALL_VY;
-        ball.pierce = 0;
-        ball.maxPierce = 0;
-        ball.blast = 0;
-        ball.payload = null;
-        ball.payloadLevel = 0;
-        ball.payloads = {};
-        ball.attackPower = 1;
-        ball.color = PLAYER_BALL_COLOR;
+        clearBallEnchantments(ball);
         ball.sourcePaddleId = neutralFloor.id;
-        ball.missileTime = 0;
-        ball.missileHitCooldown = 0;
-        ball.gravityRescueCooldown = 0;
-        ball.skillCharges = {};
-        ball.visualSkill = null;
         game.flashes.push({ text: "NEUTRAL FLOOR // PURGE + REFLECT", x: ball.x, y: BALL_FLOOR_Y - 18, life: 0.55, color: "#71809a" });
         emitBurst(ball.x, BALL_FLOOR_Y, "#71809a", 5, 95);
       }
@@ -1994,6 +2000,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ball.missileHitCooldown = 0.09;
         } else if (ball.pierce > 0) {
           ball.pierce--;
+          if (ball.pierce <= 0) delete ball.skillCharges["archer-pierce"];
           if (overlapX < overlapY) ball.x = ball.vx > 0 ? brick.x + brick.w + ball.radius : brick.x - ball.radius;
           else ball.y = ball.vy > 0 ? brick.y + brick.h + ball.radius : brick.y - ball.radius;
         } else if (overlapX < overlapY) {
@@ -2088,6 +2095,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const paddleWidth = effectivePaddleWidth(game.paddleWidth, game.upgrades);
       const spread = Math.min(paddleWidth * 0.78, Math.max(0, (ballCount - 1) * 12));
       game.balls.forEach((ball, index) => {
+        clearBallEnchantments(ball);
         const position = ballCount <= 1 ? 0.5 : index / (ballCount - 1);
         const launch = (position - 0.5) * 1.1;
         const speed = Math.max(300, Math.hypot(ball.vx, ball.vy));
@@ -2095,9 +2103,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ball.y = PLAYER_PADDLE_Y - ball.radius - 3;
         ball.vx = launch * speed;
         ball.vy = -Math.sqrt(Math.max(1, speed * speed - ball.vx * ball.vx));
-        ball.missileTime = 0;
-        ball.missileHitCooldown = 0;
       });
+    };
+    const clearWaveScopedSkillState = () => {
+      game.balls.forEach(clearBallEnchantments);
+      Object.keys(game.paddleCounters).forEach((id) => { game.paddleCounters[id] = newPaddleCounter(); });
+      game.paddleCounters.player ??= newPaddleCounter();
     };
 
     const startWave = (waveNumber: number) => {
@@ -2122,6 +2133,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.bossSkillTimer = game.bossActive ? 5 : 0;
       game.bossMultiballsRemaining = game.bossActive ? BOSS_MULTIBALL_BUDGET : 0;
       game.waveResolution = null;
+      clearWaveScopedSkillState();
       resetBallsForWave();
       if (game.autoGuard) game.paddleBarriers.player = Math.max(1, game.paddleBarriers.player ?? 0);
       game.flashes.push({ text: `WAVE ${waveNumber} // ${definition.name} // ${game.rowInterval}s`, x: W / 2, y: H / 2, life: 1.8, color: game.bossActive ? "#ff6b87" : "#ffcf4a" });
@@ -2138,6 +2150,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const bonus = cleared ? 1200 + completedWave * 180 + Math.floor((wasBoss ? game.bossTimeRemaining : game.rowTimer) * 80) : 0;
       game.score += bonus;
       game.bossActive = false;
+      clearWaveScopedSkillState();
       if (cleared) {
         game.flashes.push({ text: `WAVE ${completedWave} CLEAR // +${bonus.toLocaleString()}`, x: W / 2, y: H / 2, life: 1.5, color: "#ffcf4a" });
       }
@@ -2963,7 +2976,33 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ctx.strokeStyle = effect.color;
       ctx.shadowColor = effect.color;
       ctx.shadowBlur = 18;
-      if (effect.kind === "ring") {
+      if (effect.kind === "beam") {
+        const dx = effect.x2 - effect.x;
+        const dy = effect.y2 - effect.y;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        const unitX = dx / distance;
+        const unitY = dy / distance;
+        const beamGradient = ctx.createLinearGradient(effect.x, effect.y, effect.x2, effect.y2);
+        beamGradient.addColorStop(0, "rgba(255,255,255,.9)");
+        beamGradient.addColorStop(0.2, effect.color);
+        beamGradient.addColorStop(0.8, effect.color);
+        beamGradient.addColorStop(1, "rgba(255,255,255,.9)");
+        ctx.strokeStyle = beamGradient;
+        ctx.lineCap = "round";
+        ctx.globalAlpha = Math.min(1, remaining * 1.8);
+        ctx.lineWidth = Math.max(2, effect.size * (0.42 + remaining * 0.2));
+        ctx.beginPath();
+        ctx.moveTo(effect.x, effect.y);
+        ctx.lineTo(effect.x2, effect.y2);
+        ctx.stroke();
+        const tracer = Math.min(distance, distance * progress);
+        ctx.strokeStyle = "rgba(255,255,255,.96)";
+        ctx.lineWidth = Math.max(2, effect.size * 0.32);
+        ctx.beginPath();
+        ctx.moveTo(effect.x + unitX * Math.max(0, tracer - 22), effect.y + unitY * Math.max(0, tracer - 22));
+        ctx.lineTo(effect.x + unitX * tracer, effect.y + unitY * tracer);
+        ctx.stroke();
+      } else if (effect.kind === "ring") {
         ctx.lineWidth = 2 + remaining * 4;
         ctx.beginPath();
         ctx.arc(effect.x, effect.y, effect.size * (0.25 + progress * 0.75), 0, Math.PI * 2);

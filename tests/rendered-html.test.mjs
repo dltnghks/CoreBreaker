@@ -229,6 +229,8 @@ test("adds six stage brick traits with distinct combat rules", async () => {
   assert.match(source, /brick\.trait === "indestructible"/);
   assert.match(source, /healer\.healTimer = 3/);
   assert.match(source, /HEAL PULSE \/\/ \+1/);
+  assert.match(source, /text: "\+1"/);
+  assert.match(source, /emitEffect\("ring", target\.x \+ target\.w \/ 2, target\.y \+ target\.h \/ 2, "#72f1b8"/);
   assert.match(source, /brick\.trait === "reflector" && ball\.vy < 0/);
   assert.match(source, /const reflectorShieldPulse/);
   assert.match(source, /const reflectorThreatened = game\.balls\.some/);
@@ -241,6 +243,19 @@ test("adds six stage brick traits with distinct combat rules", async () => {
   assert.match(source, /reflectorLineY/);
   assert.match(source, /fillText\(brick\.guardReady \? "G1" : "G0"/);
   assert.doesNotMatch(source, /"shield"/);
+});
+
+test("renders beam links and clears wave-scoped skill state", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /if \(effect\.kind === "beam"\)/);
+  assert.match(source, /const beamGradient = ctx\.createLinearGradient/);
+  assert.match(source, /delete ball\.skillCharges\["archer-pierce"\]/);
+  assert.match(source, /function clearBallEnchantments/);
+  assert.match(source, /clearBallEnchantments\(ball\)/);
+  assert.match(source, /const clearWaveScopedSkillState/);
+  assert.match(source, /game\.balls\.forEach\(clearBallEnchantments\)/);
+  assert.match(source, /game\.paddleCounters\[id\] = newPaddleCounter\(\)/);
+  assert.match(source, /game\.bossActive = false;\s+clearWaveScopedSkillState\(\)/);
 });
 
 test("selects two starting skills and settles core damage before wave rewards", async () => {
