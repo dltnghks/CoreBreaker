@@ -61,6 +61,7 @@ type Ball = {
   missileHitCooldown: number;
   gravityRescueCooldown: number;
   skillCharges: Partial<Record<ClassSkillId, number>>;
+  visualSkill: ClassSkillId | null;
   temporaryTime: number;
   waveBonus: boolean;
 };
@@ -290,17 +291,11 @@ function payloadEntries(upgrades: UpgradeId[]) {
   return PAYLOAD_IDS.map((id) => ({ id, level: upgradeLevel(upgrades, id) })).filter((entry) => entry.level > 0);
 }
 
-function attackColor(power: number) {
-  if (power < 1.8) return "#fff27a";
-  if (power < 2.6) return "#5ce8e0";
-  if (power < 3.5) return "#58a6ff";
-  if (power < 4.5) return "#c18cff";
-  if (power < 5.5) return "#ff9658";
-  return "#ff4f78";
+function ballBodyColor(ball: Pick<Ball, "waveBonus">) {
+  return ball.waveBonus ? WAVE_MULTIBALL_COLOR : PLAYER_BALL_COLOR;
 }
 
 function syncBallPayloadDisplay(ball: Ball, upgrades: UpgradeId[] = []) {
-  const previousColor = ball.color;
   const active = PAYLOAD_IDS.filter((id) => (ball.payloads[id] ?? 0) > 0);
   if (active.length === 0) {
     ball.payload = null;
@@ -313,8 +308,7 @@ function syncBallPayloadDisplay(ball: Ball, upgrades: UpgradeId[] = []) {
   const corrosionPower = skillValue("corrosion", upgradeLevel(upgrades, "corrosion"));
   const enchantPower = (ball.payloads.blast ?? 0) * 0.65 + (ball.payloads.link ?? 0) * 0.35 + (ball.payloads.glass ?? 0) * 0.25 + Math.min(1.5, ball.pierce * 0.2);
   ball.attackPower = 1 + corrosionPower + enchantPower;
-  const chargedSkill = (Object.keys(ball.skillCharges) as ClassSkillId[]).find((id) => (ball.skillCharges[id] ?? 0) > 0);
-  ball.color = ball.waveBonus ? WAVE_MULTIBALL_COLOR : ball.temporaryTime > 0 ? previousColor : chargedSkill ? classSkillColor(chargedSkill) : attackColor(ball.attackPower);
+  ball.color = ballBodyColor(ball);
 }
 
 function pickBrickDrop(): ItemKind | null {
@@ -450,7 +444,7 @@ function makeInitialBricks(ghostCount: number, balance: BalanceConfig): Brick[] 
 
 function makePlayerBall(upgrades: UpgradeId[], x = W / 2): Ball {
   const speed = 1 + upgrades.filter((u) => u === "speed").length * 0.12;
-  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8, owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, skillCharges: {}, temporaryTime: 0, waveBonus: false };
+  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8, owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, skillCharges: {}, visualSkill: null, temporaryTime: 0, waveBonus: false };
   syncBallPayloadDisplay(ball, upgrades);
   return ball;
 }
@@ -971,7 +965,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.bossSkillTimer ??= 0;
     game.bossMultiballsRemaining ??= 0;
     game.bossPending ??= false;
-    game.balls.forEach((ball) => { ball.sourcePaddleId ??= "player"; ball.attackPower ??= 1; ball.missileTime ??= 0; ball.missileHitCooldown ??= 0; ball.skillCharges ??= {}; ball.temporaryTime ??= 0; ball.waveBonus ??= false; });
+    game.balls.forEach((ball) => { ball.sourcePaddleId ??= "player"; ball.attackPower ??= 1; ball.missileTime ??= 0; ball.missileHitCooldown ??= 0; ball.skillCharges ??= {}; ball.visualSkill ??= null; ball.temporaryTime ??= 0; ball.waveBonus ??= false; });
     game.freezeTimer ??= 0;
     game.shakeStrength ??= 0;
     game.shakeTime ??= 0;
@@ -1594,7 +1588,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           };
           const chargeBall = (id: ClassSkillId, level: number, label: string, color: string) => {
             ball.skillCharges[id] = level;
-            ball.color = color;
             game.flashes.push({ text: `${paddle.name} // ${label}`, x: paddle.x, y: paddle.y - 32, life: 0.85, color });
             emitEffect("ring", ball.x, ball.y, color, 42 + level * 8, ball.x, ball.y, 0.5);
           };
@@ -1603,6 +1596,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               ...ball,
               payloads: { ...ball.payloads },
               skillCharges: {},
+              visualSkill: skillId,
               x: ball.x + offset,
               vx: ball.vx * (offset < 0 ? -0.86 : 0.86),
               vy: -Math.abs(ball.vy),
@@ -1637,7 +1631,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             ball.attackPower = Math.max(ball.attackPower, 4 + level);
             ball.vx *= 1.25;
             ball.vy *= 1.25;
-            ball.color = attackColor(ball.attackPower);
             game.flashes.push({ text: `${paddle.name} // 광전사`, x: paddle.x, y: paddle.y - 32, life: 1, color: "#ff4f78" });
           });
 
@@ -1779,6 +1772,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ball.missileHitCooldown = 0;
         ball.gravityRescueCooldown = 0;
         ball.skillCharges = {};
+        ball.visualSkill = null;
         game.flashes.push({ text: "NEUTRAL FLOOR // PURGE + REFLECT", x: ball.x, y: BALL_FLOOR_Y - 18, life: 0.55, color: "#71809a" });
         emitBurst(ball.x, BALL_FLOOR_Y, "#71809a", 5, 95);
       }
@@ -2556,13 +2550,16 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     drawSkillPanel(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, game.upgrades, playerChargeVisual?.color ?? PLAYER_BALL_COLOR);
     drawPaddleChargeAura(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, playerChargeVisual);
     game.balls.filter((ball) => ball.owner === "player").forEach((ball) => {
-      const drawColor = ball.waveBonus ? WAVE_MULTIBALL_COLOR : ball.color;
+      const drawColor = ballBodyColor(ball);
       const speed = Math.max(1, Math.hypot(ball.vx, ball.vy));
-      for (let trail = 4; trail >= 1; trail--) {
-        ctx.globalAlpha = 0.045 + (5 - trail) * 0.035;
+      const powerBoost = Math.max(0, ball.attackPower - 1);
+      const visualRadius = ball.radius + Math.min(3.5, powerBoost * 0.7);
+      const trailSteps = 4 + Math.min(5, Math.floor(powerBoost));
+      for (let trail = trailSteps; trail >= 1; trail--) {
+        ctx.globalAlpha = 0.035 + ((trailSteps + 1 - trail) / trailSteps) * 0.15;
         ctx.fillStyle = drawColor;
         ctx.beginPath();
-        ctx.arc(ball.x - (ball.vx / speed) * trail * 7, ball.y - (ball.vy / speed) * trail * 7, Math.max(2, ball.radius - trail * 1.15), 0, Math.PI * 2);
+        ctx.arc(ball.x - (ball.vx / speed) * trail * (7 + powerBoost), ball.y - (ball.vy / speed) * trail * (7 + powerBoost), Math.max(2, visualRadius - trail * 1.05), 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.globalAlpha = 1;
@@ -2570,18 +2567,61 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ctx.shadowColor = drawColor;
       ctx.fillStyle = drawColor;
       ctx.beginPath();
-      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.arc(ball.x, ball.y, visualRadius, 0, Math.PI * 2);
       ctx.fill();
-      const activeClassCharges = Object.entries(ball.skillCharges).filter(([, level]) => (level ?? 0) > 0) as Array<[ClassSkillId, number]>;
-      activeClassCharges.slice(0, 4).forEach(([id], index) => {
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = classSkillColor(id);
-        ctx.strokeStyle = classSkillColor(id);
-        ctx.lineWidth = 2;
-        ctx.globalAlpha = 0.75;
+      const powerRingCount = Math.min(3, Math.floor(powerBoost / 1.25));
+      for (let ring = 0; ring < powerRingCount; ring++) {
+        ctx.globalAlpha = 0.48 - ring * 0.1;
+        ctx.strokeStyle = drawColor;
+        ctx.lineWidth = 1.5 + powerBoost * 0.25;
         ctx.beginPath();
-        ctx.arc(ball.x, ball.y, ball.radius + 4 + index * 3, game.elapsed * (1 + index * 0.2), game.elapsed * (1 + index * 0.2) + Math.PI * 1.35);
+        ctx.arc(ball.x, ball.y, visualRadius + 3 + ring * 3, 0, Math.PI * 2);
         ctx.stroke();
+      }
+      const activeClassCharges = Object.entries(ball.skillCharges).filter(([, level]) => (level ?? 0) > 0) as Array<[ClassSkillId, number]>;
+      if (ball.visualSkill && !activeClassCharges.some(([id]) => id === ball.visualSkill)) activeClassCharges.push([ball.visualSkill, 1]);
+      activeClassCharges.slice(0, 4).forEach(([id, level], index) => {
+        const effectColor = classSkillColor(id);
+        const classCategory = activeSkillMap[id]?.category;
+        ctx.save();
+        ctx.globalAlpha = 0.78;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = effectColor;
+        ctx.strokeStyle = effectColor;
+        ctx.fillStyle = effectColor;
+        if (classCategory === "warrior") {
+          ctx.translate(ball.x, ball.y);
+          ctx.rotate(game.elapsed * 2.4 + index);
+          ctx.lineWidth = 3 + (level ?? 1) * 0.5;
+          for (let spoke = 0; spoke < 4; spoke++) {
+            ctx.rotate(Math.PI / 2);
+            ctx.beginPath();
+            ctx.moveTo(visualRadius + 2, 0);
+            ctx.lineTo(visualRadius + 8 + index * 2, 0);
+            ctx.stroke();
+          }
+        } else if (classCategory === "archer") {
+          ctx.translate(ball.x, ball.y);
+          ctx.rotate(Math.atan2(ball.vy, ball.vx));
+          ctx.lineWidth = 2.5;
+          for (let chevron = 0; chevron < 2; chevron++) {
+            const rear = -visualRadius - 5 - chevron * 7 - index * 2;
+            ctx.beginPath();
+            ctx.moveTo(rear - 5, -5);
+            ctx.lineTo(rear, 0);
+            ctx.lineTo(rear - 5, 5);
+            ctx.stroke();
+          }
+        } else {
+          const orbitRadius = visualRadius + 6 + index * 3;
+          for (let mote = 0; mote < 3; mote++) {
+            const angle = game.elapsed * (2.2 + index * 0.25) + mote * Math.PI * 2 / 3;
+            ctx.beginPath();
+            ctx.arc(ball.x + Math.cos(angle) * orbitRadius, ball.y + Math.sin(angle) * orbitRadius, 2.2 + (level ?? 1) * 0.25, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.restore();
       });
       if (ball.temporaryTime > 0) {
         const lifeRatio = Math.min(1, ball.temporaryTime / 7);

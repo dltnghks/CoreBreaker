@@ -289,10 +289,19 @@ test("removes experience progression and rewards skills after waves", async () =
   assert.match(source, /levelUp\(\);/);
 });
 
-test("colors balls by attack power and renders paddle skills as icons", async () => {
+test("keeps ball bodies unified and distinguishes power and skills with effects", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /attackPower: number/);
-  assert.match(source, /function attackColor/);
+  assert.match(source, /function ballBodyColor/);
+  assert.doesNotMatch(source, /function attackColor/);
+  assert.match(source, /const visualRadius =/);
+  assert.match(source, /const powerRingCount =/);
+  assert.match(source, /classCategory === "warrior"/);
+  assert.match(source, /classCategory === "archer"/);
+  assert.match(source, /const orbitRadius =/);
+  assert.match(source, /visualSkill: ClassSkillId \| null/);
+  assert.match(source, /visualSkill: skillId/);
+  assert.match(source, /activeClassCharges\.push\(\[ball\.visualSkill, 1\]\)/);
   assert.match(source, /const SKILL_ICONS/);
   assert.match(source, /const drawSkillPanel/);
   assert.match(source, /ATK/);
@@ -344,7 +353,7 @@ test("renders item multiballs gray and removes them after the wave", async () =>
   assert.match(source, /const WAVE_MULTIBALL_COLOR = "#9aa3b2"/);
   assert.match(source, /waveBonus: boolean/);
   assert.match(source, /waveBonus: true/);
-  assert.match(source, /const drawColor = ball\.waveBonus \? WAVE_MULTIBALL_COLOR : ball\.color/);
+  assert.match(source, /const drawColor = ballBodyColor\(ball\)/);
   assert.match(source, /!ball\.waveBonus/);
 });
 
