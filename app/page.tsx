@@ -154,7 +154,7 @@ type GameState = {
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
 type Flash = { text: string; x: number; y: number; life: number; color: string };
 type GameEffect = { kind: "ring" | "beam" | "blast" | "drop"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string };
-type PaddleCounter = { reflections: number; barrierReflections: number; missileReflections: number; safetyTimer: number; gravityTimer: number; directKills: number; pierceKills: number; feverMilestone: number; lastShotTimer: number; combo: number; comboTimer: number; skillReflections: Partial<Record<ClassSkillId, number>> };
+type PaddleCounter = { reflections: number; barrierReflections: number; missileReflections: number; safetyTimer: number; gravityTimer: number; directKills: number; pierceKills: number; feverMilestone: number; lastShotTimer: number; combo: number; comboTimer: number; skillReflections: Partial<Record<ClassSkillId, number>>; chargePulse: number; chargeColor: string };
 type WaveSettlement = { wave: number; waveName: string; cleared: boolean; wasBoss: boolean; survivors: number; coreDamage: number; blocked: number; coreHp: number; finalWave: boolean };
 type WaveResolution = { timer: number; maxTimer: number; cleared: boolean; wasBoss: boolean; survivors: number; coreDamage: number; blocked: number };
 
@@ -335,7 +335,7 @@ function isDamageableBrick(brick: Brick) {
 }
 
 function newPaddleCounter(): PaddleCounter {
-  return { reflections: 0, barrierReflections: 0, missileReflections: 0, safetyTimer: 0, gravityTimer: 0, directKills: 0, pierceKills: 0, feverMilestone: 0, lastShotTimer: 0, combo: 0, comboTimer: 0, skillReflections: {} };
+  return { reflections: 0, barrierReflections: 0, missileReflections: 0, safetyTimer: 0, gravityTimer: 0, directKills: 0, pierceKills: 0, feverMilestone: 0, lastShotTimer: 0, combo: 0, comboTimer: 0, skillReflections: {}, chargePulse: 0, chargeColor: PLAYER_BALL_COLOR };
 }
 
 function makeBrickRow(row: number, wave = 1, ghostCount = 0, balance = DEFAULT_BALANCE_CONFIG): Brick[] {
@@ -1107,6 +1107,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.screenFlashTime = Math.max(0, game.screenFlashTime - dt);
     game.gravityWells.forEach((well) => { well.life -= dt; });
     game.gravityWells = game.gravityWells.filter((well) => well.life > 0);
+    Object.values(game.paddleCounters).forEach((counter) => { counter.chargePulse = Math.max(0, (counter.chargePulse ?? 0) - dt); });
 
     const paddleY = PLAYER_PADDLE_Y;
     const paddles = [
@@ -1117,7 +1118,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     ];
     const neutralFloor = { id: "neutral-floor", x: W / 2, y: BALL_FLOOR_Y, width: W, upgrades: [] as UpgradeId[], name: "NEUTRAL FLOOR", velocity: 0 };
     const paddleFor = (id: string) => paddles.find((paddle) => paddle.id === id) ?? (id === neutralFloor.id ? neutralFloor : paddles[0]);
-    const counterFor = (id: string) => game.paddleCounters[id] ??= newPaddleCounter();
+    const counterFor = (id: string) => {
+      const counter = game.paddleCounters[id] ??= newPaddleCounter();
+      counter.chargePulse ??= 0;
+      counter.chargeColor ??= PLAYER_BALL_COLOR;
+      return counter;
+    };
     const emitEffect = (kind: GameEffect["kind"], x: number, y: number, color: string, size = 45, x2 = x, y2 = y, duration = 0.5) => {
       game.effects.push({ kind, x, y, x2, y2, size, life: duration, maxLife: duration, color });
     };
@@ -1578,6 +1584,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             onTrigger(level);
             const color = classSkillColor(id);
             const name = activeSkillMap[id]?.name ?? id;
+            paddleCounter.chargePulse = 1.2;
+            paddleCounter.chargeColor = color;
             emitEffect("ring", paddle.x, paddle.y, color, 58 + level * 8, paddle.x, paddle.y, 0.65);
             emitBurst(paddle.x, paddle.y, color, 14 + level * 3, 220);
             game.flashes.push({ text: `${paddle.name} // ${name}`, x: paddle.x, y: paddle.y - 42, life: 1, color });
@@ -2394,45 +2402,83 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const rawCurrent = counter.skillReflections?.[id as ClassSkillId] ?? 0;
       return { current: Math.max(0, Math.min(goal, Math.floor(rawCurrent))), goal };
     };
-    const drawCounterRail = (x: number, y: number, ownerId: string, upgrades: UpgradeId[], alpha = 1) => {
+    const countedEntriesFor = (ownerId: string, upgrades: UpgradeId[]) => {
       const counter = game.paddleCounters[ownerId] ?? newPaddleCounter();
-      const entries = COUNTED_SKILL_IDS
+      return COUNTED_SKILL_IDS
         .map((id) => ({ id, level: upgradeLevel(upgrades, id) }))
         .filter(({ level }) => level > 0)
         .map(({ id, level }) => ({ id, ...countedProgress(id, level, counter) }));
+    };
+    const drawCounterRail = (x: number, y: number, ownerId: string, upgrades: UpgradeId[], alpha = 1) => {
+      const entries = countedEntriesFor(ownerId, upgrades);
       if (entries.length === 0) return;
-      const cellWidth = 36;
-      const railWidth = entries.length * cellWidth + 4;
-      const railY = y - 17;
+      const cellWidth = 48;
+      const cellHeight = 24;
+      const perRow = Math.min(10, entries.length);
+      const rows = Math.ceil(entries.length / perRow);
+      const railWidth = perRow * cellWidth + 8;
+      const railHeight = rows * cellHeight + 6;
+      const railY = y - railHeight;
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.fillStyle = "rgba(4,8,20,.9)";
-      ctx.fillRect(x - railWidth / 2, railY, railWidth, 13);
+      ctx.fillRect(x - railWidth / 2, railY, railWidth, railHeight);
+      ctx.strokeStyle = "rgba(185,205,235,.2)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x - railWidth / 2, railY, railWidth, railHeight);
       entries.forEach((entry, index) => {
-        const left = x - railWidth / 2 + 2 + index * cellWidth;
+        const row = Math.floor(index / perRow);
+        const col = index % perRow;
+        const rowCount = Math.min(perRow, entries.length - row * perRow);
+        const rowWidth = rowCount * cellWidth;
+        const left = x - rowWidth / 2 + col * cellWidth;
+        const top = railY + 3 + row * cellHeight;
         const ratio = entry.current / entry.goal;
         const config = activeSkillMap[entry.id];
         const color = config?.color ?? "#ffffff";
         if (ratio >= 0.8) {
           ctx.shadowColor = color;
-          ctx.shadowBlur = 10 + Math.sin(game.elapsed * 9) * 3;
+          ctx.shadowBlur = 14 + Math.sin(game.elapsed * 9) * 4;
         }
         ctx.fillStyle = color;
         ctx.globalAlpha = alpha * 0.16;
-        ctx.fillRect(left, railY + 1, cellWidth - 2, 10);
+        ctx.fillRect(left + 2, top, cellWidth - 4, cellHeight - 4);
         ctx.globalAlpha = alpha;
-        ctx.fillRect(left, railY + 10, (cellWidth - 2) * ratio, 2);
+        ctx.fillRect(left + 2, top + cellHeight - 7, (cellWidth - 4) * ratio, 4);
         ctx.shadowBlur = 0;
         ctx.fillStyle = color;
-        ctx.font = "900 7px \"Arial Unicode MS\",sans-serif";
+        ctx.font = "900 13px \"Arial Unicode MS\",sans-serif";
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.fillText(SKILL_ICONS[entry.id] ?? "•", left + 3, railY + 6);
-        ctx.fillStyle = ratio >= 0.8 ? "#ffffff" : "#b9c5d8";
-        ctx.font = "900 7px monospace";
+        ctx.fillText(SKILL_ICONS[entry.id] ?? "•", left + 6, top + 9);
+        ctx.fillStyle = ratio >= 0.8 ? "#ffffff" : "#d4deed";
+        ctx.font = "900 11px monospace";
         ctx.textAlign = "right";
-        ctx.fillText(`${entry.current}/${entry.goal}`, left + cellWidth - 4, railY + 6);
+        ctx.fillText(`${entry.current}/${entry.goal}`, left + cellWidth - 5, top + 9);
       });
+      ctx.restore();
+    };
+    const paddleChargeVisual = (ownerId: string, upgrades: UpgradeId[]) => {
+      const counter = game.paddleCounters[ownerId] ?? newPaddleCounter();
+      if ((counter.chargePulse ?? 0) > 0) return { color: counter.chargeColor ?? PLAYER_BALL_COLOR, intensity: 1, pulse: counter.chargePulse / 1.2 };
+      const nearest = countedEntriesFor(ownerId, upgrades)
+        .map((entry) => ({ ...entry, ratio: entry.current / entry.goal }))
+        .sort((a, b) => b.ratio - a.ratio)[0];
+      if (!nearest || nearest.ratio < 0.75) return null;
+      return { color: activeSkillMap[nearest.id]?.color ?? PLAYER_BALL_COLOR, intensity: nearest.ratio, pulse: 0 };
+    };
+    const drawPaddleChargeAura = (x: number, y: number, width: number, visual: ReturnType<typeof paddleChargeVisual>, alpha = 1) => {
+      if (!visual) return;
+      const beat = 0.65 + Math.sin(game.elapsed * (visual.pulse > 0 ? 15 : 8)) * 0.25;
+      ctx.save();
+      ctx.globalAlpha = alpha * (0.45 + visual.intensity * 0.45) * beat;
+      ctx.strokeStyle = visual.color;
+      ctx.shadowColor = visual.color;
+      ctx.shadowBlur = 18 + visual.intensity * 18;
+      ctx.lineWidth = visual.pulse > 0 ? 5 : 3;
+      ctx.strokeRect(x - width / 2 - 6, y - 6, width + 12, 28);
+      ctx.fillStyle = visual.color;
+      ctx.fillRect(x - width / 2, y, width * Math.max(0.2, visual.intensity), 4);
       ctx.restore();
     };
     const drawSkillPanel = (x: number, y: number, width: number, upgrades: UpgradeId[], ownerColor: string, alpha = 1) => {
@@ -2495,7 +2541,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const width = Math.min(280, ghostPaddleWidth(ghost) + (emergencyDanger ? skillValue("emergency-wide", upgradeLevel(ghost.upgrades, "emergency-wide")) : 0));
       const color = GHOST_COLORS[index % GHOST_COLORS.length];
       drawCounterRail(x, y, `ghost-${index}`, ghost.upgrades, 0.74);
-      drawSkillPanel(x, y, width, ghost.upgrades, color, 0.74);
+      const chargeVisual = paddleChargeVisual(`ghost-${index}`, ghost.upgrades);
+      drawSkillPanel(x, y, width, ghost.upgrades, chargeVisual?.color ?? color, 0.74);
+      drawPaddleChargeAura(x, y, width, chargeVisual, 0.74);
       ctx.fillStyle = color;
       ctx.font = "800 9px monospace";
       ctx.textAlign = "center";
@@ -2503,8 +2551,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     });
 
     const playerDrawWidth = Math.min(280, game.paddleWidth + skillValue("common-wide", upgradeLevel(game.upgrades, "common-wide")) + (emergencyDanger ? skillValue("emergency-wide", upgradeLevel(game.upgrades, "emergency-wide")) : 0));
-    drawCounterRail(W / 2, H - 14, "player", game.upgrades);
-    drawSkillPanel(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, game.upgrades, PLAYER_BALL_COLOR);
+    const playerChargeVisual = paddleChargeVisual("player", game.upgrades);
+    drawCounterRail(W / 2, H - 6, "player", game.upgrades);
+    drawSkillPanel(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, game.upgrades, playerChargeVisual?.color ?? PLAYER_BALL_COLOR);
+    drawPaddleChargeAura(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, playerChargeVisual);
     game.balls.filter((ball) => ball.owner === "player").forEach((ball) => {
       const drawColor = ball.waveBonus ? WAVE_MULTIBALL_COLOR : ball.color;
       const speed = Math.max(1, Math.hypot(ball.vx, ball.vy));

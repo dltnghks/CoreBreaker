@@ -599,6 +599,19 @@ test("charges class skills from paddle reflections and grants ultimates after bo
   assert.doesNotMatch(source, /activeSkillMap\[upgrade\.id\]\.ballCost/);
 });
 
+test("enlarges skill counters and pulses the paddle when a skill charges", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /const cellWidth = 48/);
+  assert.match(source, /const cellHeight = 24/);
+  assert.match(source, /const perRow = Math\.min\(10, entries\.length\)/);
+  assert.match(source, /ctx\.font = "900 13px/);
+  assert.match(source, /ctx\.font = "900 11px monospace"/);
+  assert.match(source, /paddleCounter\.chargePulse = 1\.2/);
+  assert.match(source, /nearest\.ratio < 0\.75/);
+  assert.match(source, /const drawPaddleChargeAura =/);
+  assert.match(source, /playerChargeVisual\?\.color \?\? PLAYER_BALL_COLOR/);
+});
+
 test("expires temporary arrows by time and renders per-skill visual feedback away from the paddle", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const config = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
@@ -606,7 +619,7 @@ test("expires temporary arrows by time and renders per-skill visual feedback awa
   assert.match(source, /temporaryTime: number/);
   assert.match(source, /ball\.temporaryTime = Math\.max\(0, ball\.temporaryTime - dt\)/);
   assert.doesNotMatch(source, /temporaryHits/);
-  assert.match(source, /drawCounterRail\(W \/ 2, H - 14, "player"/);
+  assert.match(source, /drawCounterRail\(W \/ 2, H - 6, "player"/);
   assert.match(source, /const consumedClassSkills =/);
   assert.match(source, /classSkillColor\(id\)/);
   assert.match(config, /export const SKILL_COLORS/);
