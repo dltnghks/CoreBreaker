@@ -414,6 +414,19 @@ test("runs the benchmark with the complete live-game ruleset", async () => {
   assert.match(source, /botSkillBenchActiveRef\.current = !benchmarkMode/);
 });
 
+test("renders live benchmark KPIs, wave charts, and per-run data", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(source, /benchmarkWaveStats = Array\.from\(\{ length: MAX_WAVE \}/);
+  assert.match(source, /웨이브별 도달률 그래프/);
+  assert.match(source, /웨이브별 평균 코어 체력 그래프/);
+  assert.match(source, /benchmarkCompletionRate/);
+  assert.match(source, /benchmark-data-table/);
+  assert.match(source, /benchmarkRuleset === "live-v1"/);
+  assert.match(styles, /\.benchmark-dashboard/);
+  assert.match(styles, /\.benchmark-charts/);
+});
+
 test.skip("runs legacy controlled baseline and level 1-3 skill bench groups", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const bench = await readFile(new URL("../app/skill-lab/skill-bench.tsx", import.meta.url), "utf8");

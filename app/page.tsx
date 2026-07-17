@@ -3573,6 +3573,24 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const botAverageWave = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.wave, 0) / visibleBotResults.length : 0;
   const botAverageBalls = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.maxBalls, 0) / visibleBotResults.length : 0;
   const recentBotResults = [...visibleBotResults].slice(-5).reverse();
+  const benchmarkCompletionRate = visibleBotResults.length ? visibleBotResults.filter((item) => item.evaluationComplete).length / visibleBotResults.length * 100 : 0;
+  const benchmarkAverageScore = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.score, 0) / visibleBotResults.length : 0;
+  const benchmarkAverageBricks = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.bricks, 0) / visibleBotResults.length : 0;
+  const benchmarkAverageCombo = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.maxCombo, 0) / visibleBotResults.length : 0;
+  const benchmarkAverageCore = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.coreHp, 0) / visibleBotResults.length : 0;
+  const benchmarkWaveStats = Array.from({ length: MAX_WAVE }, (_, index) => {
+    const wave = index + 1;
+    const samples = visibleBotResults.flatMap((item) => item.waveSamples.filter((sample) => sample.wave === wave));
+    return {
+      wave,
+      reachRate: visibleBotResults.length ? visibleBotResults.filter((item) => item.wave >= wave).length / visibleBotResults.length * 100 : 0,
+      averageCore: samples.length ? samples.reduce((sum, sample) => sum + sample.coreHp, 0) / samples.length : 0,
+    };
+  });
+  const chartX = (index: number) => 34 + index / (MAX_WAVE - 1) * 542;
+  const reachPoints = benchmarkWaveStats.map((item, index) => `${chartX(index)},${18 + (100 - item.reachRate) / 100 * 126}`).join(" ");
+  const corePoints = benchmarkWaveStats.map((item, index) => `${chartX(index)},${18 + (1 - Math.min(1, item.averageCore / MAX_CORE_HP)) * 126}`).join(" ");
+  const benchmarkTableResults = [...visibleBotResults].reverse().slice(0, 20);
   const showSkillBenchmark = !benchmarkMode && skillBenchConfig.enabled;
   const updateBenchmarkRuns = (runs: BenchmarkConfig["runs"]) => {
     const next = { ...benchmarkConfigRef.current, runs };
@@ -3814,6 +3832,49 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           </div>
         </aside>}
       </section>
+      {benchmarkMode && <section className="benchmark-dashboard" aria-label="벤치마크 결과 분석">
+        <div className="benchmark-dashboard-heading">
+          <div><p className="eyebrow">LIVE-V1 RESULT ANALYSIS</p><h2>벤치마크 결과</h2></div>
+          <span>{visibleBotResults.length} RUNS · W1–W{benchmarkConfig.targetWave}</span>
+        </div>
+        {visibleBotResults.length === 0 ? <div className="benchmark-empty">
+          <strong>아직 분석할 실행 결과가 없습니다.</strong>
+          <p>벤치마크 러너를 실행하면 웨이브 도달률, 코어 체력 추이와 회차별 데이터가 이곳에 누적됩니다.</p>
+        </div> : <>
+          <div className="benchmark-kpis">
+            <div><span>W20 완료율</span><strong>{benchmarkCompletionRate.toFixed(0)}%</strong></div>
+            <div><span>평균 도달</span><strong>W{botAverageWave.toFixed(1)}</strong></div>
+            <div><span>평균 점수</span><strong>{Math.round(benchmarkAverageScore).toLocaleString("ko-KR")}</strong></div>
+            <div><span>평균 파괴</span><strong>{benchmarkAverageBricks.toFixed(1)}</strong></div>
+            <div><span>평균 콤보</span><strong>{benchmarkAverageCombo.toFixed(1)}</strong></div>
+            <div><span>평균 잔여 코어</span><strong>{benchmarkAverageCore.toFixed(1)}</strong></div>
+          </div>
+          <div className="benchmark-charts">
+            <article className="benchmark-chart-card">
+              <header><div><span>WAVE REACH RATE</span><strong>웨이브 도달률</strong></div><b>{benchmarkCompletionRate.toFixed(0)}% COMPLETE</b></header>
+              <svg viewBox="0 0 600 174" role="img" aria-label="웨이브별 도달률 그래프">
+                {[0, 50, 100].map((value) => <g key={value}><line x1="34" x2="576" y1={144 - value / 100 * 126} y2={144 - value / 100 * 126} /><text x="5" y={148 - value / 100 * 126}>{value}%</text></g>)}
+                {[1, 5, 10, 15, 20].map((wave) => <text key={wave} x={chartX(wave - 1)} y="166" textAnchor="middle">W{wave}</text>)}
+                <polyline className="reach-line" points={reachPoints} />
+                {benchmarkWaveStats.map((item, index) => <circle key={item.wave} className="reach-dot" cx={chartX(index)} cy={18 + (100 - item.reachRate) / 100 * 126}><title>W{item.wave} · {item.reachRate.toFixed(0)}%</title></circle>)}
+              </svg>
+            </article>
+            <article className="benchmark-chart-card core-chart">
+              <header><div><span>CORE HP BY WAVE</span><strong>도달 시 평균 코어 체력</strong></div><b>{benchmarkAverageCore.toFixed(1)} FINAL</b></header>
+              <svg viewBox="0 0 600 174" role="img" aria-label="웨이브별 평균 코어 체력 그래프">
+                {[0, 4, 8].map((value) => <g key={value}><line x1="34" x2="576" y1={144 - value / MAX_CORE_HP * 126} y2={144 - value / MAX_CORE_HP * 126} /><text x="15" y={148 - value / MAX_CORE_HP * 126}>{value}</text></g>)}
+                {[1, 5, 10, 15, 20].map((wave) => <text key={wave} x={chartX(wave - 1)} y="166" textAnchor="middle">W{wave}</text>)}
+                <polyline className="core-line" points={corePoints} />
+                {benchmarkWaveStats.map((item, index) => <circle key={item.wave} className="core-dot" cx={chartX(index)} cy={18 + (1 - Math.min(1, item.averageCore / MAX_CORE_HP)) * 126}><title>W{item.wave} · CORE {item.averageCore.toFixed(1)}</title></circle>)}
+              </svg>
+            </article>
+          </div>
+          <div className="benchmark-data-table" role="table" aria-label="벤치마크 회차별 결과">
+            <div className="benchmark-data-head" role="row"><span>RUN</span><span>RESULT</span><span>TIME</span><span>SCORE</span><span>BRICKS</span><span>COMBO</span><span>MAX BALLS</span><span>CORE</span><span>BUILD</span></div>
+            {benchmarkTableResults.map((item) => <div key={item.id} role="row"><strong>#{item.run}</strong><span>{item.evaluationComplete ? "W20 CLEAR" : `W${item.wave} STOP`}</span><span>{item.elapsed.toFixed(1)}s</span><span>{Math.round(item.score).toLocaleString("ko-KR")}</span><span>{item.bricks}</span><span>{item.maxCombo}</span><span>{item.maxBalls}</span><span>{item.coreHp}/{MAX_CORE_HP}</span><span>{item.upgrades.length}</span></div>)}
+          </div>
+        </>}
+      </section>}
     </main>
   );
 }
