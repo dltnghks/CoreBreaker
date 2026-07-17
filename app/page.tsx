@@ -154,7 +154,7 @@ type GameState = {
 
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
 type Flash = { text: string; x: number; y: number; life: number; color: string };
-type GameEffect = { kind: "ring" | "beam" | "blast" | "drop"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string };
+type GameEffect = { kind: "ring" | "beam" | "blast" | "drop" | "spark"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string; variant: number };
 type PaddleCounter = { reflections: number; barrierReflections: number; missileReflections: number; safetyTimer: number; gravityTimer: number; directKills: number; pierceKills: number; feverMilestone: number; lastShotTimer: number; combo: number; comboTimer: number; skillReflections: Partial<Record<ClassSkillId, number>>; chargePulse: number; chargeColor: string };
 type WaveSettlement = { wave: number; waveName: string; cleared: boolean; wasBoss: boolean; survivors: number; coreDamage: number; blocked: number; coreHp: number; finalWave: boolean };
 type WaveResolution = { timer: number; maxTimer: number; cleared: boolean; wasBoss: boolean; survivors: number; coreDamage: number; blocked: number };
@@ -182,6 +182,9 @@ const RING_EXPLOSION_ASSET = "/assets/vfx/ring-explosion.png";
 const RING_EXPLOSION_COLUMNS = 10;
 const RING_EXPLOSION_FRAME_SIZE = 100;
 const RING_EXPLOSION_FRAMES = 56;
+const HIT_SPARK_ASSETS = ["/assets/vfx/hit-spark-a.png", "/assets/vfx/hit-spark-b.png"] as const;
+const HIT_SPARK_FRAME_SIZE = 32;
+const HIT_SPARK_FRAMES = 9;
 const MAX_PADDLE_ENGLISH = 220;
 const PLAYER_BALL_COLOR = "#fff27a";
 const WAVE_MULTIBALL_COLOR = "#9aa3b2";
@@ -573,6 +576,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ringExplosionRef = useRef<HTMLImageElement | null>(null);
   const ringExplosionReadyRef = useRef(false);
+  const hitSparkRefs = useRef<Array<HTMLImageElement | null>>([null, null]);
+  const hitSparkReadyRef = useRef([false, false]);
   const frameRef = useRef<number | null>(null);
   const lastRef = useRef<number>(0);
   const gameRef = useRef<GameState | null>(null);
@@ -630,6 +635,23 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       image.onerror = null;
       ringExplosionRef.current = null;
       ringExplosionReadyRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const images = HIT_SPARK_ASSETS.map((src, index) => {
+      const image = new Image();
+      image.decoding = "async";
+      image.onload = () => { hitSparkReadyRef.current[index] = true; };
+      image.onerror = () => { hitSparkReadyRef.current[index] = false; };
+      image.src = src;
+      return image;
+    });
+    hitSparkRefs.current = images;
+    return () => {
+      images.forEach((image) => { image.onload = null; image.onerror = null; });
+      hitSparkRefs.current = [null, null];
+      hitSparkReadyRef.current = [false, false];
     };
   }, []);
 
@@ -1139,8 +1161,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       counter.chargeColor ??= PLAYER_BALL_COLOR;
       return counter;
     };
-    const emitEffect = (kind: GameEffect["kind"], x: number, y: number, color: string, size = 45, x2 = x, y2 = y, duration = 0.5) => {
-      game.effects.push({ kind, x, y, x2, y2, size, life: duration, maxLife: duration, color });
+    const emitEffect = (kind: GameEffect["kind"], x: number, y: number, color: string, size = 45, x2 = x, y2 = y, duration = 0.5, variant = 0) => {
+      game.effects.push({ kind, x, y, x2, y2, size, life: duration, maxLife: duration, color, variant });
     };
     const emitBurst = (x: number, y: number, color: string, count = 10, force = 220) => {
       for (let index = 0; index < count; index++) {
@@ -1877,6 +1899,17 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           brick.hp -= directDamage * damageMultiplier(brick);
           brick.lastHitPaddleId = sourcePaddle.id;
         }
+        emitEffect(
+          "spark",
+          ball.x,
+          ball.y,
+          guardAbsorbed ? "#ffcf4a" : `hsl(${brick.hue} 95% 72%)`,
+          guardAbsorbed ? 52 : 44,
+          ball.x,
+          ball.y,
+          guardAbsorbed ? 0.18 : 0.24,
+          guardAbsorbed ? 1 : 0,
+        );
         if (brick.hp > 0) audioRef.current?.play("brick-hit", directDamage);
         if (corrosionDamage > 0) emitEffect("ring", brick.x + brick.w / 2, brick.y + brick.h / 2, "#c18cff", 28 + corrosionDamage * 5, brick.x + brick.w / 2, brick.y + brick.h / 2, 0.32);
         const overlapX = collisionOverlapX;
@@ -2768,6 +2801,38 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             spriteSize,
           );
           ctx.restore();
+        }
+      } else if (effect.kind === "spark") {
+        const variant = Math.max(0, Math.min(HIT_SPARK_ASSETS.length - 1, effect.variant));
+        const sparkImage = hitSparkRefs.current[variant];
+        if (hitSparkReadyRef.current[variant] && sparkImage) {
+          const frame = Math.min(HIT_SPARK_FRAMES - 1, Math.floor(progress * HIT_SPARK_FRAMES));
+          const spriteSize = effect.size * (0.86 + progress * 0.2);
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, remaining * 1.8);
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(
+            sparkImage,
+            frame * HIT_SPARK_FRAME_SIZE,
+            0,
+            HIT_SPARK_FRAME_SIZE,
+            HIT_SPARK_FRAME_SIZE,
+            effect.x - spriteSize / 2,
+            effect.y - spriteSize / 2,
+            spriteSize,
+            spriteSize,
+          );
+          ctx.restore();
+        } else {
+          ctx.globalAlpha = remaining;
+          ctx.lineWidth = 2 + remaining * 2;
+          for (let ray = 0; ray < 6; ray++) {
+            const angle = (Math.PI * 2 * ray) / 6;
+            ctx.beginPath();
+            ctx.moveTo(effect.x + Math.cos(angle) * 5, effect.y + Math.sin(angle) * 5);
+            ctx.lineTo(effect.x + Math.cos(angle) * effect.size * progress, effect.y + Math.sin(angle) * effect.size * progress);
+            ctx.stroke();
+          }
         }
       } else if (effect.kind === "drop") {
         const fallY = effect.y + (effect.y2 - effect.y) * progress * progress;

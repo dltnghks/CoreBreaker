@@ -675,3 +675,15 @@ test("renders CC0 ring explosion sprites with a procedural fallback", async () =
   assert.match(license, /BenHickling/);
   assert.match(license, /CC0 1\.0 Universal/);
 });
+
+test("renders separate CC0 spark strips for normal and guarded brick hits", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const license = await readFile(new URL("../docs/THIRD_PARTY_ASSETS.md", import.meta.url), "utf8");
+  assert.match(source, /HIT_SPARK_ASSETS = \["\/assets\/vfx\/hit-spark-a\.png", "\/assets\/vfx\/hit-spark-b\.png"\]/);
+  assert.match(source, /HIT_SPARK_FRAMES = 9/);
+  assert.match(source, /guardAbsorbed \? 1 : 0/);
+  assert.match(source, /effect\.kind === "spark"/);
+  assert.match(source, /hitSparkReadyRef\.current\[variant\] && sparkImage/);
+  assert.match(license, /Spark Effect/);
+  assert.match(license, /kurohina/);
+});
