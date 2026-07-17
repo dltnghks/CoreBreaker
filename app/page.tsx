@@ -2072,9 +2072,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const timeRemaining = game.bossActive ? game.bossTimeRemaining : game.rowTimer;
     if (timeRemaining <= 0) {
       const allSurvivors = game.bricks.filter((brick) => brick.alive);
-      const survivors = allSurvivors.filter(isDamageableBrick);
-      const threat = survivors.reduce((sum, brick) => sum + (brick.kind === "boss-core" ? Math.max(4, Math.ceil(brick.hp / 8)) : brick.trait === "explosive" || brick.trait === "healer" ? 2 : 1), 0);
-      let coreDamage = threat > 0 ? Math.min(6, Math.max(1, Math.ceil(threat / 8))) : 0;
+      const survivors = allSurvivors;
+      let coreDamage = survivors.length;
       const barrier = game.paddleBarriers.player ?? 0;
       const blocked = Math.min(coreDamage, barrier);
       coreDamage -= blocked;

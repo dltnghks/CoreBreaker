@@ -158,8 +158,9 @@ test("ends a wave on clear or drops every surviving brick at time up", async () 
   assert.match(source, /const waveCleared = game\.bossActive/);
   assert.match(source, /game\.waveResolution = \{ timer: 0\.9, maxTimer: 0\.9, cleared: true/);
   assert.match(source, /const allSurvivors = game\.bricks\.filter\(\(brick\) => brick\.alive\)/);
-  assert.match(source, /const survivors = allSurvivors\.filter\(isDamageableBrick\)/);
-  assert.match(source, /Math\.ceil\(threat \/ 8\)/);
+  assert.match(source, /const survivors = allSurvivors;/);
+  assert.match(source, /let coreDamage = survivors\.length;/);
+  assert.doesNotMatch(source, /Math\.ceil\(threat \/ 8\)/);
   assert.match(source, /BLOCK SETTLEMENT \/\/ \$\{survivors\.length\} THREATS/);
   assert.match(source, /emitEffect\("drop"/);
   assert.ok(source.indexOf('effect.kind === "drop"') > source.indexOf("game.effects.forEach((effect)"));
