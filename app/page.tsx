@@ -154,7 +154,7 @@ type GameState = {
 
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
 type Flash = { text: string; x: number; y: number; life: number; color: string };
-type GameEffect = { kind: "ring" | "beam" | "blast" | "drop" | "spark" | "lightning"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string; variant: number };
+type GameEffect = { kind: "ring" | "beam" | "blast" | "drop" | "spark" | "lightning" | "skill"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string; variant: number; skillId: ClassSkillId | null };
 type PaddleCounter = { reflections: number; barrierReflections: number; missileReflections: number; safetyTimer: number; gravityTimer: number; directKills: number; pierceKills: number; feverMilestone: number; lastShotTimer: number; combo: number; comboTimer: number; skillReflections: Partial<Record<ClassSkillId, number>>; chargePulse: number; chargeColor: string };
 type WaveSettlement = { wave: number; waveName: string; cleared: boolean; wasBoss: boolean; survivors: number; coreDamage: number; blocked: number; coreHp: number; finalWave: boolean };
 type WaveResolution = { timer: number; maxTimer: number; cleared: boolean; wasBoss: boolean; survivors: number; coreDamage: number; blocked: number };
@@ -1204,8 +1204,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       counter.chargeColor ??= PLAYER_BALL_COLOR;
       return counter;
     };
-    const emitEffect = (kind: GameEffect["kind"], x: number, y: number, color: string, size = 45, x2 = x, y2 = y, duration = 0.5, variant = 0) => {
-      game.effects.push({ kind, x, y, x2, y2, size, life: duration, maxLife: duration, color, variant });
+    const emitEffect = (kind: GameEffect["kind"], x: number, y: number, color: string, size = 45, x2 = x, y2 = y, duration = 0.5, variant = 0, skillId: ClassSkillId | null = null) => {
+      game.effects.push({ kind, x, y, x2, y2, size, life: duration, maxLife: duration, color, variant, skillId });
+    };
+    const emitSkillEffect = (skillId: ClassSkillId, x: number, y: number, size = 70, duration = 0.65, x2 = x, y2 = y) => {
+      emitEffect("skill", x, y, classSkillColor(skillId), size, x2, y2, duration, 0, skillId);
     };
     const emitBurst = (x: number, y: number, color: string, count = 10, force = 220) => {
       for (let index = 0; index < count; index++) {
@@ -1708,15 +1711,18 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             game.paddleBarriers[paddle.id] = Math.min(3, (game.paddleBarriers[paddle.id] ?? 0) + 1);
             game.flashes.push({ text: `${paddle.name} // 철벽 +1`, x: paddle.x, y: PLAYER_LINE_Y - 24, life: 1, color: classSkillColor("warrior-guard") });
             emitEffect("beam", 20, PLAYER_LINE_Y, classSkillColor("warrior-guard"), 10, W - 20, PLAYER_LINE_Y, 0.65);
+            emitSkillEffect("warrior-guard", W / 2, PLAYER_LINE_Y, 120, 0.9, W - 24, PLAYER_LINE_Y);
           });
           triggerReflectionSkill("warrior-earthquake", (level) => {
             strikeTargets(game.bricks.filter((target) => target.alive && target.kind !== "boss-core"), 1, classSkillColor("warrior-earthquake"), "대지 분쇄");
             emitEffect("beam", 10, H / 2, classSkillColor("warrior-earthquake"), 18 + level * 3, W - 10, H / 2, 0.8);
+            emitSkillEffect("warrior-earthquake", 20, H / 2, W - 40, 0.9, W - 20, H / 2);
           });
           triggerReflectionSkill("warrior-berserker", (level) => {
             ball.attackPower = Math.max(ball.attackPower, 4 + level);
             ball.vx *= 1.25;
             ball.vy *= 1.25;
+            emitSkillEffect("warrior-berserker", ball.x, ball.y, 78 + level * 8, 0.95);
             game.flashes.push({ text: `${paddle.name} // 광전사`, x: paddle.x, y: paddle.y - 32, life: 1, color: "#ff4f78" });
           });
 
@@ -2002,6 +2008,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           const blastLike = id === "warrior-shockwave" || id === "mage-fireball";
           const lightningImpact = id === "warrior-smash" || id === "warrior-execute" || id === "warrior-crush" || id === "archer-weakpoint";
           emitEffect(lightningImpact ? "lightning" : blastLike ? "blast" : "ring", impactX, impactY, color, lightningImpact ? 74 + index * 8 : 34 + index * 9, impactX, impactY, lightningImpact ? 0.34 : 0.48, id === "archer-weakpoint" ? 1 : 0);
+          if (id.startsWith("warrior-")) emitSkillEffect(id, impactX, impactY, 66 + index * 10, 0.5);
           emitBurst(impactX, impactY, color, blastLike ? 14 : 8, blastLike ? 250 : 170);
           impactFeedback(blastLike ? 5.5 : 3.2, color, blastLike ? 0.22 : 0.13, blastLike ? 0.1 : 0);
           audioRef.current?.play(id === "warrior-execute" || id === "archer-weakpoint" ? "critical" : blastLike ? "explosion" : "skill-impact", 1 + index * 0.15);
@@ -2715,14 +2722,43 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ctx.fillStyle = effectColor;
         if (classCategory === "warrior") {
           ctx.translate(ball.x, ball.y);
-          ctx.rotate(game.elapsed * 2.4 + index);
-          ctx.lineWidth = 3 + (level ?? 1) * 0.5;
-          for (let spoke = 0; spoke < 4; spoke++) {
-            ctx.rotate(Math.PI / 2);
+          ctx.lineWidth = 2.5 + (level ?? 1) * 0.5;
+          if (id === "warrior-smash") {
+            ctx.rotate(-0.4);
             ctx.beginPath();
-            ctx.moveTo(visualRadius + 2, 0);
-            ctx.lineTo(visualRadius + 8 + index * 2, 0);
+            ctx.moveTo(-visualRadius - 7, -visualRadius - 4);
+            ctx.lineTo(visualRadius + 7, visualRadius + 4);
             ctx.stroke();
+          } else if (id === "warrior-shockwave") {
+            for (let wave = 0; wave < 2; wave++) {
+              const pulse = (game.elapsed * 2.8 + wave * 0.5) % 1;
+              ctx.globalAlpha = 0.8 * (1 - pulse);
+              ctx.beginPath();
+              ctx.arc(0, 0, visualRadius + 3 + pulse * (10 + wave * 4), 0, Math.PI * 2);
+              ctx.stroke();
+            }
+          } else if (id === "warrior-execute") {
+            const pulse = 1 + Math.sin(game.elapsed * 9) * 0.18;
+            ctx.scale(pulse, pulse);
+            ctx.beginPath();
+            ctx.moveTo(0, -visualRadius - 11);
+            ctx.lineTo(0, visualRadius + 8);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(-5, visualRadius + 3);
+            ctx.lineTo(0, visualRadius + 9);
+            ctx.lineTo(5, visualRadius + 3);
+            ctx.stroke();
+          } else if (id === "warrior-crush") {
+            ctx.rotate(game.elapsed * 2.8);
+            for (let shard = 0; shard < 4; shard++) {
+              ctx.rotate(Math.PI / 2);
+              ctx.save();
+              ctx.translate(visualRadius + 7, 0);
+              ctx.rotate(Math.PI / 4);
+              ctx.fillRect(-3.5, -3.5, 7, 7);
+              ctx.restore();
+            }
           }
         } else if (classCategory === "archer") {
           ctx.translate(ball.x, ball.y);
@@ -2942,6 +2978,107 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           }
           ctx.stroke();
         }
+      } else if (effect.kind === "skill") {
+        ctx.save();
+        ctx.translate(effect.x, effect.y);
+        ctx.globalAlpha = Math.min(1, remaining * 1.8);
+        ctx.strokeStyle = effect.color;
+        ctx.fillStyle = effect.color;
+        ctx.shadowColor = effect.color;
+        ctx.shadowBlur = 16;
+        ctx.lineCap = "round";
+        if (effect.skillId === "warrior-smash") {
+          const reach = effect.size * (0.35 + progress * 0.45);
+          ctx.lineWidth = 8 * remaining + 2;
+          ctx.rotate(-0.35);
+          ctx.beginPath();
+          ctx.moveTo(-reach, -reach * 0.5);
+          ctx.lineTo(reach, reach * 0.5);
+          ctx.stroke();
+          ctx.rotate(0.7);
+          ctx.beginPath();
+          ctx.moveTo(-reach * 0.7, reach * 0.45);
+          ctx.lineTo(reach * 0.7, -reach * 0.45);
+          ctx.stroke();
+        } else if (effect.skillId === "warrior-shockwave") {
+          for (let wave = 0; wave < 3; wave++) {
+            const radius = effect.size * Math.max(0.08, progress - wave * 0.12);
+            ctx.globalAlpha = Math.max(0, remaining - wave * 0.16);
+            ctx.lineWidth = 7 - wave * 1.5;
+            ctx.beginPath();
+            ctx.arc(0, 0, radius, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        } else if (effect.skillId === "warrior-execute") {
+          const blade = effect.size * (0.35 + progress * 0.65);
+          ctx.lineWidth = 5 + remaining * 5;
+          ctx.beginPath();
+          ctx.moveTo(0, -blade);
+          ctx.lineTo(0, blade * 0.7);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(-12, blade * 0.38);
+          ctx.lineTo(0, blade * 0.7);
+          ctx.lineTo(12, blade * 0.38);
+          ctx.stroke();
+        } else if (effect.skillId === "warrior-crush") {
+          ctx.rotate(progress * 1.6);
+          for (let shard = 0; shard < 6; shard++) {
+            const angle = shard * Math.PI / 3;
+            const distance = effect.size * (0.12 + progress * 0.5);
+            ctx.save();
+            ctx.rotate(angle);
+            ctx.translate(distance, 0);
+            ctx.rotate(Math.PI / 4);
+            ctx.fillRect(-5, -5, 10, 10);
+            ctx.restore();
+          }
+        } else if (effect.skillId === "warrior-guard") {
+          const span = Math.min(W - 80, effect.size * 5.4);
+          ctx.lineWidth = 4 + remaining * 3;
+          for (let shield = -2; shield <= 2; shield++) {
+            const centerX = shield * span / 5;
+            const radius = 18 + progress * 8;
+            ctx.beginPath();
+            for (let side = 0; side <= 6; side++) {
+              const angle = -Math.PI / 2 + side * Math.PI / 3;
+              const x = centerX + Math.cos(angle) * radius;
+              const y = Math.sin(angle) * radius * 0.7;
+              if (side === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+          }
+        } else if (effect.skillId === "warrior-earthquake") {
+          const width = Math.min(W - 40, effect.size);
+          ctx.lineWidth = 5 + remaining * 5;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          for (let crack = 1; crack <= 14; crack++) {
+            const x = width * crack / 14;
+            const y = (crack % 2 === 0 ? -1 : 1) * (7 + (crack % 3) * 5) * Math.sin(progress * Math.PI);
+            ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        } else if (effect.skillId === "warrior-berserker") {
+          ctx.rotate(-progress * 1.8);
+          for (let flame = 0; flame < 10; flame++) {
+            const angle = flame * Math.PI / 5;
+            const inner = effect.size * 0.18;
+            const outer = effect.size * (0.34 + 0.16 * Math.sin(progress * Math.PI + flame));
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(angle - 0.13) * inner, Math.sin(angle - 0.13) * inner);
+            ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+            ctx.lineTo(Math.cos(angle + 0.13) * inner, Math.sin(angle + 0.13) * inner);
+            ctx.closePath();
+            ctx.fill();
+          }
+        } else {
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(0, 0, effect.size * progress, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
       } else if (effect.kind === "drop") {
         const fallY = effect.y + (effect.y2 - effect.y) * progress * progress;
         const driftX = effect.x + (effect.x2 - effect.x) * progress * 0.18;

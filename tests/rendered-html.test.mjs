@@ -712,3 +712,17 @@ test("renders CC0 fireball and magic spark strips on charged mage balls", async 
   assert.match(license, /Pixel Art Spells/);
   assert.match(license, /DevWizard/);
 });
+
+test("gives every warrior skill a distinct charged or field signature", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /kind: "ring" \| "beam" \| "blast" \| "drop" \| "spark" \| "lightning" \| "skill"/);
+  assert.match(source, /skillId: ClassSkillId \| null/);
+  assert.match(source, /emitSkillEffect\("warrior-guard"/);
+  assert.match(source, /emitSkillEffect\("warrior-earthquake"/);
+  assert.match(source, /emitSkillEffect\("warrior-berserker"/);
+  ["warrior-smash", "warrior-shockwave", "warrior-execute", "warrior-crush", "warrior-guard", "warrior-earthquake", "warrior-berserker"].forEach((id) => {
+    assert.match(source, new RegExp(`effect\\.skillId === "${id}"|id === "${id}"`));
+  });
+  assert.match(source, /ctx\.arc\(0, 0, visualRadius \+ 3 \+ pulse/);
+  assert.match(source, /ctx\.fillRect\(-3\.5, -3\.5, 7, 7\)/);
+});
