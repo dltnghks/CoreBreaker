@@ -173,6 +173,12 @@ test("disperses explosive bricks so they cannot clear a wave as one chain", asyn
   });
 });
 
+test("opens side gaps in the wave 7 reflector wall", async () => {
+  const waves = await readFile(new URL("../app/wave-config.ts", import.meta.url), "utf8");
+  assert.match(waves, /wave\(7, "TWIN GATES"[^\n]+"rr\.\.nnnn\.\.rr"/);
+  assert.doesNotMatch(waves, /"rrrrnnnnrrrr"/);
+});
+
 test("ends a wave on clear or drops every surviving brick at time up", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const waveCleared = game\.bossActive/);

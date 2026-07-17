@@ -20,7 +20,7 @@ export const WAVE_DEFINITIONS: WaveDefinition[] = [
   wave(4, "POWDER KEG", 37, ["..e..e..e...", "..nnnnnnnn..", "...nn..nn..."]),
   wave(5, "STONE CHANNEL", 39, ["xx........xx", "x..hhhhhh..x", "x...nnnn...x"]),
   wave(6, "FIELD MEDIC", 39, ["....cccc....", "..hhhhhhhh..", "nnnnnnnnnnnn", ".gennnnnneg.", "rrnnhhhhnnrr"]),
-  wave(7, "TWIN GATES", 40, ["xxhhhhhhhhxx", "xgnnnnnnnngx", "xennccccnnex", "rrrrnnnnrrrr", "hnhnhnhnhnhn"]),
+  wave(7, "TWIN GATES", 40, ["xxhhhhhhhhxx", "xgnnnnnnnngx", "xennccccnnex", "rr..nnnn..rr", "hnhnhnhnhnhn"]),
   wave(8, "REFLECTOR POCKETS", 42, ["rrccnnnnccrr", "hhhhhhhhhhhh", "nnennennenne", "ggnnccccnngg", "rrnnnnnnnnrr"]),
   wave(9, "FORTRESS", 44, ["xggggggggggx", "xhhhhhhhhhhx", "xgccccccccgx", "xgenhnehnegx", "xxrrnnnnrrxx"]),
   wave(10, "MID BOSS · IRON HEART", 48, [], "mid"),
