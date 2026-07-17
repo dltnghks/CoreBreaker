@@ -47,7 +47,7 @@ export type SkillBenchProgress = {
   updatedAt: number;
 };
 
-export const BALANCE_STORAGE_KEY = "echo-breaker-balance-v2";
+export const BALANCE_STORAGE_KEY = "echo-breaker-balance-v3";
 export const BOT_RESULTS_STORAGE_KEY = "echo-breaker-bot-results-v1";
 export const BOT_LIVE_STORAGE_KEY = "echo-breaker-bot-live-v1";
 export const SKILL_BENCH_STORAGE_KEY = "echo-breaker-skill-bench-v1";
@@ -80,15 +80,15 @@ export const DEFAULT_BALANCE_CONFIG: BalanceConfig = {
   rowStartInterval: 8,
   rowMinInterval: 4.5,
   rowAcceleration: 0.12,
-  baseHpWaveStep: 3,
-  hardHpWaveStep: 4,
-  hardChanceGrowth: 0.055,
-  guardChanceGrowth: 0.004,
-  bossBaseHp: 220,
-  bossHpPerStage: 120,
+  baseHpWaveStep: 2,
+  hardHpWaveStep: 3,
+  hardChanceGrowth: 0.065,
+  guardChanceGrowth: 0.005,
+  bossBaseHp: 280,
+  bossHpPerStage: 160,
   bossTimeLimit: 45,
-  bossAttackInterval: 4.2,
-  bossAttackAcceleration: 0.4,
+  bossAttackInterval: 3.8,
+  bossAttackAcceleration: 0.45,
 };
 
 const LIMITS: Record<keyof BalanceConfig, [number, number]> = {

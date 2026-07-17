@@ -186,10 +186,20 @@ test("raises post-wave-5 density, brick health, and boss health", async () => {
   assert.match(waves, /wave\(11,[^\n]+"..xx....xx.."\]\)/);
   assert.match(waves, /wave\(19,[^\n]+"xxnnnnnnnnxx"\]\)/);
   assert.match(source, /Math\.round\(balance\.baseHpWaveStep\)/);
-  assert.match(balance, /baseHpWaveStep: 3/);
-  assert.match(balance, /bossBaseHp: 220/);
-  assert.match(balance, /bossHpPerStage: 120/);
-  assert.match(balance, /echo-breaker-balance-v2/);
+  assert.match(balance, /baseHpWaveStep: 2/);
+  assert.match(balance, /hardHpWaveStep: 3/);
+  assert.match(balance, /bossBaseHp: 280/);
+  assert.match(balance, /bossHpPerStage: 160/);
+  assert.match(balance, /echo-breaker-balance-v3/);
+});
+
+test("renders every destructible brick health as large outlined white text", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /else if \(brick\.trait !== "indestructible"\)/);
+  assert.match(source, /ctx\.fillStyle = "#ffffff"/);
+  assert.match(source, /ctx\.font = "900 18px monospace"/);
+  assert.match(source, /ctx\.strokeText\(hpText/);
+  assert.match(source, /ctx\.font = "900 44px monospace"/);
 });
 
 test("adds six stage brick traits with distinct combat rules", async () => {

@@ -2253,17 +2253,26 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ctx.stroke();
       }
       if (brick.kind === "boss-core") {
-        ctx.fillStyle = "rgba(4,8,20,.82)";
         ctx.textAlign = "center";
-        ctx.font = "900 16px monospace";
+        ctx.strokeStyle = "rgba(4,8,20,.95)";
+        ctx.lineWidth = 5;
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "900 18px monospace";
+        ctx.strokeText("BOSS CORE", brick.x + brick.w / 2, brick.y + brick.h / 2 - 13);
         ctx.fillText("BOSS CORE", brick.x + brick.w / 2, brick.y + brick.h / 2 - 13);
-        ctx.font = "900 36px monospace";
-        ctx.fillText(String(Math.max(0, Math.ceil(brick.hp))), brick.x + brick.w / 2, brick.y + brick.h / 2 + 25);
-      } else if (brick.maxHp > 1) {
-        ctx.fillStyle = "rgba(4,8,20,.58)";
-        ctx.font = "700 10px monospace";
+        ctx.font = "900 44px monospace";
+        const bossHpText = String(Math.max(0, Math.ceil(brick.hp)));
+        ctx.strokeText(bossHpText, brick.x + brick.w / 2, brick.y + brick.h / 2 + 30);
+        ctx.fillText(bossHpText, brick.x + brick.w / 2, brick.y + brick.h / 2 + 30);
+      } else if (brick.trait !== "indestructible") {
+        const hpText = String(Math.max(0, Math.ceil(brick.hp)));
+        ctx.strokeStyle = "rgba(4,8,20,.95)";
+        ctx.lineWidth = 4;
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "900 18px monospace";
         ctx.textAlign = "center";
-        ctx.fillText(String(Math.max(0, Math.ceil(brick.hp))), brick.trait !== "standard" ? brick.x + brick.w / 2 : brick.drop ? brick.x + brick.w - 10 : brick.x + brick.w / 2, brick.y + 16);
+        ctx.strokeText(hpText, brick.x + brick.w / 2, brick.y + brick.h / 2 + 6);
+        ctx.fillText(hpText, brick.x + brick.w / 2, brick.y + brick.h / 2 + 6);
       }
     });
 
