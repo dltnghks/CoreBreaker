@@ -16,7 +16,10 @@ type BotPolicy = "balanced" | "survival" | "random";
 type BotSpeed = 1 | 2 | 4 | 8;
 type BotMetrics = { maxBalls: number; ballLosses: number; missileActivations: number; safetySaves: number; gravityRescues: number };
 type SkillBenchVariant = { batchId: string; environment: SkillBenchConfig["environment"]; skillId: UpgradeId | "original"; level: 0 | 1 | 2 | 3; skillValues: [number, number, number]; seed: number };
-type BotRunResult = BotMetrics & { id: string; run: number; policy: BotPolicy; speed: BotSpeed; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig | null; benchmarkRuleset?: "live-v1" | null; waveSamples: BotWaveSample[]; evaluationComplete: boolean; skillBench: SkillBenchVariant | null };
+type SkillSelectionSource = "start" | "wave" | "boss";
+type SkillSelectionEvent = { wave: number; skillId: UpgradeId; level: number; source: SkillSelectionSource };
+type SkillRunMetric = { activations: number; damage: number; kills: number };
+type BotRunResult = BotMetrics & { id: string; run: number; policy: BotPolicy; speed: BotSpeed; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; startingSkills: UpgradeId[]; skillHistory: SkillSelectionEvent[]; ultimates: UpgradeId[]; skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig | null; benchmarkRuleset?: "live-v1" | null; waveSamples: BotWaveSample[]; evaluationComplete: boolean; skillBench: SkillBenchVariant | null };
 
 type Upgrade = {
   id: UpgradeId;
@@ -36,6 +39,8 @@ type GhostRecord = {
   bricks: number;
   maxCombo: number;
   upgrades: UpgradeId[];
+  skillHistory: SkillSelectionEvent[];
+  skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>;
   paddleTrack: number[];
   createdAt: number;
 };
@@ -480,6 +485,8 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     comboTimer: 0,
     bricksBroken: 0,
     upgrades: [],
+    skillHistory: [],
+    skillMetrics: {},
     paddleTrack: [],
     particles: [],
     flashes: activeGhosts.length > 0 ? [{ text: `ECHO PRESSURE +${activeGhosts.length * 12}%`, x: W / 2, y: H / 2, life: 1.5, color: "#ff6b87" }] : [],
@@ -816,6 +823,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ...item,
         balanceConfig: normalizeBalanceConfig(item.balanceConfig),
         benchmarkConfig: item.benchmarkConfig ? normalizeBenchmarkConfig(item.benchmarkConfig) : null,
+        startingSkills: Array.isArray(item.startingSkills) ? item.startingSkills : [],
+        skillHistory: Array.isArray(item.skillHistory) ? item.skillHistory : [],
+        ultimates: Array.isArray(item.ultimates) ? item.ultimates : [],
+        skillMetrics: item.skillMetrics && typeof item.skillMetrics === "object" ? item.skillMetrics : {},
         waveSamples: Array.isArray(item.waveSamples) ? item.waveSamples : [],
         evaluationComplete: item.evaluationComplete ?? Number(item.wave) >= BOT_EVALUATION_WAVE,
         skillBench: item.skillBench ?? null,
@@ -833,7 +844,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       : current.length < MAX_ACTIVE_GHOSTS ? [...current, id] : current);
   };
 
-  const applyUpgrade = useCallback((upgrade: Upgrade, ballCost: 0 | 1 | 2 = 0, resume = true) => {
+  const applyUpgrade = useCallback((upgrade: Upgrade, ballCost: 0 | 1 | 2 = 0, resume = true, source: Exclude<SkillSelectionSource, "boss"> = "wave") => {
     const game = gameRef.current;
     if (!game) return;
     const playerBalls = game.balls.filter((ball) => ball.owner === "player");
@@ -851,6 +862,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const previousLevel = upgradeLevel(game.upgrades, upgrade.id);
     game.upgrades.push(upgrade.id);
     const nextLevel = upgradeLevel(game.upgrades, upgrade.id);
+    game.skillHistory.push({ wave: game.wave, skillId: upgrade.id, level: nextLevel, source });
     if (upgrade.id === "speed") {
       const previousBonus = 1 + skillValue("speed", previousLevel) / 100;
       const nextBonus = 1 + skillValue("speed", nextLevel) / 100;
@@ -875,6 +887,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     if (!game) return;
     game.bossRewards.push(rewardId);
     game.upgrades.push(rewardId);
+    game.skillHistory.push({ wave: game.wave, skillId: rewardId, level: upgradeLevel(game.upgrades, rewardId), source: "boss" });
     const skill = activeSkillMap[rewardId] ?? ULTIMATE_SKILLS.find((item) => item.id === rewardId)!;
     const reward = {
       name: skill.name,
@@ -910,6 +923,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         maxCombo: game.maxCombo,
         coreHp: game.coreHp,
         upgrades: [...game.upgrades],
+        startingSkills: game.skillHistory.filter((event) => event.source === "start").map((event) => event.skillId),
+        skillHistory: game.skillHistory.map((event) => ({ ...event })),
+        ultimates: game.skillHistory.filter((event) => event.source === "boss").map((event) => event.skillId),
+        skillMetrics: Object.fromEntries(Object.entries(game.skillMetrics).map(([id, metric]) => [id, { ...metric! }])),
         createdAt: Date.now(),
         balanceConfig: { ...balanceConfigRef.current },
         benchmarkConfig: benchmarkMode ? { ...benchmarkConfigRef.current } : null,
@@ -1006,7 +1023,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const selectInitialSkill = useCallback((upgrade: Upgrade) => {
     const game = gameRef.current;
     if (!game) return;
-    applyUpgrade(upgrade, 0, false);
+    applyUpgrade(upgrade, 0, false, "start");
     const selected = [...initialSelectedIds, upgrade.id];
     setInitialSelectedIds(selected);
     if (selected.length < 2) {
@@ -1040,6 +1057,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const game = gameRef.current;
     if (!game) return;
     game.paddleCounters ??= {};
+    game.skillHistory ??= [];
+    game.skillMetrics ??= {};
     game.effects ??= [];
     game.safetyBlocks ??= [];
     game.gravityWells ??= [];
@@ -1184,6 +1203,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     };
     const emitSkillEffect = (skillId: ClassSkillId, x: number, y: number, size = 70, duration = 0.65, x2 = x, y2 = y) => {
       emitEffect("skill", x, y, classSkillColor(skillId), size, x2, y2, duration, 0, skillId);
+    };
+    const skillMetricFor = (skillId: UpgradeId) => game.skillMetrics[skillId] ??= { activations: 0, damage: 0, kills: 0 };
+    const recordSkillImpact = (skillId: UpgradeId, damage = 0, killed = false) => {
+      const metric = skillMetricFor(skillId);
+      metric.damage += Math.max(0, damage);
+      if (killed) metric.kills++;
     };
     const emitBurst = (x: number, y: number, color: string, count = 10, force = 220) => {
       for (let index = 0; index < count; index++) {
@@ -1409,6 +1434,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
 
       if (!triggerBlast || blastPower <= 0) return;
+      const classBlastSkillId: ClassSkillId | null = (ball.skillCharges["mage-fireball"] ?? 0) > 0
+        ? "mage-fireball"
+        : (ball.skillCharges["warrior-shockwave"] ?? 0) > 0 ? "warrior-shockwave" : null;
       const range = skillValue("blast", blastPower) || 60 + blastPower * 20;
       const blastX = brick.x + brick.w / 2;
       const blastY = brick.y + brick.h / 2;
@@ -1423,7 +1451,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         if (Math.hypot(dx, dy) >= range) return;
         if (absorbGuardHit(near)) return;
         applyDebuffs(near, sourcePaddle);
+        const hpBefore = near.hp;
         near.hp -= (blastPower >= 3 ? 2 : 1) * near.blastVulnerability * damageMultiplier(near);
+        if (classBlastSkillId) recordSkillImpact(classBlastSkillId, Math.min(hpBefore, Math.max(0, hpBefore - near.hp)), near.hp <= 0);
         emitEffect("ring", near.x + near.w / 2, near.y + near.h / 2, "#ff9658", 24, near.x + near.w / 2, near.y + near.h / 2, 0.3);
         if (near.hp <= 0) destroyBrick(near, ball, false, 0);
       });
@@ -1640,6 +1670,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             }
             paddleCounter.skillReflections[id] = 0;
             onTrigger(level);
+            skillMetricFor(id).activations++;
             const color = classSkillColor(id);
             const name = activeSkillMap[id]?.name ?? id;
             paddleCounter.chargePulse = 1.2;
@@ -1668,10 +1699,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               color: classSkillColor(skillId),
             });
           };
-          const strikeTargets = (targets: Brick[], damage: number, color: string, label: string) => {
+          const strikeTargets = (targets: Brick[], damage: number, color: string, label: string, skillId: ClassSkillId) => {
             targets.forEach((target) => {
               if (!target.alive || !isDamageableBrick(target) || absorbGuardHit(target)) return;
+              const hpBefore = target.hp;
               target.hp -= damage * damageMultiplier(target);
+              recordSkillImpact(skillId, Math.min(hpBefore, Math.max(0, hpBefore - target.hp)), target.hp <= 0);
               emitEffect("beam", ball.x, ball.y, color, 6, target.x + target.w / 2, target.y + target.h / 2, 0.35);
               if (target.hp <= 0) destroyBrick(target, ball, false, 0);
             });
@@ -1689,7 +1722,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             emitSkillEffect("warrior-guard", W / 2, PLAYER_LINE_Y, 120, 0.9, W - 24, PLAYER_LINE_Y);
           });
           triggerReflectionSkill("warrior-earthquake", (level) => {
-            strikeTargets(game.bricks.filter((target) => target.alive && target.kind !== "boss-core"), 1, classSkillColor("warrior-earthquake"), "대지 분쇄");
+            strikeTargets(game.bricks.filter((target) => target.alive && target.kind !== "boss-core"), 1, classSkillColor("warrior-earthquake"), "대지 분쇄", "warrior-earthquake");
             emitEffect("beam", 10, H / 2, classSkillColor("warrior-earthquake"), 18 + level * 3, W - 10, H / 2, 0.8);
             emitSkillEffect("warrior-earthquake", 20, H / 2, W - 40, 0.9, W - 20, H / 2);
           });
@@ -1717,7 +1750,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           triggerReflectionSkill("archer-arrow-rain", (level) => {
             const targets = game.bricks.filter((target) => target.alive && target.kind !== "boss-core").sort(() => decisionRandom() - 0.5).slice(0, 8 + level * 4);
             emitSkillEffect("archer-arrow-rain", W / 2, BRICK_ROW_Y, W - 80, 0.9, W / 2, PLAYER_LINE_Y);
-            strikeTargets(targets, 1, classSkillColor("archer-arrow-rain"), "화살비");
+            strikeTargets(targets, 1, classSkillColor("archer-arrow-rain"), "화살비", "archer-arrow-rain");
           });
           triggerReflectionSkill("archer-infinite", (level) => {
             spawnArrow(-18, 5 + level, "archer-infinite");
@@ -1745,7 +1778,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           triggerReflectionSkill("mage-mana-blast", (level) => {
             const targets = game.bricks.filter((target) => target.alive).sort((a, b) => Math.hypot(a.x - ball.x, a.y - ball.y) - Math.hypot(b.x - ball.x, b.y - ball.y)).slice(0, 3 + level);
             emitSkillEffect("mage-mana-blast", ball.x, ball.y, 86 + level * 9, 0.75);
-            strikeTargets(targets, 1, classSkillColor("mage-mana-blast"), "마력 폭발");
+            strikeTargets(targets, 1, classSkillColor("mage-mana-blast"), "마력 폭발", "mage-mana-blast");
           });
           triggerReflectionSkill("mage-elemental-storm", (level) => {
             ball.skillCharges["mage-fireball"] = level;
@@ -1758,7 +1791,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           triggerReflectionSkill("mage-meteor", (level) => {
             const target = game.bricks.filter((entry) => entry.alive && isDamageableBrick(entry)).sort((a, b) => b.hp - a.hp)[0];
             if (!target) return;
+            const hpBefore = target.hp;
             target.hp -= (8 + level * 4) * damageMultiplier(target);
+            recordSkillImpact("mage-meteor", Math.min(hpBefore, Math.max(0, hpBefore - target.hp)), target.hp <= 0);
             emitSkillEffect("mage-meteor", target.x + target.w / 2, BRICK_ROW_Y - 35, 120 + level * 15, 0.95, target.x + target.w / 2, target.y + target.h / 2);
             emitEffect("blast", target.x + target.w / 2, target.y + target.h / 2, classSkillColor("mage-meteor"), 110 + level * 15, target.x + target.w / 2, target.y + target.h / 2, 0.85);
             emitBurst(target.x + target.w / 2, target.y + target.h / 2, classSkillColor("mage-meteor"), 28, 360);
@@ -1921,6 +1956,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const focusLevel = ball.skillCharges["archer-focus"] ?? 0;
         const weakpointLevel = ball.skillCharges["archer-weakpoint"] ?? 0;
         const repeatedTarget = brick.lastHitPaddleId === sourcePaddle.id;
+        const hpBeforeDirect = brick.hp;
+        const directSkillContributors = (["warrior-execute", "archer-weakpoint", "warrior-smash", "warrior-crush", "archer-focus"] as ClassSkillId[]).filter((id) => (ball.skillCharges[id] ?? 0) > 0);
+        const baselineDirectDamage = (Math.max(1, ball.attackPower) + corrosionDamage) * damageMultiplier(brick);
         let directDamage = Math.max(1, ball.attackPower) + corrosionDamage + smashLevel;
         if (crushLevel > 0 && brick.trait !== "standard" && brick.trait !== "guard") directDamage += crushLevel + 1;
         if (focusLevel > 0 && repeatedTarget) directDamage += focusLevel + 1;
@@ -1930,6 +1968,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         if (!guardAbsorbed) {
           brick.hp -= directDamage * damageMultiplier(brick);
           brick.lastHitPaddleId = sourcePaddle.id;
+          const actualDirectDamage = Math.min(hpBeforeDirect, Math.max(0, hpBeforeDirect - brick.hp));
+          const attributedDamage = Math.max(0, actualDirectDamage - baselineDirectDamage);
+          if (directSkillContributors.length > 0) {
+            const damageShare = attributedDamage / directSkillContributors.length;
+            directSkillContributors.forEach((id, index) => recordSkillImpact(id, damageShare, brick.hp <= 0 && index === 0));
+          }
         }
         emitEffect(
           "spark",
@@ -1971,12 +2015,15 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const classChainCount = Math.max(ricochetLevel, lightningLevel + (lightningLevel > 0 ? 1 : 0));
         if (!guardAbsorbed && classChainCount > 0) {
           const color = lightningLevel > 0 ? "#9a8cff" : "#72f1b8";
+          const chainSkillId: ClassSkillId = lightningLevel > 0 ? "mage-lightning" : "archer-ricochet";
           game.bricks.filter((target) => target.alive && isDamageableBrick(target) && target !== brick)
             .sort((a, b) => Math.hypot(a.x - brick.x, a.y - brick.y) - Math.hypot(b.x - brick.x, b.y - brick.y))
             .slice(0, classChainCount)
             .forEach((target) => {
               if (absorbGuardHit(target)) return;
+              const hpBefore = target.hp;
               target.hp -= damageMultiplier(target);
+              recordSkillImpact(chainSkillId, Math.min(hpBefore, Math.max(0, hpBefore - target.hp)), target.hp <= 0);
               emitEffect("beam", brick.x + brick.w / 2, brick.y + brick.h / 2, color, 6, target.x + target.w / 2, target.y + target.h / 2, 0.4);
               if (target.hp <= 0) destroyBrick(target, ball, false, 0);
             });
@@ -3428,8 +3475,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       if (asBot) {
         const first = chooseBotUpgrade(pickUpgradeChoices(game.upgrades, upgradeCatalogRef.current, false), game.upgrades, botPolicyRef.current);
         game.upgrades.push(first.id);
+        game.skillHistory.push({ wave: 1, skillId: first.id, level: upgradeLevel(game.upgrades, first.id), source: "start" });
         const secondPool = pickUpgradeChoices(game.upgrades, upgradeCatalogRef.current, false, [first.id]);
-        if (secondPool.length > 0) game.upgrades.push(chooseBotUpgrade(secondPool, game.upgrades, botPolicyRef.current).id);
+        if (secondPool.length > 0) {
+          const second = chooseBotUpgrade(secondPool, game.upgrades, botPolicyRef.current);
+          game.upgrades.push(second.id);
+          game.skillHistory.push({ wave: 1, skillId: second.id, level: upgradeLevel(game.upgrades, second.id), source: "start" });
+        }
         game.balls.forEach((ball) => syncBallPayloadDisplay(ball, game.upgrades));
       }
     }
@@ -3624,6 +3676,26 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const reachPoints = benchmarkWaveStats.map((item, index) => `${chartX(index)},${18 + (100 - item.reachRate) / 100 * 126}`).join(" ");
   const corePoints = benchmarkWaveStats.map((item, index) => `${chartX(index)},${18 + (1 - Math.min(1, item.averageCore / MAX_CORE_HP)) * 126}`).join(" ");
   const benchmarkTableResults = [...visibleBotResults].reverse().slice(0, 20);
+  const benchmarkSkillStats = [...upgradeCatalog, ...ultimateCatalog].map((skill) => {
+    const pickedRuns = visibleBotResults.filter((item) => item.upgrades.includes(skill.id));
+    const metric = pickedRuns.reduce<SkillRunMetric>((total, item) => {
+      const value = item.skillMetrics?.[skill.id];
+      return {
+        activations: total.activations + (value?.activations ?? 0),
+        damage: total.damage + (value?.damage ?? 0),
+        kills: total.kills + (value?.kills ?? 0),
+      };
+    }, { activations: 0, damage: 0, kills: 0 });
+    const levels = pickedRuns.reduce((sum, item) => sum + item.upgrades.filter((id) => id === skill.id).length, 0);
+    return {
+      ...skill,
+      picks: pickedRuns.length,
+      averageLevel: pickedRuns.length ? levels / pickedRuns.length : 0,
+      clearRate: pickedRuns.length ? pickedRuns.filter((item) => item.evaluationComplete).length / pickedRuns.length * 100 : 0,
+      averageWave: pickedRuns.length ? pickedRuns.reduce((sum, item) => sum + item.wave, 0) / pickedRuns.length : 0,
+      ...metric,
+    };
+  }).filter((skill) => skill.picks > 0).sort((a, b) => b.picks - a.picks || b.clearRate - a.clearRate);
   const showSkillBenchmark = !benchmarkMode && skillBenchConfig.enabled;
   const updateBenchmarkRuns = (runs: BenchmarkConfig["runs"]) => {
     const next = { ...benchmarkConfigRef.current, runs };
@@ -3902,9 +3974,16 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               </svg>
             </article>
           </div>
+          <div className="benchmark-skill-section">
+            <div className="benchmark-skill-heading"><div><span>SKILL IMPACT</span><strong>선택 스킬별 성과</strong></div><small>발동·피해·처치는 새 측정 결과부터 집계됩니다.</small></div>
+            <div className="benchmark-skill-table" role="table" aria-label="스킬별 벤치마크 성과">
+              <div className="benchmark-skill-head" role="row"><span>SKILL</span><span>PICKS</span><span>AVG LV</span><span>W20 CLEAR</span><span>AVG WAVE</span><span>ACT</span><span>DAMAGE</span><span>KILLS</span></div>
+              {benchmarkSkillStats.map((skill) => <div key={skill.id} role="row"><strong style={{ color: skill.color }}>{skill.name}</strong><span>{skill.picks}</span><span>{skill.averageLevel.toFixed(1)}</span><span>{skill.clearRate.toFixed(0)}%</span><span>W{skill.averageWave.toFixed(1)}</span><span>{skill.activations}</span><span>{Math.round(skill.damage)}</span><span>{skill.kills}</span></div>)}
+            </div>
+          </div>
           <div className="benchmark-data-table" role="table" aria-label="벤치마크 회차별 결과">
-            <div className="benchmark-data-head" role="row"><span>RUN</span><span>RESULT</span><span>TIME</span><span>SCORE</span><span>BRICKS</span><span>COMBO</span><span>MAX BALLS</span><span>CORE</span><span>BUILD</span></div>
-            {benchmarkTableResults.map((item) => <div key={item.id} role="row"><strong>#{item.run}</strong><span>{item.evaluationComplete ? "W20 CLEAR" : `W${item.wave} STOP`}</span><span>{item.elapsed.toFixed(1)}s</span><span>{Math.round(item.score).toLocaleString("ko-KR")}</span><span>{item.bricks}</span><span>{item.maxCombo}</span><span>{item.maxBalls}</span><span>{item.coreHp}/{MAX_CORE_HP}</span><span>{item.upgrades.length}</span></div>)}
+            <div className="benchmark-data-head" role="row"><span>RUN</span><span>RESULT</span><span>TIME</span><span>SCORE</span><span>BRICKS</span><span>COMBO</span><span>MAX BALLS</span><span>CORE</span><span>START</span><span>BUILD</span></div>
+            {benchmarkTableResults.map((item) => <div key={item.id} role="row"><strong>#{item.run}</strong><span>{item.evaluationComplete ? "W20 CLEAR" : `W${item.wave} STOP`}</span><span>{item.elapsed.toFixed(1)}s</span><span>{Math.round(item.score).toLocaleString("ko-KR")}</span><span>{item.bricks}</span><span>{item.maxCombo}</span><span>{item.maxBalls}</span><span>{item.coreHp}/{MAX_CORE_HP}</span><span>{item.startingSkills.map((id) => activeSkillMap[id]?.name ?? id).join(" + ") || "-"}</span><span>{item.upgrades.length}</span></div>)}
           </div>
         </>}
       </section>}

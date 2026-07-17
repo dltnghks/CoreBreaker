@@ -379,6 +379,12 @@ test("runs a no-ghost playtest bot and persists balance metrics", async () => {
   assert.match(source, /game\.botMetrics\.missileActivations/);
   assert.match(source, /game\.botMetrics\.safetySaves/);
   assert.match(source, /game\.botMetrics\.gravityRescues/);
+  assert.match(source, /startingSkills: game\.skillHistory/);
+  assert.match(source, /skillHistory: game\.skillHistory\.map/);
+  assert.match(source, /skillMetrics: Object\.fromEntries/);
+  assert.match(source, /source: "start"/);
+  assert.match(source, /source: "boss"/);
+  assert.match(source, /recordSkillImpact/);
   assert.match(balanceConfig, /echo-breaker-bot-results-v1/);
   assert.match(source, /recordBotWaveSample/);
   assert.match(source, /waveSamples: botSkillBenchVariantRef\.current \? \[\] : \[\.\.\.game\.botWaveSamples\]/);
@@ -431,9 +437,14 @@ test("renders live benchmark KPIs, wave charts, and per-run data", async () => {
   assert.match(source, /웨이브별 평균 코어 체력 그래프/);
   assert.match(source, /benchmarkCompletionRate/);
   assert.match(source, /benchmark-data-table/);
+  assert.match(source, /benchmarkSkillStats/);
+  assert.match(source, /benchmark-skill-table/);
+  assert.match(source, /스킬별 벤치마크 성과/);
+  assert.match(source, /item\.startingSkills\.map/);
   assert.match(source, /benchmarkRuleset === "live-v1"/);
   assert.match(styles, /\.benchmark-dashboard/);
   assert.match(styles, /\.benchmark-charts/);
+  assert.match(styles, /\.benchmark-skill-table/);
 });
 
 test.skip("runs legacy controlled baseline and level 1-3 skill bench groups", async () => {
