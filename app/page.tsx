@@ -2324,70 +2324,44 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         }
         if (brick.trait === "reflector") {
           const reflectorShieldPulse = 0.55 + (Math.sin(game.elapsed * 7 + brick.x * 0.03) + 1) * 0.2;
-          const reflectorPlateY = brick.y + brick.h - 8;
+          const reflectorThreatened = game.balls.some((ball) => ball.vy < 0 && ball.y > brick.y + brick.h && ball.y < brick.y + brick.h + 75 && ball.x > brick.x - 8 && ball.x < brick.x + brick.w + 8);
+          const reflectorLineY = brick.y + brick.h + 4;
           const reflectorScan = (game.elapsed * 0.85 + brick.x / W) % 1;
+          const reflectorAlpha = Math.min(1, reflectorShieldPulse + (reflectorThreatened ? 0.28 : 0));
           ctx.save();
           ctx.shadowColor = "#65dcff";
-          ctx.shadowBlur = 10 + reflectorShieldPulse * 10;
+          ctx.shadowBlur = 10 + reflectorAlpha * 12;
+          ctx.strokeStyle = `rgba(101,220,255,${0.2 + reflectorAlpha * 0.28})`;
+          ctx.lineWidth = 8;
+          ctx.lineCap = "round";
           ctx.beginPath();
-          ctx.moveTo(brick.x + 1, reflectorPlateY - 2);
-          ctx.lineTo(brick.x + brick.w - 1, reflectorPlateY - 2);
-          ctx.lineTo(brick.x + brick.w - 6, brick.y + brick.h + 3);
-          ctx.lineTo(brick.x + 6, brick.y + brick.h + 3);
-          ctx.closePath();
-          const reflectorSurfaceGradient = ctx.createLinearGradient(brick.x, reflectorPlateY, brick.x + brick.w, reflectorPlateY);
-          reflectorSurfaceGradient.addColorStop(0, "#087aa1");
-          reflectorSurfaceGradient.addColorStop(0.28, "#65dcff");
-          reflectorSurfaceGradient.addColorStop(0.5, "#e8fcff");
-          reflectorSurfaceGradient.addColorStop(0.72, "#65dcff");
-          reflectorSurfaceGradient.addColorStop(1, "#087aa1");
-          ctx.fillStyle = reflectorSurfaceGradient;
-          ctx.fill();
-          ctx.save();
-          ctx.clip();
-          const glintX = brick.x - 14 + (brick.w + 28) * reflectorScan;
-          ctx.fillStyle = "rgba(255,255,255,.72)";
-          ctx.beginPath();
-          ctx.moveTo(glintX - 5, reflectorPlateY - 4);
-          ctx.lineTo(glintX + 2, reflectorPlateY - 4);
-          ctx.lineTo(glintX + 9, brick.y + brick.h + 4);
-          ctx.lineTo(glintX + 2, brick.y + brick.h + 4);
-          ctx.closePath();
-          ctx.fill();
-          ctx.restore();
-          ctx.strokeStyle = "#d9f8ff";
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.moveTo(brick.x + 1, reflectorPlateY - 2);
-          ctx.lineTo(brick.x + brick.w - 1, reflectorPlateY - 2);
+          ctx.moveTo(brick.x + 2, brick.y + brick.h - 1);
+          ctx.quadraticCurveTo(brick.x + 4, reflectorLineY, brick.x + 9, reflectorLineY);
+          ctx.lineTo(brick.x + brick.w - 9, reflectorLineY);
+          ctx.quadraticCurveTo(brick.x + brick.w - 4, reflectorLineY, brick.x + brick.w - 2, brick.y + brick.h - 1);
           ctx.stroke();
-          ctx.shadowBlur = 0;
-          ctx.strokeStyle = "#03202d";
-          ctx.lineWidth = 2;
-          for (let chevron = 0; chevron < 3; chevron++) {
-            const chevronX = brick.x + brick.w * (0.28 + chevron * 0.22);
-            ctx.beginPath();
-            ctx.moveTo(chevronX - 4, brick.y + brick.h - 2);
-            ctx.lineTo(chevronX, reflectorPlateY - 5);
-            ctx.lineTo(chevronX + 4, brick.y + brick.h - 2);
-            ctx.stroke();
-          }
-          ctx.strokeStyle = `rgba(217,248,255,${reflectorShieldPulse})`;
-          ctx.fillStyle = `rgba(101,220,255,${reflectorShieldPulse})`;
-          ctx.lineWidth = 2;
-          for (let marker = 0; marker < 3; marker++) {
-            const markerX = brick.x + brick.w * (0.24 + marker * 0.26);
-            const markerBottom = brick.y + brick.h + 7 - reflectorShieldPulse * 2;
-            ctx.beginPath();
-            ctx.moveTo(markerX, markerBottom);
-            ctx.lineTo(markerX, brick.y + brick.h + 2);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(markerX - 3, brick.y + brick.h + 5);
-            ctx.lineTo(markerX, brick.y + brick.h + 1);
-            ctx.lineTo(markerX + 3, brick.y + brick.h + 5);
-            ctx.stroke();
-          }
+          const reflectorShieldGradient = ctx.createLinearGradient(brick.x, reflectorLineY, brick.x + brick.w, reflectorLineY);
+          reflectorShieldGradient.addColorStop(0, "#1a8fb3");
+          reflectorShieldGradient.addColorStop(0.35, "#65dcff");
+          reflectorShieldGradient.addColorStop(0.5, "#e8fcff");
+          reflectorShieldGradient.addColorStop(0.65, "#65dcff");
+          reflectorShieldGradient.addColorStop(1, "#1a8fb3");
+          ctx.strokeStyle = reflectorShieldGradient;
+          ctx.lineWidth = reflectorThreatened ? 4 : 3;
+          ctx.shadowBlur = reflectorThreatened ? 24 : 13;
+          ctx.beginPath();
+          ctx.moveTo(brick.x + 2, brick.y + brick.h - 1);
+          ctx.quadraticCurveTo(brick.x + 4, reflectorLineY, brick.x + 9, reflectorLineY);
+          ctx.lineTo(brick.x + brick.w - 9, reflectorLineY);
+          ctx.quadraticCurveTo(brick.x + brick.w - 4, reflectorLineY, brick.x + brick.w - 2, brick.y + brick.h - 1);
+          ctx.stroke();
+          const glintX = brick.x + 9 + (brick.w - 18) * reflectorScan;
+          ctx.strokeStyle = "rgba(255,255,255,.95)";
+          ctx.lineWidth = reflectorThreatened ? 6 : 4;
+          ctx.beginPath();
+          ctx.moveTo(glintX - 4, reflectorLineY);
+          ctx.lineTo(glintX + 4, reflectorLineY);
+          ctx.stroke();
           ctx.restore();
         }
         if (brick.trait !== "reflector") {
@@ -2468,9 +2442,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ctx.strokeStyle = "rgba(4,8,20,.95)";
         ctx.lineWidth = 4;
         ctx.fillStyle = "#ffffff";
-        ctx.font = brick.trait === "reflector" ? "900 16px monospace" : "900 18px monospace";
+        ctx.font = "900 18px monospace";
         ctx.textAlign = "center";
-        const hpBaselineY = brick.trait === "reflector" ? brick.y + 13 : brick.y + brick.h / 2 + 6;
+        const hpBaselineY = brick.y + brick.h / 2 + 6;
         ctx.strokeText(hpText, brick.x + brick.w / 2, hpBaselineY);
         ctx.fillText(hpText, brick.x + brick.w / 2, hpBaselineY);
       }

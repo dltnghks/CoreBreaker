@@ -231,12 +231,14 @@ test("adds six stage brick traits with distinct combat rules", async () => {
   assert.match(source, /HEAL PULSE \/\/ \+1/);
   assert.match(source, /brick\.trait === "reflector" && ball\.vy < 0/);
   assert.match(source, /const reflectorShieldPulse/);
+  assert.match(source, /const reflectorThreatened = game\.balls\.some/);
   assert.match(source, /const reflectorScan/);
-  assert.match(source, /const reflectorSurfaceGradient/);
-  assert.match(source, /for \(let chevron = 0; chevron < 3; chevron\+\+\)/);
-  assert.match(source, /const hpBaselineY = brick\.trait === "reflector" \? brick\.y \+ 13/);
+  assert.match(source, /const reflectorShieldGradient/);
+  assert.match(source, /ctx\.quadraticCurveTo\(brick\.x \+ 4, reflectorLineY/);
+  assert.match(source, /ctx\.lineWidth = reflectorThreatened \? 4 : 3/);
+  assert.match(source, /const hpBaselineY = brick\.y \+ brick\.h \/ 2 \+ 6/);
   assert.match(source, /if \(brick\.trait !== "reflector"\)/);
-  assert.match(source, /reflectorPlateY/);
+  assert.match(source, /reflectorLineY/);
   assert.match(source, /fillText\(brick\.guardReady \? "G1" : "G0"/);
   assert.doesNotMatch(source, /"shield"/);
 });
