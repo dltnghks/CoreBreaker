@@ -662,3 +662,16 @@ test("layers screen shake, flashes, impact visuals, and stronger synthesized sou
   assert.match(audio, /case "critical"/);
   assert.match(audio, /case "ultimate"/);
 });
+
+test("renders CC0 ring explosion sprites with a procedural fallback", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const license = await readFile(new URL("../docs/THIRD_PARTY_ASSETS.md", import.meta.url), "utf8");
+  assert.match(source, /RING_EXPLOSION_ASSET = "\/assets\/vfx\/ring-explosion\.png"/);
+  assert.match(source, /RING_EXPLOSION_FRAMES = 56/);
+  assert.match(source, /ringExplosionReadyRef\.current && explosionImage/);
+  assert.match(source, /ctx\.drawImage\(/);
+  assert.match(source, /const glow = ctx\.createRadialGradient/);
+  assert.match(license, /Ring Explosion/);
+  assert.match(license, /BenHickling/);
+  assert.match(license, /CC0 1\.0 Universal/);
+});

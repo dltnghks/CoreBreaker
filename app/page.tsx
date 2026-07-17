@@ -178,6 +178,10 @@ const BOT_EVALUATION_WAVE = MAX_WAVE;
 const BASE_BALL_VX = 240;
 const BASE_BALL_VY = 320;
 const PADDLE_ENGLISH_FACTOR = 0.32;
+const RING_EXPLOSION_ASSET = "/assets/vfx/ring-explosion.png";
+const RING_EXPLOSION_COLUMNS = 10;
+const RING_EXPLOSION_FRAME_SIZE = 100;
+const RING_EXPLOSION_FRAMES = 56;
 const MAX_PADDLE_ENGLISH = 220;
 const PLAYER_BALL_COLOR = "#fff27a";
 const WAVE_MULTIBALL_COLOR = "#9aa3b2";
@@ -567,6 +571,8 @@ function chooseBotUpgrade(choices: Upgrade[], existing: UpgradeId[], policy: Bot
 
 export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const ringExplosionRef = useRef<HTMLImageElement | null>(null);
+  const ringExplosionReadyRef = useRef(false);
   const frameRef = useRef<number | null>(null);
   const lastRef = useRef<number>(0);
   const gameRef = useRef<GameState | null>(null);
@@ -611,6 +617,21 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const [skillBenchConfig, setSkillBenchConfig] = useState<SkillBenchConfig>(DEFAULT_SKILL_BENCH_CONFIG);
   const [skillBenchProgress, setSkillBenchProgress] = useState<SkillBenchProgress>(DEFAULT_SKILL_BENCH_PROGRESS);
   const [benchmarkConfig, setBenchmarkConfig] = useState<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
+
+  useEffect(() => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => { ringExplosionReadyRef.current = true; };
+    image.onerror = () => { ringExplosionReadyRef.current = false; };
+    image.src = RING_EXPLOSION_ASSET;
+    ringExplosionRef.current = image;
+    return () => {
+      image.onload = null;
+      image.onerror = null;
+      ringExplosionRef.current = null;
+      ringExplosionReadyRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const enabled = localStorage.getItem("echo-breaker-sound-v1") !== "off";
@@ -2726,6 +2747,28 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ctx.beginPath();
         ctx.arc(effect.x, effect.y, radius, 0, Math.PI * 2);
         ctx.stroke();
+        const explosionImage = ringExplosionRef.current;
+        if (ringExplosionReadyRef.current && explosionImage) {
+          const frame = Math.min(RING_EXPLOSION_FRAMES - 1, Math.floor(progress * RING_EXPLOSION_FRAMES));
+          const sourceX = (frame % RING_EXPLOSION_COLUMNS) * RING_EXPLOSION_FRAME_SIZE;
+          const sourceY = Math.floor(frame / RING_EXPLOSION_COLUMNS) * RING_EXPLOSION_FRAME_SIZE;
+          const spriteSize = effect.size * 2.35;
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, 0.55 + remaining * 0.6);
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(
+            explosionImage,
+            sourceX,
+            sourceY,
+            RING_EXPLOSION_FRAME_SIZE,
+            RING_EXPLOSION_FRAME_SIZE,
+            effect.x - spriteSize / 2,
+            effect.y - spriteSize / 2,
+            spriteSize,
+            spriteSize,
+          );
+          ctx.restore();
+        }
       } else if (effect.kind === "drop") {
         const fallY = effect.y + (effect.y2 - effect.y) * progress * progress;
         const driftX = effect.x + (effect.x2 - effect.x) * progress * 0.18;
