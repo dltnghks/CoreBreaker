@@ -1758,15 +1758,18 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             game.freezeTimer = Math.max(game.freezeTimer, 2 + level);
             game.flashes.push({ text: `${paddle.name} // 빙결 ${2 + level}s`, x: W / 2, y: BRICK_ROW_Y - 18, life: 1, color: "#65dcff" });
             emitEffect("beam", 20, BRICK_ROW_Y, classSkillColor("mage-freeze"), 10, W - 20, BRICK_ROW_Y, 0.7);
+            emitSkillEffect("mage-freeze", W / 2, BRICK_ROW_Y + 24, W - 100, 0.9);
           });
           triggerReflectionSkill("mage-black-hole", (level) => {
             const wellX = Math.max(150, Math.min(W - 150, ball.x));
             const wellY = 145 + decisionRandom() * 80;
             game.gravityWells.push({ ownerPaddleId: paddle.id, x: wellX, y: wellY, radius: 155 + level * 15, life: 3.5, maxLife: 3.5, color: classSkillColor("mage-black-hole") });
+            emitSkillEffect("mage-black-hole", wellX, wellY, 120 + level * 12, 1.05);
             game.flashes.push({ text: `${paddle.name} // 블랙홀`, x: wellX, y: wellY - 28, life: 1, color: "#9a8cff" });
           });
           triggerReflectionSkill("mage-mana-blast", (level) => {
             const targets = game.bricks.filter((target) => target.alive).sort((a, b) => Math.hypot(a.x - ball.x, a.y - ball.y) - Math.hypot(b.x - ball.x, b.y - ball.y)).slice(0, 3 + level);
+            emitSkillEffect("mage-mana-blast", ball.x, ball.y, 86 + level * 9, 0.75);
             strikeTargets(targets, 1, classSkillColor("mage-mana-blast"), "마력 폭발");
           });
           triggerReflectionSkill("mage-elemental-storm", (level) => {
@@ -1775,11 +1778,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             game.freezeTimer = Math.max(game.freezeTimer, 3 + level);
             game.flashes.push({ text: `${paddle.name} // 원소 폭풍`, x: W / 2, y: H / 2, life: 1.2, color: "#c18cff" });
             emitEffect("ring", W / 2, H / 2, classSkillColor("mage-elemental-storm"), 210, W / 2, H / 2, 0.9);
+            emitSkillEffect("mage-elemental-storm", W / 2, H / 2, 190 + level * 12, 1.15);
           });
           triggerReflectionSkill("mage-meteor", (level) => {
             const target = game.bricks.filter((entry) => entry.alive && isDamageableBrick(entry)).sort((a, b) => b.hp - a.hp)[0];
             if (!target) return;
             target.hp -= (8 + level * 4) * damageMultiplier(target);
+            emitSkillEffect("mage-meteor", target.x + target.w / 2, BRICK_ROW_Y - 35, 120 + level * 15, 0.95, target.x + target.w / 2, target.y + target.h / 2);
             emitEffect("blast", target.x + target.w / 2, target.y + target.h / 2, classSkillColor("mage-meteor"), 110 + level * 15, target.x + target.w / 2, target.y + target.h / 2, 0.85);
             emitBurst(target.x + target.w / 2, target.y + target.h / 2, classSkillColor("mage-meteor"), 28, 360);
             audioRef.current?.play("ultimate", 1 + level * 0.25);
@@ -2013,6 +2018,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           emitEffect(lightningImpact ? "lightning" : blastLike ? "blast" : "ring", impactX, impactY, color, lightningImpact ? 74 + index * 8 : 34 + index * 9, impactX, impactY, lightningImpact ? 0.34 : 0.48, id === "archer-weakpoint" ? 1 : 0);
           if (id.startsWith("warrior-")) emitSkillEffect(id, impactX, impactY, 66 + index * 10, 0.5);
           if (id.startsWith("archer-")) emitSkillEffect(id, impactX, impactY, 58 + index * 8, 0.45, impactX + ball.vx * 0.08, impactY + ball.vy * 0.08);
+          if (id.startsWith("mage-")) emitSkillEffect(id, impactX, impactY, 64 + index * 9, 0.55);
           emitBurst(impactX, impactY, color, blastLike ? 14 : 8, blastLike ? 250 : 170);
           impactFeedback(blastLike ? 5.5 : 3.2, color, blastLike ? 0.22 : 0.13, blastLike ? 0.1 : 0);
           audioRef.current?.play(id === "warrior-execute" || id === "archer-weakpoint" ? "critical" : blastLike ? "explosion" : "skill-impact", 1 + index * 0.15);
@@ -3199,6 +3205,90 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             if (step === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
           }
           ctx.stroke();
+        } else if (effect.skillId === "mage-fireball") {
+          ctx.rotate(progress * 2.4);
+          for (let flame = 0; flame < 8; flame++) {
+            const angle = flame * Math.PI / 4;
+            const inner = effect.size * 0.12;
+            const outer = effect.size * (0.3 + progress * 0.28);
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(angle - 0.15) * inner, Math.sin(angle - 0.15) * inner);
+            ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+            ctx.lineTo(Math.cos(angle + 0.15) * inner, Math.sin(angle + 0.15) * inner);
+            ctx.closePath();
+            ctx.fill();
+          }
+        } else if (effect.skillId === "mage-lightning") {
+          ctx.lineWidth = 3.5;
+          for (let bolt = 0; bolt < 5; bolt++) {
+            const angle = bolt * Math.PI * 2 / 5 + progress;
+            const reach = effect.size * (0.25 + progress * 0.38);
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(Math.cos(angle - 0.16) * reach * 0.45, Math.sin(angle - 0.16) * reach * 0.45);
+            ctx.lineTo(Math.cos(angle + 0.12) * reach * 0.72, Math.sin(angle + 0.12) * reach * 0.72);
+            ctx.lineTo(Math.cos(angle) * reach, Math.sin(angle) * reach);
+            ctx.stroke();
+          }
+        } else if (effect.skillId === "mage-freeze") {
+          const span = Math.min(W - 100, effect.size);
+          ctx.lineWidth = 2.5;
+          for (let crystal = 0; crystal < 9; crystal++) {
+            const centerX = -span / 2 + span * crystal / 8;
+            const radius = 8 + progress * 18;
+            for (let arm = 0; arm < 6; arm++) {
+              const angle = arm * Math.PI / 3;
+              ctx.beginPath();
+              ctx.moveTo(centerX, 0);
+              ctx.lineTo(centerX + Math.cos(angle) * radius, Math.sin(angle) * radius);
+              ctx.stroke();
+            }
+          }
+        } else if (effect.skillId === "mage-black-hole") {
+          ctx.lineWidth = 3 + remaining * 2;
+          ctx.rotate(progress * 3.5);
+          ctx.beginPath();
+          for (let step = 0; step <= 60; step++) {
+            const t = step / 60 * Math.PI * 4;
+            const radius = effect.size * 0.035 * t * (1 - progress * 0.35);
+            const x = Math.cos(t) * radius;
+            const y = Math.sin(t) * radius * 0.55;
+            if (step === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        } else if (effect.skillId === "mage-mana-blast") {
+          ctx.rotate(-progress * 1.4);
+          for (let rune = 0; rune < 6; rune++) {
+            const angle = rune * Math.PI / 3;
+            const distance = effect.size * (0.18 + progress * 0.34);
+            ctx.save();
+            ctx.rotate(angle);
+            ctx.translate(distance, 0);
+            ctx.rotate(Math.PI / 4);
+            ctx.strokeRect(-7, -7, 14, 14);
+            ctx.restore();
+          }
+        } else if (effect.skillId === "mage-elemental-storm") {
+          const stormColors = ["#ff7043", "#a78bfa", "#65dcff"];
+          stormColors.forEach((color, ring) => {
+            ctx.strokeStyle = color;
+            ctx.globalAlpha = remaining * (0.95 - ring * 0.16);
+            ctx.lineWidth = 4 - ring * 0.6;
+            ctx.beginPath();
+            ctx.arc(0, 0, effect.size * (0.2 + progress * (0.38 + ring * 0.13)), ring * 0.8 + progress * 2, Math.PI * 1.35 + ring * 0.8 + progress * 2);
+            ctx.stroke();
+          });
+        } else if (effect.skillId === "mage-meteor") {
+          const destinationY = effect.y2 - effect.y;
+          const fallY = destinationY * Math.min(1, progress * 1.35);
+          ctx.lineWidth = 12 * remaining + 3;
+          ctx.beginPath();
+          ctx.moveTo(-18, fallY - effect.size * 0.9);
+          ctx.lineTo(0, fallY);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(0, fallY, 9 + progress * 13, 0, Math.PI * 2);
+          ctx.fill();
         } else {
           ctx.lineWidth = 3;
           ctx.beginPath();

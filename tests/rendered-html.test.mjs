@@ -739,3 +739,18 @@ test("gives every archer skill a distinct projectile or targeting signature", as
   assert.match(source, /const denominator = 1 \+ Math\.sin\(t\) \*\* 2/);
   assert.match(source, /ctx\.arc\(0, 0, reticle/);
 });
+
+test("gives every mage skill a distinct elemental field signature", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /emitSkillEffect\("mage-freeze"/);
+  assert.match(source, /emitSkillEffect\("mage-black-hole"/);
+  assert.match(source, /emitSkillEffect\("mage-mana-blast"/);
+  assert.match(source, /emitSkillEffect\("mage-elemental-storm"/);
+  assert.match(source, /emitSkillEffect\("mage-meteor"/);
+  ["mage-fireball", "mage-lightning", "mage-freeze", "mage-black-hole", "mage-mana-blast", "mage-elemental-storm", "mage-meteor"].forEach((id) => {
+    assert.match(source, new RegExp(`effect\\.skillId === "${id}"|id === "${id}"`));
+  });
+  assert.match(source, /const stormColors = \["#ff7043", "#a78bfa", "#65dcff"\]/);
+  assert.match(source, /const destinationY = effect\.y2 - effect\.y/);
+  assert.match(source, /const radius = effect\.size \* 0\.035 \* t/);
+});
