@@ -376,18 +376,15 @@ test("runs a no-ghost playtest bot and persists balance metrics", async () => {
   assert.match(source, /EXPORT JSON/);
 });
 
-test("connects the benchmark wave simulator to live bot telemetry", async () => {
+test("keeps benchmark telemetry inside the unified live-game runner", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  const simulator = await readFile(new URL("../app/skill-lab/balance-simulator.tsx", import.meta.url), "utf8");
   const lab = await readFile(new URL("../app/benchmark/page.tsx", import.meta.url), "utf8");
   assert.match(source, /balanceConfigRef\.current/);
   assert.match(source, /BALANCE_STORAGE_KEY/);
-  assert.match(lab, /<BalanceSimulator \/>/);
-  assert.match(simulator, /WAVE BALANCE SIMULATOR/);
-  assert.match(simulator, /BOT DATA AUTO FIT/);
-  assert.match(simulator, /window\.setInterval\(loadRuns, 1000\)/);
-  assert.match(simulator, /completedRuns\.length < 3/);
-  assert.match(simulator, /BOT_LIVE_STORAGE_KEY/);
+  assert.match(lab, /<GameRuntime benchmarkMode \/>/);
+  assert.doesNotMatch(lab, /BalanceSimulator|SkillBench|BenchmarkSetup/);
+  assert.match(source, /실제 게임 W1–W/);
+  assert.match(source, /updateBenchmarkRuns/);
 });
 
 test("finishes bot evaluations at the wave 20 final boss", async () => {
@@ -399,30 +396,22 @@ test("finishes bot evaluations at the wave 20 final boss", async () => {
   assert.match(source, /BENCHMARK START/);
 });
 
-test("separates gameplay from a cumulative feature benchmark", async () => {
+test("runs the benchmark with the complete live-game ruleset", async () => {
   const response = await render("/benchmark");
   assert.equal(response.status, 200);
   const html = await response.text();
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const config = await readFile(new URL("../app/benchmark-config.ts", import.meta.url), "utf8");
-  assert.match(html, /BENCHMARK LAB/);
-  assert.match(html, /ORIGINAL/);
-  assert.match(html, /\+ PRESSURE/);
-  assert.match(html, /\+ ITEMS/);
-  assert.match(html, /\+ BRICK TYPES/);
-  assert.match(html, /\+ SKILLS/);
-  assert.match(html, /\+ BOSSES/);
-  assert.match(config, /pressure: stage >= 1/);
-  assert.match(config, /items: stage >= 2/);
-  assert.match(config, /brickTypes: stage >= 3/);
-  assert.match(config, /skills: stage >= 4/);
-  assert.match(config, /bosses: stage >= 5/);
+  assert.match(html, /CORE BREAKER BENCH/);
+  assert.match(config, /stage: 5/);
+  assert.match(config, /pressure: true/);
+  assert.match(config, /items: true/);
+  assert.match(config, /brickTypes: true/);
+  assert.match(config, /skills: true/);
+  assert.match(config, /bosses: true/);
   assert.match(source, /benchmarkMode && <aside className="ghost-panel">/);
-  assert.match(source, /if \(!activeBenchmark\.items\)/);
-  assert.match(source, /if \(!activeBenchmark\.brickTypes\)/);
-  assert.match(source, /if \(!activeBenchmark\.skills\)/);
-  assert.match(source, /if \(!activeBenchmark\.bosses\)/);
-  assert.match(source, /if \(!activeBenchmark\.pressure\)/);
+  assert.doesNotMatch(source, /if \(!activeBenchmark\./);
+  assert.match(source, /botSkillBenchActiveRef\.current = !benchmarkMode/);
 });
 
 test.skip("runs legacy controlled baseline and level 1-3 skill bench groups", async () => {

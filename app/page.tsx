@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { GameAudio } from "./game-audio";
 import { DEFAULT_SKILLS, ENCHANT_MODE_LABELS, levelValue, NORMAL_SKILLS, normalizeSkillConfigs, SKILL_COLORS, SKILL_STORAGE_KEY, skillConfigMap, ULTIMATE_SKILLS, type ClassSkillId, type SkillCategory, type SkillConfig, type UpgradeId } from "./skill-config";
 import { BALANCE_STORAGE_KEY, BOT_LIVE_STORAGE_KEY, BOT_RESULTS_STORAGE_KEY, DEFAULT_BALANCE_CONFIG, DEFAULT_SKILL_BENCH_CONFIG, DEFAULT_SKILL_BENCH_PROGRESS, normalizeBalanceConfig, normalizeSkillBenchConfig, normalizeSkillBenchProgress, SKILL_BENCH_PROGRESS_KEY, SKILL_BENCH_STORAGE_KEY, type BalanceConfig, type BotWaveSample, type SkillBenchConfig, type SkillBenchProgress } from "./balance-config";
-import { BENCHMARK_STORAGE_KEY, benchmarkFeatures, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConfig, type BenchmarkConfig } from "./benchmark-config";
+import { BENCHMARK_STORAGE_KEY, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConfig, type BenchmarkConfig } from "./benchmark-config";
 import { MAX_WAVE, waveDefinition } from "./wave-config";
 
 type PayloadId = "pierce" | "blast" | "glass" | "link";
@@ -16,7 +16,7 @@ type BotPolicy = "balanced" | "survival" | "random";
 type BotSpeed = 1 | 2 | 4 | 8;
 type BotMetrics = { maxBalls: number; ballLosses: number; missileActivations: number; safetySaves: number; gravityRescues: number };
 type SkillBenchVariant = { batchId: string; environment: SkillBenchConfig["environment"]; skillId: UpgradeId | "original"; level: 0 | 1 | 2 | 3; skillValues: [number, number, number]; seed: number };
-type BotRunResult = BotMetrics & { id: string; run: number; policy: BotPolicy; speed: BotSpeed; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig | null; waveSamples: BotWaveSample[]; evaluationComplete: boolean; skillBench: SkillBenchVariant | null };
+type BotRunResult = BotMetrics & { id: string; run: number; policy: BotPolicy; speed: BotSpeed; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig | null; benchmarkRuleset?: "live-v1" | null; waveSamples: BotWaveSample[]; evaluationComplete: boolean; skillBench: SkillBenchVariant | null };
 
 type Upgrade = {
   id: UpgradeId;
@@ -913,6 +913,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         createdAt: Date.now(),
         balanceConfig: { ...balanceConfigRef.current },
         benchmarkConfig: benchmarkMode ? { ...benchmarkConfigRef.current } : null,
+        benchmarkRuleset: benchmarkMode ? "live-v1" : null,
         waveSamples: botSkillBenchVariantRef.current ? [] : [...game.botWaveSamples],
         evaluationComplete: game.wave >= (benchmarkMode ? benchmarkConfigRef.current.targetWave : BOT_EVALUATION_WAVE) && game.coreHp > 0,
         skillBench: botSkillBenchVariantRef.current,
@@ -956,7 +957,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const levelUp = useCallback(() => {
     const game = gameRef.current;
     if (!game || levelUpRef.current) return;
-    if (benchmarkMode && !benchmarkFeatures(benchmarkConfigRef.current.stage).skills) return;
     if (botSkillBenchActiveRef.current && skillBenchConfigRef.current.environment !== "ecosystem") return;
     const ballEconomyUnlocked = game.bossRewards.length > 0;
     const benchSkillId = botSkillBenchVariantRef.current?.skillId;
@@ -1070,31 +1070,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       brick.blastVulnerabilitySourcePaddleId ??= null;
       brick.lastHitPaddleId ??= null;
     });
-    const activeBenchmark = benchmarkFeatures(benchmarkConfigRef.current.stage);
-    if (benchmarkMode) {
-      if (!activeBenchmark.items) {
-        game.items = [];
-        game.bricks.forEach((brick) => { brick.drop = null; });
-      }
-      if (!activeBenchmark.brickTypes) {
-        game.bricks.forEach((brick) => {
-          brick.trait = "standard";
-          brick.guardReady = false;
-          brick.healTimer = 3;
-          brick.hp = Math.min(1, brick.hp);
-          brick.maxHp = 1;
-        });
-      }
-      if (!activeBenchmark.skills) {
-        game.upgrades = [];
-      }
-      if (!activeBenchmark.bosses) {
-        game.bossActive = false;
-        game.bossPending = false;
-        game.nextBossWave = Number.MAX_SAFE_INTEGER;
-      }
-      if (!activeBenchmark.pressure) game.rowTimer = Number.MAX_SAFE_INTEGER;
-    }
     game.elapsed += dt;
     game.freezeTimer = Math.max(0, game.freezeTimer - dt);
     if (game.freezeTimer <= 0) {
@@ -2080,7 +2055,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
     const startWave = (waveNumber: number) => {
       const definition = waveDefinition(waveNumber);
-      const bossEnabled = !benchmarkMode || activeBenchmark.bosses;
+      const bossEnabled = true;
       const timeBonus = skillValue("common-xp", upgradeLevel(game.upgrades, "common-xp"));
       game.wave = waveNumber;
       game.level = waveNumber;
@@ -2210,12 +2185,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.comboTimer = 0;
       game.waveResolution = { timer: 1.2, maxTimer: 1.2, cleared: false, wasBoss, survivors: survivors.length, coreDamage, blocked };
       game.flashes.push({ text: `BLOCK SETTLEMENT // ${survivors.length} THREATS`, x: W / 2, y: H / 2, life: 1.4, color: "#ff6b87" });
-      return;
-    }
-
-    if (benchmarkMode && botActiveRef.current && !activeBenchmark.bosses && game.wave >= benchmarkConfigRef.current.targetWave) {
-      game.flashes.push({ text: `W${benchmarkConfigRef.current.targetWave} BENCHMARK COMPLETE`, x: W / 2, y: H / 2, life: 1.8, color: "#72f1b8" });
-      finishRun();
       return;
     }
 
@@ -3423,7 +3392,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.flashes.push({ text: skillId === "original" ? "ORIGINAL // NO SKILLS" : `SKILL BENCH // ${level === 0 ? "BASELINE" : `${benchSkill?.name ?? skillId} LV${level}`}`, x: W / 2, y: H / 2, life: 1.8, color: level === 0 || !benchSkill ? "#8492a9" : benchSkill.color });
     } else {
       botSkillBenchVariantRef.current = null;
-      if (asBot && (!benchmarkMode || benchmarkFeatures(benchmarkConfigRef.current.stage).skills)) {
+      if (asBot) {
         const first = chooseBotUpgrade(pickUpgradeChoices(game.upgrades, upgradeCatalogRef.current, false), game.upgrades, botPolicyRef.current);
         game.upgrades.push(first.id);
         const secondPool = pickUpgradeChoices(game.upgrades, upgradeCatalogRef.current, false, [first.id]);
@@ -3454,8 +3423,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const startBotSession = () => {
     const bench = skillBenchConfigRef.current;
     const queue = bench.environment === "original" ? ["original"] : (bench.mode === "batch" ? bench.skillIds : [bench.skillId]).filter((id) => upgradeCatalogRef.current.some((upgrade) => upgrade.id === id));
-    const benchAllowed = !benchmarkMode || bench.environment === "original" || benchmarkFeatures(benchmarkConfigRef.current.stage).skills;
-    botSkillBenchActiveRef.current = bench.enabled && benchAllowed && queue.length > 0;
+    botSkillBenchActiveRef.current = !benchmarkMode && bench.enabled && queue.length > 0;
     const variantsPerSkill = bench.environment === "original" ? 1 : 4;
     const targetRuns = botSkillBenchActiveRef.current ? queue.length * bench.runsPerVariant * variantsPerSkill : benchmarkMode ? benchmarkConfigRef.current.runs : botTargetRuns;
     const savedProgress = skillBenchProgressRef.current;
@@ -3563,7 +3531,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   };
 
   const exportBotResults = () => {
-    const blob = new Blob([JSON.stringify(botResultsRef.current, null, 2)], { type: "application/json" });
+    const exportResults = benchmarkMode ? botResultsRef.current.filter((item) => item.benchmarkRuleset === "live-v1") : botResultsRef.current;
+    const blob = new Blob([JSON.stringify(exportResults, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -3573,9 +3542,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   };
 
   const clearBotResults = () => {
-    botResultsRef.current = [];
-    setBotResults([]);
-    localStorage.removeItem(BOT_RESULTS_STORAGE_KEY);
+    const nextResults = benchmarkMode ? botResultsRef.current.filter((item) => item.benchmarkRuleset !== "live-v1") : [];
+    botResultsRef.current = nextResults;
+    setBotResults(nextResults);
+    if (nextResults.length > 0) localStorage.setItem(BOT_RESULTS_STORAGE_KEY, JSON.stringify(nextResults));
+    else localStorage.removeItem(BOT_RESULTS_STORAGE_KEY);
   };
 
   const onPointerMove = (clientX: number) => {
@@ -3597,18 +3568,26 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     } satisfies Upgrade;
   });
   const upgradeCounts = (ids: UpgradeId[]) => [...upgradeCatalog, ...ultimateCatalog].map((u) => ({ ...u, count: ids.filter((id) => id === u.id).length })).filter((u) => u.count > 0);
-  const botAverageSurvival = botResults.length ? botResults.reduce((sum, item) => sum + item.elapsed, 0) / botResults.length : 0;
-  const botAverageWave = botResults.length ? botResults.reduce((sum, item) => sum + item.wave, 0) / botResults.length : 0;
-  const botAverageBalls = botResults.length ? botResults.reduce((sum, item) => sum + item.maxBalls, 0) / botResults.length : 0;
-  const recentBotResults = [...botResults].slice(-5).reverse();
-  const activeBenchmarkFeatures = benchmarkFeatures(benchmarkConfig.stage);
+  const visibleBotResults = benchmarkMode ? botResults.filter((item) => item.benchmarkRuleset === "live-v1") : botResults;
+  const botAverageSurvival = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.elapsed, 0) / visibleBotResults.length : 0;
+  const botAverageWave = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.wave, 0) / visibleBotResults.length : 0;
+  const botAverageBalls = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.maxBalls, 0) / visibleBotResults.length : 0;
+  const recentBotResults = [...visibleBotResults].slice(-5).reverse();
+  const showSkillBenchmark = !benchmarkMode && skillBenchConfig.enabled;
+  const updateBenchmarkRuns = (runs: BenchmarkConfig["runs"]) => {
+    const next = { ...benchmarkConfigRef.current, runs };
+    benchmarkConfigRef.current = next;
+    setBenchmarkConfig(next);
+    setBotTargetRuns(runs);
+    localStorage.setItem(BENCHMARK_STORAGE_KEY, JSON.stringify(next));
+  };
 
   return (
     <main className="app-shell">
       <header className="topbar">
         <div className="brand-block">
           <span className="brand-mark">CB</span>
-          <div><p className="eyebrow">{benchmarkMode ? `BENCHMARK STAGE ${benchmarkConfig.stage} // TARGET W${benchmarkConfig.targetWave}` : "PLAYTEST BUILD 0.3 // LIVE GAMEPLAY"}</p><h1>{benchmarkMode ? "CORE BREAKER BENCH" : "CORE BREAKER"}</h1></div>
+          <div><p className="eyebrow">{benchmarkMode ? `LIVE GAME RULES // TARGET W${benchmarkConfig.targetWave}` : "PLAYTEST BUILD 0.3 // LIVE GAMEPLAY"}</p><h1>{benchmarkMode ? "CORE BREAKER BENCH" : "CORE BREAKER"}</h1></div>
         </div>
         <div className="header-rule" />
         <a className="lab-link" href={benchmarkMode ? "/" : "/benchmark"}>{benchmarkMode ? "GAMEPLAY" : "BENCHMARK"}</a>
@@ -3638,15 +3617,15 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               onPointerMove={(e) => onPointerMove(e.clientX)}
               onPointerDown={(e) => onPointerMove(e.clientX)}
             />
-            {(!benchmarkMode || activeBenchmarkFeatures.items) && <div className="drop-legend" aria-label="아이템 블록 표시 안내">
+            <div className="drop-legend" aria-label="아이템 블록 표시 안내">
               {ITEM_KINDS.map((kind) => <span key={kind} style={{ "--drop-color": ITEM_DATA[kind].color } as React.CSSProperties}><b>{ITEM_DATA[kind].symbol}</b>{ITEM_DATA[kind].label}</span>)}
-            </div>}
+            </div>
 
             {mode === "lobby" && (
               <div className="overlay lobby-overlay">
-                <p className="overlay-kicker">{benchmarkMode ? `CONTROLLED STAGE ${benchmarkConfig.stage} · ${benchmarkConfig.runs} RUNS` : "20 WAVES. 60 SECONDS. BREAK OR DEFEND."}</p>
-                <h2>{benchmarkMode ? <>환경 적용 완료<br />봇 테스트를 시작하세요.</> : <>패턴을 돌파하고<br />코어를 지키세요.</>}</h2>
-                <p>{benchmarkMode ? `활성 요소: ${Object.entries(activeBenchmarkFeatures).filter(([, enabled]) => enabled).map(([key]) => key.toUpperCase()).join(" · ") || "ORIGINAL ONLY"}` : "웨이브마다 고정 패턴을 60초 동안 공략하세요. 시간이 끝나면 남은 모든 블록이 코어를 공격하고 다음 웨이브가 시작됩니다."}</p>
+                <p className="overlay-kicker">{benchmarkMode ? `REAL STAGE · W1–W20 · ${benchmarkConfig.runs} RUNS` : "20 WAVES. 60 SECONDS. BREAK OR DEFEND."}</p>
+                <h2>{benchmarkMode ? <>실제 게임과 같은 스테이지<br />하나의 러너에서 테스트합니다.</> : <>패턴을 돌파하고<br />코어를 지키세요.</>}</h2>
+                <p>{benchmarkMode ? "실제 게임의 웨이브 패턴, 블록 타입, 멀티볼, 스킬 보상, 보스 규칙을 그대로 사용합니다." : "웨이브마다 고정 패턴을 60초 동안 공략하세요. 시간이 끝나면 남은 모든 블록이 코어를 공격하고 다음 웨이브가 시작됩니다."}</p>
                 {!benchmarkMode && <button className="primary-button" onClick={() => startRun(false)}>20 웨이브 시작 <span>→</span></button>}
                 <small>{benchmarkMode ? "오른쪽 플레이테스트 봇에서 실행합니다." : "마우스 또는 터치로 패들을 움직이세요."}</small>
               </div>
@@ -3778,16 +3757,21 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           <section className="bot-panel" aria-label="플레이테스트 봇 설정 및 결과">
             <div className="panel-heading">
                   <div><p className="eyebrow">NO GHOST · AUTO RUN · TARGET W{benchmarkConfig.targetWave}</p><h2>벤치마크 러너</h2></div>
-              <span>{botRunning ? `${botCompletedRuns}/${botTargetRuns}` : `${botResults.length} DATA`}</span>
+              <span>{botRunning ? `${botCompletedRuns}/${botTargetRuns}` : `${visibleBotResults.length} DATA`}</span>
             </div>
-            <p className="panel-copy">{skillBenchConfig.enabled
+            <p className="panel-copy">{showSkillBenchmark
               ? skillBenchConfig.environment === "original"
                 ? `ORIGINAL · 스킬 획득 없음 · ${skillBenchConfig.runsPerVariant}회 기준 측정${skillBenchProgress.status === "paused" ? ` · ${skillBenchProgress.completedRuns}회부터 재개` : ""}`
                 : skillBenchConfig.mode === "batch"
                 ? `배치 스킬 벤치 · ${skillBenchConfig.skillIds.length}개 스킬 · 총 ${skillBenchConfig.skillIds.length * skillBenchConfig.runsPerVariant * 4}회${skillBenchProgress.status === "paused" ? ` · ${skillBenchProgress.completedRuns}회부터 재개` : ""}`
                 : `${skillBenchConfig.environment.toUpperCase()} · ${activeSkillMap[skillBenchConfig.skillId as UpgradeId]?.name ?? skillBenchConfig.skillId} · 기준/LV1/LV2/LV3 각 ${skillBenchConfig.runsPerVariant}회`
-                  : `STAGE ${benchmarkConfig.stage} · W${benchmarkConfig.targetWave}까지 ${benchmarkConfig.runs}회 반복 · 활성 요소 ${Object.values(activeBenchmarkFeatures).filter(Boolean).length}개`}</p>
+                  : `실제 게임 W1–W${benchmarkConfig.targetWave} · 동일 웨이브/보스/보상 규칙 · ${benchmarkConfig.runs}회 반복`}</p>
             <div className="bot-controls">
+              <label>반복 횟수
+                <select value={benchmarkConfig.runs} onChange={(event) => updateBenchmarkRuns(Number(event.target.value) as BenchmarkConfig["runs"])} disabled={botRunning || mode !== "lobby"}>
+                  {[3, 5, 10, 20].map((runs) => <option key={runs} value={runs}>{runs}회</option>)}
+                </select>
+              </label>
               <label>선택 정책
                 <select value={botPolicy} onChange={(event) => setBotPolicy(event.target.value as BotPolicy)} disabled={botRunning || mode !== "lobby"}>
                   <option value="balanced">균형형</option>
@@ -3807,7 +3791,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             </div>
             {botRunning
               ? <button className="bot-stop" type="button" onClick={stopBotSession}>BOT STOP · {botCompletedRuns}/{botTargetRuns} · {botSpeed}×</button>
-              : <button className="bot-start" type="button" onClick={startBotSession} disabled={mode !== "lobby"}>{skillBenchConfig.enabled ? skillBenchProgress.status === "paused" ? "SKILL BENCH RESUME" : "SKILL BENCH START" : "BENCHMARK START"}</button>}
+              : <button className="bot-start" type="button" onClick={startBotSession} disabled={mode !== "lobby"}>{showSkillBenchmark ? skillBenchProgress.status === "paused" ? "SKILL BENCH RESUME" : "SKILL BENCH START" : "BENCHMARK START"}</button>}
             <div className="bot-summary">
               <div><span>AVG TIME</span><strong>{botAverageSurvival.toFixed(1)}s</strong></div>
               <div><span>AVG WAVE</span><strong>{botAverageWave.toFixed(1)}</strong></div>
@@ -3820,13 +3804,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               </div>
             )}
             <div className="bot-data-actions">
-              <button type="button" onClick={exportBotResults} disabled={botResults.length === 0}>EXPORT JSON</button>
-              <button type="button" onClick={clearBotResults} disabled={botRunning || botResults.length === 0}>CLEAR DATA</button>
+              <button type="button" onClick={exportBotResults} disabled={visibleBotResults.length === 0}>EXPORT JSON</button>
+              <button type="button" onClick={clearBotResults} disabled={botRunning || visibleBotResults.length === 0}>CLEAR DATA</button>
             </div>
           </section>
           <div className="panel-note">
             <span>CURRENT TEST SCOPE</span>
-            <p>고스트 시스템은 밸런스 검증을 위해 임시 비활성화했습니다. 플레이어 패들, 공 경제와 보스 이후 빌드 전환만 측정합니다.</p>
+            <p>게임 플레이와 동일한 20개 웨이브를 자동 반복합니다. 시작 스킬 2개, 웨이브 보상, 보스 궁극기까지 실제 규칙으로 선택합니다.</p>
           </div>
         </aside>}
       </section>

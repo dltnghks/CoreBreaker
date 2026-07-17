@@ -210,7 +210,7 @@ CORE BREAKER는 20개의 고정 패턴을 제한시간 안에 공략하는 웨�
 ### 공간 분리
 
 - `/`: 실제 게임플레이 공간
-- `/benchmark`: 누적 기능 벤치마크와 봇 실행 공간
+- `/benchmark`: 실제 게임과 동일한 W1–W20 스테이지를 반복 실행하는 단일 봇 벤치마크 공간
 - `/skill-lab`: 스킬 데이터 편집, 빌드 구성과 개별 스킬 실험 공간
 
 ### 누적 벤치마크 단계
@@ -281,7 +281,7 @@ CORE BREAKER는 20개의 고정 패턴을 제한시간 안에 공략하는 웨�
 | `app/skill-config.ts` | 전체 스킬 데이터와 레벨 수치 |
 | `app/game-audio.ts` | 합성 사운드와 믹싱 |
 | `app/balance-config.ts` | 난이도·봇·스킬 벤치 설정 |
-| `app/benchmark-config.ts` | 누적 벤치마크 단계 |
+| `app/benchmark-config.ts` | 실제 게임 규칙 기반 벤치마크 반복 설정 |
 | `app/skill-lab/` | 스킬 편집 및 실험 UI |
 | `app/benchmark/` | 벤치마크 실행 UI |
 | `tests/rendered-html.test.mjs` | 렌더링과 주요 규칙 회귀 테스트 |
