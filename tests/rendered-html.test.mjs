@@ -162,6 +162,17 @@ test("defines 20 fixed brick patterns with bosses at waves 10 and 20", async () 
   patternRows.forEach((row) => assert.equal(row.length, 12));
 });
 
+test("disperses explosive bricks so they cannot clear a wave as one chain", async () => {
+  const waves = await readFile(new URL("../app/wave-config.ts", import.meta.url), "utf8");
+  const normalWaveLines = waves.split("\n").filter((line) => /^\s*wave\(\d+/.test(line) && !line.includes("[],"));
+  normalWaveLines.forEach((line) => {
+    const rows = [...line.matchAll(/"([.nhgexcr]{12})"/g)].map((match) => match[1]);
+    const explosiveRows = rows.filter((row) => row.includes("e"));
+    assert.ok(explosiveRows.length <= 1, `explosives must occupy one row: ${line.trim()}`);
+    explosiveRows.forEach((row) => assert.doesNotMatch(row, /e.?e/, `explosives are too close: ${row}`));
+  });
+});
+
 test("ends a wave on clear or drops every surviving brick at time up", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const waveCleared = game\.bossActive/);
