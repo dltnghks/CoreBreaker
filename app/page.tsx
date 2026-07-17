@@ -154,7 +154,7 @@ type GameState = {
 
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
 type Flash = { text: string; x: number; y: number; life: number; color: string };
-type GameEffect = { kind: "ring" | "beam" | "blast" | "drop" | "spark"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string; variant: number };
+type GameEffect = { kind: "ring" | "beam" | "blast" | "drop" | "spark" | "lightning"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string; variant: number };
 type PaddleCounter = { reflections: number; barrierReflections: number; missileReflections: number; safetyTimer: number; gravityTimer: number; directKills: number; pierceKills: number; feverMilestone: number; lastShotTimer: number; combo: number; comboTimer: number; skillReflections: Partial<Record<ClassSkillId, number>>; chargePulse: number; chargeColor: string };
 type WaveSettlement = { wave: number; waveName: string; cleared: boolean; wasBoss: boolean; survivors: number; coreDamage: number; blocked: number; coreHp: number; finalWave: boolean };
 type WaveResolution = { timer: number; maxTimer: number; cleared: boolean; wasBoss: boolean; survivors: number; coreDamage: number; blocked: number };
@@ -185,6 +185,10 @@ const RING_EXPLOSION_FRAMES = 56;
 const HIT_SPARK_ASSETS = ["/assets/vfx/hit-spark-a.png", "/assets/vfx/hit-spark-b.png"] as const;
 const HIT_SPARK_FRAME_SIZE = 32;
 const HIT_SPARK_FRAMES = 9;
+const RADIAL_LIGHTNING_ASSET = "/assets/vfx/radial-lightning.png";
+const RADIAL_LIGHTNING_COLUMNS = 4;
+const RADIAL_LIGHTNING_FRAME_SIZE = 64;
+const RADIAL_LIGHTNING_FRAMES = 8;
 const MAX_PADDLE_ENGLISH = 220;
 const PLAYER_BALL_COLOR = "#fff27a";
 const WAVE_MULTIBALL_COLOR = "#9aa3b2";
@@ -578,6 +582,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const ringExplosionReadyRef = useRef(false);
   const hitSparkRefs = useRef<Array<HTMLImageElement | null>>([null, null]);
   const hitSparkReadyRef = useRef([false, false]);
+  const radialLightningRef = useRef<HTMLImageElement | null>(null);
+  const radialLightningReadyRef = useRef(false);
   const frameRef = useRef<number | null>(null);
   const lastRef = useRef<number>(0);
   const gameRef = useRef<GameState | null>(null);
@@ -652,6 +658,21 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       images.forEach((image) => { image.onload = null; image.onerror = null; });
       hitSparkRefs.current = [null, null];
       hitSparkReadyRef.current = [false, false];
+    };
+  }, []);
+
+  useEffect(() => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => { radialLightningReadyRef.current = true; };
+    image.onerror = () => { radialLightningReadyRef.current = false; };
+    image.src = RADIAL_LIGHTNING_ASSET;
+    radialLightningRef.current = image;
+    return () => {
+      image.onload = null;
+      image.onerror = null;
+      radialLightningRef.current = null;
+      radialLightningReadyRef.current = false;
     };
   }, []);
 
@@ -1957,7 +1978,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           const impactX = brick.x + brick.w / 2;
           const impactY = brick.y + brick.h / 2;
           const blastLike = id === "warrior-shockwave" || id === "mage-fireball";
-          emitEffect(blastLike ? "blast" : "ring", impactX, impactY, color, 34 + index * 9, impactX, impactY, 0.48);
+          const lightningImpact = id === "warrior-smash" || id === "warrior-execute" || id === "warrior-crush" || id === "archer-weakpoint";
+          emitEffect(lightningImpact ? "lightning" : blastLike ? "blast" : "ring", impactX, impactY, color, lightningImpact ? 74 + index * 8 : 34 + index * 9, impactX, impactY, lightningImpact ? 0.34 : 0.48, id === "archer-weakpoint" ? 1 : 0);
           emitBurst(impactX, impactY, color, blastLike ? 14 : 8, blastLike ? 250 : 170);
           impactFeedback(blastLike ? 5.5 : 3.2, color, blastLike ? 0.22 : 0.13, blastLike ? 0.1 : 0);
           audioRef.current?.play(id === "warrior-execute" || id === "archer-weakpoint" ? "critical" : blastLike ? "explosion" : "skill-impact", 1 + index * 0.15);
@@ -2833,6 +2855,44 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             ctx.lineTo(effect.x + Math.cos(angle) * effect.size * progress, effect.y + Math.sin(angle) * effect.size * progress);
             ctx.stroke();
           }
+        }
+      } else if (effect.kind === "lightning") {
+        const lightningImage = radialLightningRef.current;
+        if (radialLightningReadyRef.current && lightningImage) {
+          const frame = Math.min(RADIAL_LIGHTNING_FRAMES - 1, Math.floor(progress * RADIAL_LIGHTNING_FRAMES));
+          const sourceX = (frame % RADIAL_LIGHTNING_COLUMNS) * RADIAL_LIGHTNING_FRAME_SIZE;
+          const sourceY = Math.floor(frame / RADIAL_LIGHTNING_COLUMNS) * RADIAL_LIGHTNING_FRAME_SIZE;
+          const spriteSize = effect.size * (0.8 + Math.sin(progress * Math.PI) * 0.35);
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, remaining * 2.2);
+          ctx.imageSmoothingEnabled = false;
+          ctx.filter = effect.variant === 1
+            ? "hue-rotate(145deg) saturate(1.9) brightness(1.35)"
+            : "hue-rotate(180deg) saturate(1.65) brightness(1.2)";
+          ctx.drawImage(
+            lightningImage,
+            sourceX,
+            sourceY,
+            RADIAL_LIGHTNING_FRAME_SIZE,
+            RADIAL_LIGHTNING_FRAME_SIZE,
+            effect.x - spriteSize / 2,
+            effect.y - spriteSize / 2,
+            spriteSize,
+            spriteSize,
+          );
+          ctx.restore();
+        } else {
+          ctx.globalAlpha = remaining;
+          ctx.lineWidth = 3 + remaining * 3;
+          ctx.beginPath();
+          for (let bolt = 0; bolt < 9; bolt++) {
+            const angle = (Math.PI * 2 * bolt) / 9 + progress * 0.6;
+            const inner = effect.size * 0.12;
+            const outer = effect.size * (0.25 + progress * 0.35);
+            ctx.moveTo(effect.x + Math.cos(angle) * inner, effect.y + Math.sin(angle) * inner);
+            ctx.lineTo(effect.x + Math.cos(angle + 0.12) * outer, effect.y + Math.sin(angle + 0.12) * outer);
+          }
+          ctx.stroke();
         }
       } else if (effect.kind === "drop") {
         const fallY = effect.y + (effect.y2 - effect.y) * progress * progress;

@@ -21,3 +21,13 @@ Attribution is not required by CC0, but the source is retained here for provenan
 - License: CC0 1.0 Universal
 - License URL: https://creativecommons.org/publicdomain/zero/1.0/
 - Changes: Renamed on import. Both 9-frame strips are rendered at different sizes for normal and guarded brick impacts.
+
+## Radial Lightning Effect
+
+- File: `public/assets/vfx/radial-lightning.png`
+- Original title: **Radial lightning effect** (`pixelated_tilesheet.png` variant)
+- Creator: 13rice
+- Source: https://opengameart.org/content/radial-lightning-effect
+- License: CC0 1.0 Universal
+- License URL: https://creativecommons.org/publicdomain/zero/1.0/
+- Changes: Renamed on import. The 8-frame sheet is color-shifted at runtime for warrior and critical-hit variants.

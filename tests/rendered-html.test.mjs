@@ -687,3 +687,16 @@ test("renders separate CC0 spark strips for normal and guarded brick hits", asyn
   assert.match(license, /Spark Effect/);
   assert.match(license, /kurohina/);
 });
+
+test("renders tinted CC0 radial lightning for warrior and critical impacts", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const license = await readFile(new URL("../docs/THIRD_PARTY_ASSETS.md", import.meta.url), "utf8");
+  assert.match(source, /RADIAL_LIGHTNING_ASSET = "\/assets\/vfx\/radial-lightning\.png"/);
+  assert.match(source, /RADIAL_LIGHTNING_FRAMES = 8/);
+  assert.match(source, /lightningImpact \? "lightning"/);
+  assert.match(source, /id === "archer-weakpoint" \? 1 : 0/);
+  assert.match(source, /hue-rotate\(180deg\)/);
+  assert.match(source, /effect\.kind === "lightning"/);
+  assert.match(license, /Radial Lightning Effect/);
+  assert.match(license, /13rice/);
+});
