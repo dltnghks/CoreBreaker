@@ -31,3 +31,13 @@ Attribution is not required by CC0, but the source is retained here for provenan
 - License: CC0 1.0 Universal
 - License URL: https://creativecommons.org/publicdomain/zero/1.0/
 - Changes: Renamed on import. The 8-frame sheet is color-shifted at runtime for warrior and critical-hit variants.
+
+## Pixel Art Spells
+
+- Files: `public/assets/vfx/mage-fireball.png`, `public/assets/vfx/mage-sparks.png`
+- Original title: **Pixel Art Spells** (`Fireball.png`, `Magic Sparks.png`)
+- Creator: DevWizard
+- Source: https://opengameart.org/content/pixel-art-spells
+- License: CC0 1.0 Universal
+- License URL: https://creativecommons.org/publicdomain/zero/1.0/
+- Changes: Selected and renamed two 6-frame strips. Fireball rotates with ball velocity; sparks remain screen-aligned.

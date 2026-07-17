@@ -189,6 +189,9 @@ const RADIAL_LIGHTNING_ASSET = "/assets/vfx/radial-lightning.png";
 const RADIAL_LIGHTNING_COLUMNS = 4;
 const RADIAL_LIGHTNING_FRAME_SIZE = 64;
 const RADIAL_LIGHTNING_FRAMES = 8;
+const MAGE_SPELL_ASSETS = ["/assets/vfx/mage-fireball.png", "/assets/vfx/mage-sparks.png"] as const;
+const MAGE_SPELL_FRAME_SIZE = 16;
+const MAGE_SPELL_FRAMES = 6;
 const MAX_PADDLE_ENGLISH = 220;
 const PLAYER_BALL_COLOR = "#fff27a";
 const WAVE_MULTIBALL_COLOR = "#9aa3b2";
@@ -584,6 +587,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const hitSparkReadyRef = useRef([false, false]);
   const radialLightningRef = useRef<HTMLImageElement | null>(null);
   const radialLightningReadyRef = useRef(false);
+  const mageSpellRefs = useRef<Array<HTMLImageElement | null>>([null, null]);
+  const mageSpellReadyRef = useRef([false, false]);
   const frameRef = useRef<number | null>(null);
   const lastRef = useRef<number>(0);
   const gameRef = useRef<GameState | null>(null);
@@ -673,6 +678,23 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       image.onerror = null;
       radialLightningRef.current = null;
       radialLightningReadyRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const images = MAGE_SPELL_ASSETS.map((src, index) => {
+      const image = new Image();
+      image.decoding = "async";
+      image.onload = () => { mageSpellReadyRef.current[index] = true; };
+      image.onerror = () => { mageSpellReadyRef.current[index] = false; };
+      image.src = src;
+      return image;
+    });
+    mageSpellRefs.current = images;
+    return () => {
+      images.forEach((image) => { image.onload = null; image.onerror = null; });
+      mageSpellRefs.current = [null, null];
+      mageSpellReadyRef.current = [false, false];
     };
   }, []);
 
@@ -2657,6 +2679,32 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const activeClassCharges = Object.entries(ball.skillCharges).filter(([, level]) => (level ?? 0) > 0) as Array<[ClassSkillId, number]>;
       if (ball.visualSkill && !activeClassCharges.some(([id]) => id === ball.visualSkill)) activeClassCharges.push([ball.visualSkill, 1]);
       activeClassCharges.slice(0, 4).forEach(([id, level], index) => {
+        const mageSpellVariant = id === "mage-fireball" ? 0 : id === "mage-lightning" ? 1 : -1;
+        const mageSpellImage = mageSpellVariant >= 0 ? mageSpellRefs.current[mageSpellVariant] : null;
+        if (mageSpellVariant >= 0 && mageSpellReadyRef.current[mageSpellVariant] && mageSpellImage) {
+          const frame = Math.floor(game.elapsed * 14 + index) % MAGE_SPELL_FRAMES;
+          const spriteSize = (id === "mage-fireball" ? 42 : 36) + (level ?? 1) * 3;
+          ctx.save();
+          ctx.translate(ball.x, ball.y);
+          if (id === "mage-fireball") ctx.rotate(Math.atan2(ball.vy, ball.vx));
+          ctx.globalAlpha = 0.92;
+          ctx.imageSmoothingEnabled = false;
+          ctx.shadowBlur = 16;
+          ctx.shadowColor = classSkillColor(id);
+          ctx.drawImage(
+            mageSpellImage,
+            frame * MAGE_SPELL_FRAME_SIZE,
+            0,
+            MAGE_SPELL_FRAME_SIZE,
+            MAGE_SPELL_FRAME_SIZE,
+            -spriteSize / 2,
+            -spriteSize / 2,
+            spriteSize,
+            spriteSize,
+          );
+          ctx.restore();
+          return;
+        }
         const effectColor = classSkillColor(id);
         const classCategory = activeSkillMap[id]?.category;
         ctx.save();

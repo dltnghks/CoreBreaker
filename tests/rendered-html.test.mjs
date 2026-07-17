@@ -700,3 +700,15 @@ test("renders tinted CC0 radial lightning for warrior and critical impacts", asy
   assert.match(license, /Radial Lightning Effect/);
   assert.match(license, /13rice/);
 });
+
+test("renders CC0 fireball and magic spark strips on charged mage balls", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const license = await readFile(new URL("../docs/THIRD_PARTY_ASSETS.md", import.meta.url), "utf8");
+  assert.match(source, /MAGE_SPELL_ASSETS = \["\/assets\/vfx\/mage-fireball\.png", "\/assets\/vfx\/mage-sparks\.png"\]/);
+  assert.match(source, /MAGE_SPELL_FRAMES = 6/);
+  assert.match(source, /id === "mage-fireball" \? 0 : id === "mage-lightning" \? 1/);
+  assert.match(source, /ctx\.rotate\(Math\.atan2\(ball\.vy, ball\.vx\)\)/);
+  assert.match(source, /mageSpellReadyRef\.current\[mageSpellVariant\]/);
+  assert.match(license, /Pixel Art Spells/);
+  assert.match(license, /DevWizard/);
+});
