@@ -726,3 +726,16 @@ test("gives every warrior skill a distinct charged or field signature", async ()
   assert.match(source, /ctx\.arc\(0, 0, visualRadius \+ 3 \+ pulse/);
   assert.match(source, /ctx\.fillRect\(-3\.5, -3\.5, 7, 7\)/);
 });
+
+test("gives every archer skill a distinct projectile or targeting signature", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /emitSkillEffect\("archer-rapid"/);
+  assert.match(source, /emitSkillEffect\("archer-arrow-rain"/);
+  assert.match(source, /emitSkillEffect\("archer-infinite"/);
+  ["archer-rapid", "archer-pierce", "archer-ricochet", "archer-focus", "archer-weakpoint", "archer-arrow-rain", "archer-infinite"].forEach((id) => {
+    assert.match(source, new RegExp(`effect\\.skillId === "${id}"|id === "${id}"`));
+  });
+  assert.match(source, /const fall = \(PLAYER_LINE_Y - BRICK_ROW_Y\) \* progress/);
+  assert.match(source, /const denominator = 1 \+ Math\.sin\(t\) \*\* 2/);
+  assert.match(source, /ctx\.arc\(0, 0, reticle/);
+});

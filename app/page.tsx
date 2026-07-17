@@ -1728,6 +1728,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
           triggerReflectionSkill("archer-rapid", (level) => {
             spawnArrow(ball.vx >= 0 ? -12 : 12, 4 + level * 0.75);
+            emitSkillEffect("archer-rapid", ball.x, ball.y, 58 + level * 6, 0.55, ball.x + ball.vx * 0.12, ball.y + ball.vy * 0.12);
             game.flashes.push({ text: `${paddle.name} // 연사 +1`, x: paddle.x, y: paddle.y - 32, life: 0.9, color: "#72f1b8" });
           });
           triggerReflectionSkill("archer-pierce", (level) => {
@@ -1740,12 +1741,14 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           triggerReflectionSkill("archer-weakpoint", (level) => chargeBall("archer-weakpoint", level, "약점 사격", classSkillColor("archer-weakpoint")));
           triggerReflectionSkill("archer-arrow-rain", (level) => {
             const targets = game.bricks.filter((target) => target.alive && target.kind !== "boss-core").sort(() => decisionRandom() - 0.5).slice(0, 8 + level * 4);
+            emitSkillEffect("archer-arrow-rain", W / 2, BRICK_ROW_Y, W - 80, 0.9, W / 2, PLAYER_LINE_Y);
             strikeTargets(targets, 1, classSkillColor("archer-arrow-rain"), "화살비");
           });
           triggerReflectionSkill("archer-infinite", (level) => {
             spawnArrow(-18, 5 + level, "archer-infinite");
             spawnArrow(0, 5 + level, "archer-infinite");
             spawnArrow(18, 5 + level, "archer-infinite");
+            emitSkillEffect("archer-infinite", paddle.x, paddle.y - 24, 88 + level * 8, 0.85);
             game.flashes.push({ text: `${paddle.name} // 무한 탄창 +3`, x: paddle.x, y: paddle.y - 32, life: 1, color: "#72f1b8" });
           });
 
@@ -2009,6 +2012,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           const lightningImpact = id === "warrior-smash" || id === "warrior-execute" || id === "warrior-crush" || id === "archer-weakpoint";
           emitEffect(lightningImpact ? "lightning" : blastLike ? "blast" : "ring", impactX, impactY, color, lightningImpact ? 74 + index * 8 : 34 + index * 9, impactX, impactY, lightningImpact ? 0.34 : 0.48, id === "archer-weakpoint" ? 1 : 0);
           if (id.startsWith("warrior-")) emitSkillEffect(id, impactX, impactY, 66 + index * 10, 0.5);
+          if (id.startsWith("archer-")) emitSkillEffect(id, impactX, impactY, 58 + index * 8, 0.45, impactX + ball.vx * 0.08, impactY + ball.vy * 0.08);
           emitBurst(impactX, impactY, color, blastLike ? 14 : 8, blastLike ? 250 : 170);
           impactFeedback(blastLike ? 5.5 : 3.2, color, blastLike ? 0.22 : 0.13, blastLike ? 0.1 : 0);
           audioRef.current?.play(id === "warrior-execute" || id === "archer-weakpoint" ? "critical" : blastLike ? "explosion" : "skill-impact", 1 + index * 0.15);
@@ -2764,13 +2768,49 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ctx.translate(ball.x, ball.y);
           ctx.rotate(Math.atan2(ball.vy, ball.vx));
           ctx.lineWidth = 2.5;
-          for (let chevron = 0; chevron < 2; chevron++) {
-            const rear = -visualRadius - 5 - chevron * 7 - index * 2;
+          if (id === "archer-pierce") {
             ctx.beginPath();
-            ctx.moveTo(rear - 5, -5);
-            ctx.lineTo(rear, 0);
-            ctx.lineTo(rear - 5, 5);
+            ctx.moveTo(-visualRadius - 10, 0);
+            ctx.lineTo(visualRadius + 13, 0);
+            ctx.lineTo(visualRadius + 5, -6);
+            ctx.moveTo(visualRadius + 13, 0);
+            ctx.lineTo(visualRadius + 5, 6);
             ctx.stroke();
+          } else if (id === "archer-ricochet") {
+            ctx.beginPath();
+            ctx.moveTo(-visualRadius - 13, 7);
+            ctx.lineTo(-visualRadius - 5, -6);
+            ctx.lineTo(visualRadius + 4, 5);
+            ctx.lineTo(visualRadius + 12, -5);
+            ctx.stroke();
+          } else if (id === "archer-focus") {
+            ctx.rotate(-Math.atan2(ball.vy, ball.vx));
+            const reticle = visualRadius + 7 + Math.sin(game.elapsed * 6) * 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, reticle, 0.2, Math.PI / 2 - 0.2);
+            ctx.arc(0, 0, reticle, Math.PI / 2 + 0.2, Math.PI - 0.2);
+            ctx.arc(0, 0, reticle, Math.PI + 0.2, Math.PI * 1.5 - 0.2);
+            ctx.arc(0, 0, reticle, Math.PI * 1.5 + 0.2, Math.PI * 2 - 0.2);
+            ctx.stroke();
+          } else if (id === "archer-weakpoint") {
+            ctx.rotate(-Math.atan2(ball.vy, ball.vx) + game.elapsed * 1.8);
+            const mark = visualRadius + 7;
+            ctx.beginPath();
+            ctx.arc(0, 0, mark, 0, Math.PI * 2);
+            ctx.moveTo(-mark - 5, 0);
+            ctx.lineTo(mark + 5, 0);
+            ctx.moveTo(0, -mark - 5);
+            ctx.lineTo(0, mark + 5);
+            ctx.stroke();
+          } else {
+            for (let chevron = 0; chevron < 2; chevron++) {
+              const rear = -visualRadius - 5 - chevron * 7 - index * 2;
+              ctx.beginPath();
+              ctx.moveTo(rear - 5, -5);
+              ctx.lineTo(rear, 0);
+              ctx.lineTo(rear - 5, 5);
+              ctx.stroke();
+            }
           }
         } else {
           const orbitRadius = visualRadius + 6 + index * 3;
@@ -3072,6 +3112,93 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             ctx.closePath();
             ctx.fill();
           }
+        } else if (effect.skillId === "archer-rapid") {
+          ctx.rotate(Math.atan2(effect.y2 - effect.y, effect.x2 - effect.x));
+          ctx.lineWidth = 2.5;
+          for (let arrow = -1; arrow <= 1; arrow++) {
+            const offset = arrow * 9;
+            const travel = effect.size * (0.15 + progress * 0.55);
+            ctx.beginPath();
+            ctx.moveTo(-travel, offset);
+            ctx.lineTo(travel, offset);
+            ctx.lineTo(travel - 9, offset - 5);
+            ctx.moveTo(travel, offset);
+            ctx.lineTo(travel - 9, offset + 5);
+            ctx.stroke();
+          }
+        } else if (effect.skillId === "archer-pierce") {
+          ctx.rotate(Math.atan2(effect.y2 - effect.y, effect.x2 - effect.x));
+          const length = effect.size * (0.3 + progress * 0.65);
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(-length, 0);
+          ctx.lineTo(length, 0);
+          ctx.lineTo(length - 14, -9);
+          ctx.moveTo(length, 0);
+          ctx.lineTo(length - 14, 9);
+          ctx.stroke();
+        } else if (effect.skillId === "archer-ricochet") {
+          const length = effect.size * (0.5 + progress * 0.45);
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(-length, length * 0.35);
+          ctx.lineTo(-length * 0.25, -length * 0.2);
+          ctx.lineTo(length * 0.25, length * 0.16);
+          ctx.lineTo(length, -length * 0.4);
+          ctx.stroke();
+        } else if (effect.skillId === "archer-focus") {
+          const radius = effect.size * (0.7 - progress * 0.42);
+          ctx.lineWidth = 3.5;
+          ctx.beginPath();
+          ctx.arc(0, 0, radius, 0, Math.PI * 2);
+          ctx.stroke();
+          for (let tick = 0; tick < 4; tick++) {
+            const angle = tick * Math.PI / 2;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(angle) * (radius + 10), Math.sin(angle) * (radius + 10));
+            ctx.lineTo(Math.cos(angle) * (radius - 7), Math.sin(angle) * (radius - 7));
+            ctx.stroke();
+          }
+        } else if (effect.skillId === "archer-weakpoint") {
+          ctx.rotate(progress * Math.PI * 0.75);
+          const radius = effect.size * (0.24 + progress * 0.18);
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(0, 0, radius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(-radius - 14, 0);
+          ctx.lineTo(radius + 14, 0);
+          ctx.moveTo(0, -radius - 14);
+          ctx.lineTo(0, radius + 14);
+          ctx.stroke();
+        } else if (effect.skillId === "archer-arrow-rain") {
+          const width = Math.min(W - 80, effect.size);
+          const fall = (PLAYER_LINE_Y - BRICK_ROW_Y) * progress;
+          ctx.lineWidth = 2.5;
+          for (let arrow = 0; arrow < 13; arrow++) {
+            const x = -width / 2 + width * arrow / 12;
+            const y = fall + (arrow % 3) * 18;
+            ctx.beginPath();
+            ctx.moveTo(x, y - 24);
+            ctx.lineTo(x, y + 12);
+            ctx.lineTo(x - 5, y + 4);
+            ctx.moveTo(x, y + 12);
+            ctx.lineTo(x + 5, y + 4);
+            ctx.stroke();
+          }
+        } else if (effect.skillId === "archer-infinite") {
+          const radius = effect.size * (0.25 + progress * 0.16);
+          ctx.lineWidth = 4 + remaining * 2;
+          ctx.beginPath();
+          for (let step = 0; step <= 48; step++) {
+            const t = step / 48 * Math.PI * 2;
+            const denominator = 1 + Math.sin(t) ** 2;
+            const x = radius * Math.cos(t) / denominator;
+            const y = radius * Math.sin(t) * Math.cos(t) / denominator;
+            if (step === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
         } else {
           ctx.lineWidth = 3;
           ctx.beginPath();
