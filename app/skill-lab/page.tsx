@@ -95,7 +95,7 @@ export default function SkillLab() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "echo-breaker-skills.json";
+    anchor.download = "core-breaker-skills.json";
     anchor.click();
     URL.revokeObjectURL(url);
   };

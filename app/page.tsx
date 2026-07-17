@@ -176,6 +176,8 @@ const BOSS_MULTIBALL_BUDGET = 2;
 const BOT_EVALUATION_WAVE = MAX_WAVE;
 const BASE_BALL_VX = 240;
 const BASE_BALL_VY = 320;
+const PADDLE_ENGLISH_FACTOR = 0.32;
+const MAX_PADDLE_ENGLISH = 220;
 const PLAYER_BALL_COLOR = "#fff27a";
 const WAVE_MULTIBALL_COLOR = "#9aa3b2";
 const BARRIER_COLOR = "#58a6ff";
@@ -1051,8 +1053,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         pointerXRef.current = game.balls[0]?.x ?? W / 2;
       }
     }
+    const previousPaddleX = game.paddleX;
     game.paddleX += (pointerXRef.current - game.paddleX) * Math.min(1, dt * 14);
     game.paddleX = Math.max(game.paddleWidth / 2, Math.min(W - game.paddleWidth / 2, game.paddleX));
+    const playerPaddleVelocity = dt > 0 ? (game.paddleX - previousPaddleX) / dt : 0;
 
     const trackIndex = Math.floor(game.elapsed * 10);
     if (game.paddleTrack.length <= trackIndex) game.paddleTrack.push(game.paddleX / W);
@@ -1106,12 +1110,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
     const paddleY = PLAYER_PADDLE_Y;
     const paddles = [
-      { id: "player", x: game.paddleX, y: paddleY, width: effectivePaddleWidth(game.paddleWidth, game.upgrades), upgrades: game.upgrades, name: "PLAYER" },
+      { id: "player", x: game.paddleX, y: paddleY, width: effectivePaddleWidth(game.paddleWidth, game.upgrades), upgrades: game.upgrades, name: "PLAYER", velocity: playerPaddleVelocity },
       ...activeGhostsRef.current.map((ghost, index) => ({
-        id: `ghost-${index}`, x: game.ghostPaddles[index], y: ghostPaddleY(), width: effectivePaddleWidth(ghostPaddleWidth(ghost), ghost.upgrades), upgrades: ghost.upgrades, name: ghost.name,
+        id: `ghost-${index}`, x: game.ghostPaddles[index], y: ghostPaddleY(), width: effectivePaddleWidth(ghostPaddleWidth(ghost), ghost.upgrades), upgrades: ghost.upgrades, name: ghost.name, velocity: 0,
       })),
     ];
-    const neutralFloor = { id: "neutral-floor", x: W / 2, y: BALL_FLOOR_Y, width: W, upgrades: [] as UpgradeId[], name: "NEUTRAL FLOOR" };
+    const neutralFloor = { id: "neutral-floor", x: W / 2, y: BALL_FLOOR_Y, width: W, upgrades: [] as UpgradeId[], name: "NEUTRAL FLOOR", velocity: 0 };
     const paddleFor = (id: string) => paddles.find((paddle) => paddle.id === id) ?? (id === neutralFloor.id ? neutralFloor : paddles[0]);
     const counterFor = (id: string) => game.paddleCounters[id] ??= newPaddleCounter();
     const emitEffect = (kind: GameEffect["kind"], x: number, y: number, color: string, size = 45, x2 = x, y2 = y, duration = 0.5) => {
@@ -1548,8 +1552,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         for (const paddle of paddles) {
           if (ball.y + ball.radius < paddle.y || ball.y - ball.radius > paddle.y + 12 || ball.x < paddle.x - paddle.width / 2 || ball.x > paddle.x + paddle.width / 2) continue;
           const hit = (ball.x - paddle.x) / (paddle.width / 2);
+          const paddleEnglish = Math.max(-MAX_PADDLE_ENGLISH, Math.min(MAX_PADDLE_ENGLISH, paddle.velocity * PADDLE_ENGLISH_FACTOR));
           const returnSpeed = 1 + skillValue("speed", upgradeLevel(paddle.upgrades, "speed")) / 100;
-          ball.vx = hit * 330;
+          ball.vx = Math.max(-440, Math.min(440, hit * 330 + paddleEnglish));
           ball.vy = -Math.min(440, Math.max(215, Math.abs(ball.vy)) * returnSpeed);
           ball.y = paddle.y - ball.radius;
           ball.sourcePaddleId = paddle.id;
@@ -2893,7 +2898,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `echo-breaker-bot-${Date.now()}.json`;
+    anchor.download = `core-breaker-bot-${Date.now()}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
   };
@@ -2910,17 +2915,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const rect = canvas.getBoundingClientRect();
     pointerXRef.current = Math.max(0, Math.min(W, ((clientX - rect.left) / rect.width) * W));
   };
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (mode !== "playing") return;
-      if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") pointerXRef.current -= 55;
-      if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") pointerXRef.current += 55;
-      pointerXRef.current = Math.max(0, Math.min(W, pointerXRef.current));
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mode]);
 
   const ultimateCatalog = ULTIMATE_SKILLS.map((fallback) => {
     const skill = activeSkillMap[fallback.id] ?? fallback;
@@ -2944,8 +2938,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     <main className="app-shell">
       <header className="topbar">
         <div className="brand-block">
-          <span className="brand-mark">EB</span>
-          <div><p className="eyebrow">{benchmarkMode ? `BENCHMARK STAGE ${benchmarkConfig.stage} // TARGET W${benchmarkConfig.targetWave}` : "PLAYTEST BUILD 0.3 // LIVE GAMEPLAY"}</p><h1>{benchmarkMode ? "ECHO BREAKER BENCH" : "ECHO BREAKER"}</h1></div>
+          <span className="brand-mark">CB</span>
+          <div><p className="eyebrow">{benchmarkMode ? `BENCHMARK STAGE ${benchmarkConfig.stage} // TARGET W${benchmarkConfig.targetWave}` : "PLAYTEST BUILD 0.3 // LIVE GAMEPLAY"}</p><h1>{benchmarkMode ? "CORE BREAKER BENCH" : "CORE BREAKER"}</h1></div>
         </div>
         <div className="header-rule" />
         <a className="lab-link" href={benchmarkMode ? "/" : "/benchmark"}>{benchmarkMode ? "GAMEPLAY" : "BENCHMARK"}</a>
@@ -2971,7 +2965,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               ref={canvasRef}
               width={W}
               height={H}
-              aria-label="Echo Breaker 게임 화면"
+              aria-label="Core Breaker 게임 화면"
               onPointerMove={(e) => onPointerMove(e.clientX)}
               onPointerDown={(e) => onPointerMove(e.clientX)}
             />
@@ -2985,7 +2979,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                 <h2>{benchmarkMode ? <>환경 적용 완료<br />봇 테스트를 시작하세요.</> : <>패턴을 돌파하고<br />코어를 지키세요.</>}</h2>
                 <p>{benchmarkMode ? `활성 요소: ${Object.entries(activeBenchmarkFeatures).filter(([, enabled]) => enabled).map(([key]) => key.toUpperCase()).join(" · ") || "ORIGINAL ONLY"}` : "웨이브마다 고정 패턴을 60초 동안 공략하세요. 시간이 끝나면 남은 모든 블록이 코어를 공격하고 다음 웨이브가 시작됩니다."}</p>
                 {!benchmarkMode && <button className="primary-button" onClick={() => startRun(false)}>20 웨이브 시작 <span>→</span></button>}
-                <small>{benchmarkMode ? "오른쪽 플레이테스트 봇에서 실행합니다." : "마우스·터치 또는 A / D 키로 패들을 움직이세요."}</small>
+                <small>{benchmarkMode ? "오른쪽 플레이테스트 봇에서 실행합니다." : "마우스 또는 터치로 패들을 움직이세요."}</small>
               </div>
             )}
 
@@ -3107,7 +3101,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               {(gameRef.current ? upgradeCounts(gameRef.current.upgrades) : []).map((u) => <span key={u.id} style={{ borderColor: u.color, color: u.color }}>{u.tag} <b>×{u.count}</b></span>)}
               {(!gameRef.current || gameRef.current.upgrades.length === 0) && <em>웨이브 보상을 선택하면 조합이 여기에 기록됩니다.</em>}
             </div>
-            <div className="controls">MOVE <kbd>A</kbd><kbd>D</kbd> / POINTER</div>
+            <div className="controls">MOVE / POINTER · TOUCH</div>
           </div>
         </div>
 

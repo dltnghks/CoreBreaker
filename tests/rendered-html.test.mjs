@@ -11,13 +11,13 @@ async function render(pathname = "/") {
   }, { waitUntil() {}, passThroughOnException() {} });
 }
 
-test("server-renders the Echo Breaker playtest", async () => {
+test("server-renders the Core Breaker playtest", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
-  assert.match(html, /<title>Echo Breaker - Playtest<\/title>/i);
-  assert.match(html, /ECHO BREAKER/);
+  assert.match(html, /<title>Core Breaker - Playtest<\/title>/i);
+  assert.match(html, /CORE BREAKER/);
   assert.match(html, /LIVE GAMEPLAY/);
   assert.doesNotMatch(html, /고스트 보관함/);
   assert.match(html, /20 웨이브 시작/);
@@ -28,6 +28,15 @@ test("server-renders the Echo Breaker playtest", async () => {
   assert.doesNotMatch(html, /플레이테스트 봇/);
   assert.match(html, /href="\/benchmark"/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|react-loading-skeleton/);
+});
+
+test("steers paddle rebounds with pointer movement and removes keyboard controls", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /const playerPaddleVelocity = dt > 0 \? \(game\.paddleX - previousPaddleX\) \/ dt : 0/);
+  assert.match(source, /paddle\.velocity \* PADDLE_ENGLISH_FACTOR/);
+  assert.match(source, /hit \* 330 \+ paddleEnglish/);
+  assert.match(source, /MOVE \/ POINTER · TOUCH/);
+  assert.doesNotMatch(source, /ArrowLeft|ArrowRight|addEventListener\("keydown"/);
 });
 
 test.skip("server-renders the legacy Skill Lab", async () => {
