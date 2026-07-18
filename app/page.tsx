@@ -197,6 +197,7 @@ const MAX_OVERDRIVE_LEVEL = OVERDRIVE_THRESHOLDS.length;
 const MIN_PADDLE_REBOUND_SPEED = 300;
 const MAX_PADDLE_REBOUND_SPEED = 560;
 const MAX_PADDLE_REBOUND_RATIO = 0.84;
+const PADDLE_COLLISION_SLOP = 3;
 const PADDLE_ENGLISH_FACTOR = 0.32;
 const RING_EXPLOSION_ASSET = "/assets/vfx/ring-explosion.png";
 const RING_EXPLOSION_COLUMNS = 10;
@@ -1339,9 +1340,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
     const paddleY = PLAYER_PADDLE_Y;
     const paddles = [
-      { id: "player", x: game.paddleX, y: paddleY, width: effectivePaddleWidth(game.paddleWidth, game.upgrades), upgrades: game.upgrades, name: "PLAYER", velocity: playerPaddleVelocity },
+      { id: "player", x: game.paddleX, previousX: previousPaddleX, y: paddleY, width: effectivePaddleWidth(game.paddleWidth, game.upgrades), upgrades: game.upgrades, name: "PLAYER", velocity: playerPaddleVelocity },
       ...activeGhostsRef.current.map((ghost, index) => ({
-        id: `ghost-${index}`, x: game.ghostPaddles[index], y: ghostPaddleY(), width: effectivePaddleWidth(ghostPaddleWidth(ghost), ghost.upgrades), upgrades: ghost.upgrades, name: ghost.name, velocity: 0,
+        id: `ghost-${index}`, x: game.ghostPaddles[index], previousX: game.ghostPaddles[index], y: ghostPaddleY(), width: effectivePaddleWidth(ghostPaddleWidth(ghost), ghost.upgrades), upgrades: ghost.upgrades, name: ghost.name, velocity: 0,
       })),
     ];
     const paddleFor = (id: string) => paddles.find((paddle) => paddle.id === id) ?? paddles[0];
@@ -1869,11 +1870,17 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       if (ball.vy > 0) {
         for (const paddle of paddles) {
           const verticalTravel = ball.y - previousBallY;
-          const contactTime = verticalTravel > 0 ? (paddle.y - ball.radius - previousBallY) / verticalTravel : -1;
-          if (contactTime < 0 || contactTime > 1) continue;
+          const rawContactTime = verticalTravel > 0 ? (paddle.y - ball.radius - previousBallY) / verticalTravel : -1;
+          const crossedPaddleTop = rawContactTime >= 0 && rawContactTime <= 1;
+          const alreadyTouchingTop = previousBallY <= paddle.y + PADDLE_COLLISION_SLOP
+            && previousBallY + ball.radius >= paddle.y - PADDLE_COLLISION_SLOP
+            && ball.y - ball.radius <= paddle.y + 12;
+          if (!crossedPaddleTop && !alreadyTouchingTop) continue;
+          const contactTime = Math.max(0, Math.min(1, rawContactTime));
           const contactX = previousBallX + (ball.x - previousBallX) * contactTime;
-          if (contactX + ball.radius < paddle.x - paddle.width / 2 || contactX - ball.radius > paddle.x + paddle.width / 2) continue;
-          const hit = Math.max(-1, Math.min(1, (contactX - paddle.x) / (paddle.width / 2)));
+          const paddleContactX = paddle.previousX + (paddle.x - paddle.previousX) * contactTime;
+          if (contactX + ball.radius < paddleContactX - paddle.width / 2 || contactX - ball.radius > paddleContactX + paddle.width / 2) continue;
+          const hit = Math.max(-1, Math.min(1, (contactX - paddleContactX) / (paddle.width / 2)));
           const paddleEnglish = Math.max(-MAX_PADDLE_ENGLISH, Math.min(MAX_PADDLE_ENGLISH, paddle.velocity * PADDLE_ENGLISH_FACTOR));
           const reboundSpeed = Math.max(MIN_PADDLE_REBOUND_SPEED, Math.min(MAX_PADDLE_REBOUND_SPEED, Math.hypot(ball.vx, ball.vy)));
           const horizontalRatio = Math.max(-MAX_PADDLE_REBOUND_RATIO, Math.min(MAX_PADDLE_REBOUND_RATIO, hit * 0.74 + paddleEnglish / reboundSpeed));

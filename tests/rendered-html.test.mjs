@@ -34,7 +34,9 @@ test("steers paddle rebounds with pointer movement and removes keyboard controls
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const playerPaddleVelocity = dt > 0 \? \(game\.paddleX - previousPaddleX\) \/ dt : 0/);
   assert.match(source, /paddle\.velocity \* PADDLE_ENGLISH_FACTOR/);
-  assert.match(source, /const contactTime = verticalTravel > 0/);
+  assert.match(source, /const rawContactTime = verticalTravel > 0/);
+  assert.match(source, /const alreadyTouchingTop = previousBallY <= paddle\.y \+ PADDLE_COLLISION_SLOP/);
+  assert.match(source, /const paddleContactX = paddle\.previousX \+ \(paddle\.x - paddle\.previousX\) \* contactTime/);
   assert.match(source, /const reboundSpeed = .*Math\.hypot\(ball\.vx, ball\.vy\)/);
   assert.match(source, /ball\.vy = -Math\.sqrt/);
   assert.match(source, /MOVE \/ POINTER · TOUCH/);
