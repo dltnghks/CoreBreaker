@@ -4,7 +4,7 @@ import { DEFAULT_BENCHMARK_CONFIG, type BenchmarkConfig } from "./benchmark-conf
 import { waveDefinition } from "./wave-config";
 
 export type HeadlessBotPolicy = "balanced" | "survival" | "random";
-export const PARALLEL_BENCHMARK_RULESET = "parallel-v1" as const;
+export const PARALLEL_BENCHMARK_RULESET = "parallel-v2" as const;
 
 export type HeadlessBenchmarkRequest = {
   run: number;
@@ -83,7 +83,8 @@ function skillPower(skill: SkillConfig, level: number) {
   const categoryPower: Record<SkillCategory, number> = { warrior: 1.08, archer: 1.12, mage: 1.14, common: 0.55 };
   const trigger = Math.max(1, Number(skill.levels[Math.min(2, Math.max(0, level - 1))]) || 6);
   const cadence = skill.category === "common" ? 0.35 : Math.min(1.3, 5 / trigger);
-  return categoryPower[skill.category] * level * cadence;
+  const impactModel = skill.id === "warrior-shockwave" ? 1.1 : skill.id === "mage-fireball" ? 1.25 : 1;
+  return categoryPower[skill.category] * level * cadence * impactModel;
 }
 
 function normalWaveStats(wave: number, balance: BalanceConfig) {

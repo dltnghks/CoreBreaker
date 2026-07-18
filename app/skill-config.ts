@@ -129,7 +129,7 @@ const passiveSkill = (
 
 export const DEFAULT_SKILLS: SkillConfig[] = [
   skill("warrior-smash", "강타", "warrior", "패들 반사 횟수 충전", "다음 공격 피해 증가", "충전이 완료된 공의 다음 직접 공격이 LV만큼 추가 피해를 줍니다.", [3, 2, 1]),
-  skill("warrior-shockwave", "충격파", "warrior", "패들 반사 횟수 충전", "블럭 파괴 시 주변 폭발", "충전된 공이 블럭을 파괴하면 주변 블럭에 충격파 피해를 줍니다.", [6, 5, 4]),
+  skill("warrior-shockwave", "충격파", "warrior", "패들 반사 횟수 충전", "다음 충돌 시 주변 즉발 피해", "충전된 공이 블럭에 충돌하는 즉시 주변 블럭에 충격파 피해를 줍니다.", [6, 5, 4]),
   skill("warrior-execute", "처형", "warrior", "패들 반사 횟수 충전", "저체력 블럭 즉시 파괴", "충전된 공이 현재 체력 25% 이하인 일반 블럭을 즉시 파괴합니다.", [7, 5, 3]),
   skill("warrior-crush", "분쇄", "warrior", "패들 반사 횟수 충전", "가드 파괴·특수 블록 추가 피해", "충전된 공은 가드를 제거하고 폭발·회복·반사 블록에 LV+1의 추가 피해를 줍니다.", [5, 4, 3]),
   skill("warrior-guard", "철벽", "warrior", "패들 반사 횟수 충전", "CORE LINE 방어막 충전", "충전 완료 시 CORE LINE 피해를 한 번 막는 방어막을 얻습니다.", [14, 11, 8]),
@@ -144,7 +144,7 @@ export const DEFAULT_SKILLS: SkillConfig[] = [
   skill("archer-arrow-rain", "화살비", "archer", "패들 반사 횟수 충전", "다수 블럭 동시 공격", "무작위 일반 블럭 8+LV×4개에 화살을 떨어뜨립니다.", [20, 16, 12], true),
   skill("archer-infinite", "무한 탄창", "archer", "패들 반사 횟수 충전", "임시 화살 3발 생성", "현재 공의 특성을 복제한 임시 화살 3발을 동시에 발사합니다.", [16, 12, 8], true),
 
-  skill("mage-fireball", "화염구", "mage", "패들 반사 횟수 충전", "다음 파괴 시 화염 폭발", "충전된 공이 블럭을 파괴하면 주변에 화염 폭발 피해를 줍니다.", [6, 5, 4]),
+  skill("mage-fireball", "화염구", "mage", "패들 반사 횟수 충전", "다음 충돌 시 주변 점화", "충전된 공이 블럭에 충돌하면 주변 블럭을 3/4/5초 동안 점화해 매초 화염 피해를 줍니다.", [6, 5, 4]),
   skill("mage-lightning", "연쇄 번개", "mage", "패들 반사 횟수 충전", "주변 블럭 연쇄 공격", "충전된 공이 적중한 블럭에서 주변 블럭 LV+1개로 번개가 연결됩니다.", [7, 5, 3]),
   skill("mage-freeze", "빙결 표식", "mage", "패들 반사 횟수 충전", "회복 차단 · 다음 피격 강화", "충전 완료 시 체력이 높은 블록 2+LV개를 빙결합니다. 빙결 블록은 회복되지 않고 다음 직접 피격 피해가 LV만큼 증가한 뒤 해제됩니다.", [12, 9, 6]),
   skill("mage-black-hole", "블랙홀", "mage", "패들 반사 횟수 충전", "상단에 중력장 생성", "충전 완료 시 맵 상단에 공을 끌어당기는 블랙홀을 생성합니다.", [14, 11, 8]),
@@ -170,8 +170,10 @@ export function normalizeSkillConfigs(saved: unknown): SkillConfig[] {
     const levels = values.length === 3 && values.every(Number.isFinite) ? values as [number, number, number] : base.levels;
     const legacyTimeFreeze = (base.id === "mage-freeze" || base.id === "mage-elemental-storm")
       && `${savedSkill?.effect ?? ""} ${savedSkill?.description ?? ""}`.match(/타이머|제한시간|시간.*정지/);
+    const legacyDestructionTrigger = (base.id === "warrior-shockwave" || base.id === "mage-fireball")
+      && `${savedSkill?.effect ?? ""} ${savedSkill?.description ?? ""}`.includes("파괴");
     const migrated = base.id === "common-xp" ? base
-      : legacyTimeFreeze ? { ...savedSkill, name: base.name, effect: base.effect, description: base.description }
+      : legacyTimeFreeze || legacyDestructionTrigger ? { ...savedSkill, name: base.name, effect: base.effect, description: base.description }
       : savedSkill;
     return { ...base, ...migrated, id: base.id, category: base.category, color: base.color, owner: "paddle", ballCost: 0, ultimate: base.ultimate, levels: base.id === "common-xp" ? base.levels : levels };
   });

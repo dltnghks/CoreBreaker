@@ -672,6 +672,23 @@ test("charges class skills from paddle reflections and grants ultimates after bo
   assert.doesNotMatch(source, /activeSkillMap\[upgrade\.id\]\.ballCost/);
 });
 
+test("separates impact shockwave damage from fireball damage over time", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const skills = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
+  const benchmark = await readFile(new URL("../app/benchmark-headless.ts", import.meta.url), "utf8");
+  assert.match(skills, /"warrior-shockwave"[\s\S]*"다음 충돌 시 주변 즉발 피해"/);
+  assert.match(skills, /"mage-fireball"[\s\S]*"다음 충돌 시 주변 점화"/);
+  assert.match(skills, /legacyDestructionTrigger/);
+  assert.match(source, /triggerImpactShockwave\(brick, ball, shockwaveLevel\)/);
+  assert.match(source, /igniteFireballArea\(brick, sourcePaddle\.id, fireballLevel\)/);
+  assert.match(source, /near\.burnTime = Math\.max\(near\.burnTime, 2 \+ level\)/);
+  assert.match(source, /recordSkillImpact\("mage-fireball"/);
+  assert.match(source, /BURN \$\{Math\.max\(0, Math\.ceil\(brick\.burnTime\)\)\}s/);
+  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v2"/);
+  assert.match(benchmark, /skill\.id === "warrior-shockwave"/);
+  assert.match(benchmark, /skill\.id === "mage-fireball"/);
+});
+
 test("enlarges skill counters and pulses the paddle when a skill charges", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const cellWidth = 48/);

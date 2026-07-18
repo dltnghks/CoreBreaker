@@ -21,7 +21,7 @@ type SkillBenchVariant = { batchId: string; environment: SkillBenchConfig["envir
 type SkillSelectionSource = "start" | "wave" | "boss";
 type SkillSelectionEvent = { wave: number; skillId: UpgradeId; level: number; source: SkillSelectionSource };
 type SkillRunMetric = { activations: number; damage: number; kills: number };
-type BenchmarkRuleset = "live-v1" | "live-v2" | typeof PARALLEL_BENCHMARK_RULESET;
+type BenchmarkRuleset = "live-v1" | "live-v2" | "parallel-v1" | typeof PARALLEL_BENCHMARK_RULESET;
 type BotRunResult = BotMetrics & { id: string; run: number; policy: BotPolicy; speed: BotSpeed; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; startingSkills: UpgradeId[]; skillHistory: SkillSelectionEvent[]; ultimates: UpgradeId[]; skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig | null; benchmarkRuleset?: BenchmarkRuleset | null; waveSamples: BotWaveSample[]; evaluationComplete: boolean; skillBench: SkillBenchVariant | null };
 
 type Upgrade = {
@@ -91,6 +91,10 @@ type Brick = {
   poisonTime: number;
   poisonTick: number;
   poisonSourcePaddleId: string | null;
+  burnTime: number;
+  burnTick: number;
+  burnLevel: number;
+  burnSourcePaddleId: string | null;
   blastVulnerability: number;
   blastVulnerabilitySourcePaddleId: string | null;
   frostVulnerability: number;
@@ -360,7 +364,7 @@ function hasScheduledMultiball(wave: number) {
 }
 
 function brickRuntimeState(trait: BrickTrait = "standard") {
-  return { trait, guardReady: trait === "guard", healTimer: 3, poisonTime: 0, poisonTick: 0, poisonSourcePaddleId: null, blastVulnerability: 1, blastVulnerabilitySourcePaddleId: null, frostVulnerability: 0, lastHitPaddleId: null };
+  return { trait, guardReady: trait === "guard", healTimer: 3, poisonTime: 0, poisonTick: 0, poisonSourcePaddleId: null, burnTime: 0, burnTick: 0, burnLevel: 0, burnSourcePaddleId: null, blastVulnerability: 1, blastVulnerabilitySourcePaddleId: null, frostVulnerability: 0, lastHitPaddleId: null };
 }
 
 function lateWaveHpMultiplier(waveNumber: number) {
@@ -1153,6 +1157,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       brick.poisonTime ??= 0;
       brick.poisonTick ??= 0;
       brick.poisonSourcePaddleId ??= null;
+      brick.burnTime ??= 0;
+      brick.burnTick ??= 0;
+      brick.burnLevel ??= 0;
+      brick.burnSourcePaddleId ??= null;
       brick.blastVulnerability ??= 1;
       brick.blastVulnerabilitySourcePaddleId ??= null;
       brick.frostVulnerability ??= 0;
@@ -1500,9 +1508,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
 
       if (!triggerBlast || blastPower <= 0) return;
-      const classBlastSkillId: ClassSkillId | null = (ball.skillCharges["mage-fireball"] ?? 0) > 0
-        ? "mage-fireball"
-        : (ball.skillCharges["warrior-shockwave"] ?? 0) > 0 ? "warrior-shockwave" : null;
       const range = skillValue("blast", blastPower) || 60 + blastPower * 20;
       const blastX = brick.x + brick.w / 2;
       const blastY = brick.y + brick.h / 2;
@@ -1519,10 +1524,53 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         applyDebuffs(near, sourcePaddle);
         const hpBefore = near.hp;
         near.hp -= (blastPower >= 3 ? 2 : 1) * near.blastVulnerability * damageMultiplier(near);
-        if (classBlastSkillId) recordSkillImpact(classBlastSkillId, Math.min(hpBefore, Math.max(0, hpBefore - near.hp)), near.hp <= 0);
         emitEffect("ring", near.x + near.w / 2, near.y + near.h / 2, "#ff9658", 24, near.x + near.w / 2, near.y + near.h / 2, 0.3);
         if (near.hp <= 0) destroyBrick(near, ball, false, 0);
       });
+    };
+
+    const triggerImpactShockwave = (origin: Brick, ball: Ball, level: number) => {
+      const centerX = origin.x + origin.w / 2;
+      const centerY = origin.y + origin.h / 2;
+      const range = 60 + level * 20;
+      const damage = level >= 3 ? 2 : 1;
+      emitEffect("blast", centerX, centerY, classSkillColor("warrior-shockwave"), range, centerX, centerY, 0.58, 0, "warrior-shockwave");
+      emitSkillEffect("warrior-shockwave", centerX, centerY, range, 0.62);
+      emitBurst(centerX, centerY, classSkillColor("warrior-shockwave"), 12 + level * 4, 280);
+      audioRef.current?.play("explosion", 0.9 + level * 0.2);
+      impactFeedback(4.5 + level, classSkillColor("warrior-shockwave"), 0.2, 0.08);
+      game.bricks.forEach((near) => {
+        if (!near.alive || near === origin || !isDamageableBrick(near)) return;
+        const distance = Math.hypot(near.x + near.w / 2 - centerX, near.y + near.h / 2 - centerY);
+        if (distance >= range || absorbGuardHit(near)) return;
+        const hpBefore = near.hp;
+        near.hp -= damage * damageMultiplier(near);
+        recordSkillImpact("warrior-shockwave", Math.min(hpBefore, Math.max(0, hpBefore - near.hp)), near.hp <= 0);
+        emitEffect("ring", near.x + near.w / 2, near.y + near.h / 2, classSkillColor("warrior-shockwave"), 30, near.x + near.w / 2, near.y + near.h / 2, 0.3);
+        if (near.hp <= 0) destroyBrick(near, ball, false, 0);
+      });
+    };
+
+    const igniteFireballArea = (origin: Brick, sourcePaddleId: string, level: number) => {
+      const centerX = origin.x + origin.w / 2;
+      const centerY = origin.y + origin.h / 2;
+      const range = 60 + level * 20;
+      let ignited = 0;
+      game.bricks.forEach((near) => {
+        if (!near.alive || !isDamageableBrick(near)) return;
+        const distance = Math.hypot(near.x + near.w / 2 - centerX, near.y + near.h / 2 - centerY);
+        if (distance >= range) return;
+        near.burnTime = Math.max(near.burnTime, 2 + level);
+        near.burnTick = near.burnTick > 0 ? Math.min(near.burnTick, 0.75) : 0.75;
+        near.burnLevel = Math.max(near.burnLevel, level);
+        near.burnSourcePaddleId = sourcePaddleId;
+        ignited++;
+        emitEffect("ring", near.x + near.w / 2, near.y + near.h / 2, classSkillColor("mage-fireball"), 28 + level * 4, near.x + near.w / 2, near.y + near.h / 2, 0.4, 0, "mage-fireball");
+      });
+      emitSkillEffect("mage-fireball", centerX, centerY, range, 0.72);
+      emitBurst(centerX, centerY, classSkillColor("mage-fireball"), 14 + level * 4, 220);
+      game.flashes.push({ text: `화염구 // 점화 ×${ignited}`, x: centerX, y: centerY - 22, life: 0.9, color: classSkillColor("mage-fireball") });
+      audioRef.current?.play("skill-impact", 1 + level * 0.2);
     };
 
     const lostPlayerBalls = new Set<Ball>();
@@ -1538,6 +1586,25 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       if (absorbGuardHit(brick)) return;
       brick.hp -= damageMultiplier(brick);
       const sourceBall = game.balls.find((ball) => ball.sourcePaddleId === poisonPaddle.id) ?? game.balls[0];
+      if (brick.hp <= 0 && sourceBall) destroyBrick(brick, sourceBall, false, 0);
+    });
+
+    game.bricks.forEach((brick) => {
+      if (!brick.alive || !isDamageableBrick(brick) || brick.burnTime <= 0 || !brick.burnSourcePaddleId) return;
+      brick.burnTime -= dt;
+      brick.burnTick -= dt;
+      if (brick.burnTick > 0) return;
+      brick.burnTick = 1;
+      if (absorbGuardHit(brick)) return;
+      const firePaddle = paddleFor(brick.burnSourcePaddleId);
+      const hpBefore = brick.hp;
+      brick.hp -= damageMultiplier(brick);
+      recordSkillImpact("mage-fireball", Math.min(hpBefore, Math.max(0, hpBefore - brick.hp)), brick.hp <= 0);
+      const centerX = brick.x + brick.w / 2;
+      const centerY = brick.y + brick.h / 2;
+      game.flashes.push({ text: "화상 -1", x: centerX, y: brick.y - 7, life: 0.6, color: classSkillColor("mage-fireball") });
+      emitEffect("spark", centerX, centerY, classSkillColor("mage-fireball"), 36, centerX, centerY, 0.32, 0, "mage-fireball");
+      const sourceBall = game.balls.find((ball) => ball.sourcePaddleId === firePaddle.id) ?? game.balls[0];
       if (brick.hp <= 0 && sourceBall) destroyBrick(brick, sourceBall, false, 0);
     });
 
@@ -2103,14 +2170,18 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               if (target.hp <= 0) destroyBrick(target, ball, false, 0);
             });
         }
-        const classBlastLevel = Math.max(ball.skillCharges["warrior-shockwave"] ?? 0, ball.skillCharges["mage-fireball"] ?? 0);
-        if (brick.hp <= 0) destroyBrick(brick, ball, classBlastLevel > 0 || blastLevel > 0, classBlastLevel || blastLevel || ball.blast, true, piercingHit);
+        const shockwaveLevel = ball.skillCharges["warrior-shockwave"] ?? 0;
+        const fireballLevel = ball.skillCharges["mage-fireball"] ?? 0;
+        if (shockwaveLevel > 0) triggerImpactShockwave(brick, ball, shockwaveLevel);
+        if (fireballLevel > 0) igniteFireballArea(brick, sourcePaddle.id, fireballLevel);
+        if (brick.hp <= 0) destroyBrick(brick, ball, blastLevel > 0, blastLevel || ball.blast, true, piercingHit);
         const consumedClassSkills = (["warrior-smash", "warrior-shockwave", "warrior-execute", "warrior-crush", "archer-ricochet", "archer-focus", "archer-weakpoint", "mage-fireball", "mage-lightning"] as ClassSkillId[]).filter((id) => (ball.skillCharges[id] ?? 0) > 0);
         consumedClassSkills.forEach((id, index) => {
+          if (id === "warrior-shockwave" || id === "mage-fireball") return;
           const color = classSkillColor(id);
           const impactX = brick.x + brick.w / 2;
           const impactY = brick.y + brick.h / 2;
-          const blastLike = id === "warrior-shockwave" || id === "mage-fireball";
+          const blastLike = id === "warrior-shockwave";
           const lightningImpact = id === "warrior-smash" || id === "warrior-execute" || id === "warrior-crush" || id === "archer-weakpoint";
           emitEffect(lightningImpact ? "lightning" : blastLike ? "blast" : "ring", impactX, impactY, color, lightningImpact ? 74 + index * 8 : 34 + index * 9, impactX, impactY, lightningImpact ? 0.34 : 0.48, id === "archer-weakpoint" ? 1 : 0);
           if (id.startsWith("warrior-")) emitSkillEffect(id, impactX, impactY, 66 + index * 10, 0.5);
@@ -2477,6 +2548,36 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ctx.arc(brick.x + brick.w - 7 - dot * 6, brick.y + 7 + Math.sin(game.elapsed * 5 + dot) * 2, 2, 0, Math.PI * 2);
           ctx.fill();
         }
+      }
+      if (brick.burnTime > 0) {
+        ctx.save();
+        const pulse = 0.65 + Math.sin(game.elapsed * 11 + brick.x * 0.03) * 0.2;
+        ctx.globalAlpha = pulse;
+        ctx.fillStyle = "rgba(255,112,67,.2)";
+        ctx.fillRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4);
+        ctx.strokeStyle = "#ff8a3d";
+        ctx.shadowColor = "#ff5a36";
+        ctx.shadowBlur = 14;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(brick.x - 1, brick.y - 1, brick.w + 2, brick.h + 2);
+        ctx.fillStyle = "#ffd166";
+        for (let flame = 0; flame < Math.min(4, 1 + brick.burnLevel); flame++) {
+          const flameX = brick.x + brick.w - 8 - flame * 8;
+          const flameY = brick.y + 8 + Math.sin(game.elapsed * 9 + flame) * 2;
+          ctx.beginPath();
+          ctx.moveTo(flameX, flameY - 6);
+          ctx.lineTo(flameX - 3, flameY + 3);
+          ctx.lineTo(flameX + 3, flameY + 3);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = "#fff3d6";
+        ctx.font = "900 8px monospace";
+        ctx.textAlign = "left";
+        ctx.fillText(`BURN ${Math.max(0, Math.ceil(brick.burnTime))}s`, brick.x + 5, brick.y + brick.h - 5);
+        ctx.restore();
       }
       if (brick.blastVulnerability > 1) {
         ctx.save();
