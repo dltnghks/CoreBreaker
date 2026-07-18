@@ -6,6 +6,7 @@ import { DEFAULT_SKILLS, ENCHANT_MODE_LABELS, levelValue, NORMAL_SKILLS, normali
 import { BALANCE_STORAGE_KEY, BOT_LIVE_STORAGE_KEY, BOT_RESULTS_STORAGE_KEY, DEFAULT_BALANCE_CONFIG, DEFAULT_SKILL_BENCH_CONFIG, DEFAULT_SKILL_BENCH_PROGRESS, normalizeBalanceConfig, normalizeSkillBenchConfig, normalizeSkillBenchProgress, SKILL_BENCH_PROGRESS_KEY, SKILL_BENCH_STORAGE_KEY, type BalanceConfig, type BotWaveSample, type SkillBenchConfig, type SkillBenchProgress } from "./balance-config";
 import { BENCHMARK_STORAGE_KEY, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConfig, type BenchmarkConfig } from "./benchmark-config";
 import { MAX_WAVE, waveDefinition } from "./wave-config";
+import { PARALLEL_BENCHMARK_RULESET, type HeadlessBenchmarkRequest, type HeadlessBenchmarkResult } from "./benchmark-headless";
 
 type PayloadId = "pierce" | "blast" | "glass" | "link";
 type ItemKind = "multiball";
@@ -19,7 +20,7 @@ type SkillBenchVariant = { batchId: string; environment: SkillBenchConfig["envir
 type SkillSelectionSource = "start" | "wave" | "boss";
 type SkillSelectionEvent = { wave: number; skillId: UpgradeId; level: number; source: SkillSelectionSource };
 type SkillRunMetric = { activations: number; damage: number; kills: number };
-type BenchmarkRuleset = "live-v1" | "live-v2";
+type BenchmarkRuleset = "live-v1" | "live-v2" | typeof PARALLEL_BENCHMARK_RULESET;
 type BotRunResult = BotMetrics & { id: string; run: number; policy: BotPolicy; speed: BotSpeed; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; startingSkills: UpgradeId[]; skillHistory: SkillSelectionEvent[]; ultimates: UpgradeId[]; skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig | null; benchmarkRuleset?: BenchmarkRuleset | null; waveSamples: BotWaveSample[]; evaluationComplete: boolean; skillBench: SkillBenchVariant | null };
 
 type Upgrade = {
@@ -167,7 +168,7 @@ type WaveResolution = { timer: number; maxTimer: number; cleared: boolean; wasBo
 
 const W = 900;
 const H = 600;
-const BENCHMARK_RULESET: BenchmarkRuleset = "live-v2";
+const BENCHMARK_RULESET: BenchmarkRuleset = PARALLEL_BENCHMARK_RULESET;
 const PLAYER_LINE_Y = H - 84;
 const PLAYER_PADDLE_Y = H - 70;
 const GHOST_PADDLE_Y = H - 42;
@@ -633,7 +634,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const botTargetRunsRef = useRef(5);
   const botCompletedRunsRef = useRef(0);
   const botResultsRef = useRef<BotRunResult[]>([]);
+  const parallelWorkersRef = useRef<Worker[]>([]);
+  const parallelSessionRef = useRef(0);
   const balanceConfigRef = useRef<BalanceConfig>(DEFAULT_BALANCE_CONFIG);
+  const activeSkillConfigsRef = useRef<SkillConfig[]>(DEFAULT_SKILLS);
   const botLivePersistRef = useRef(0);
   const skillBenchConfigRef = useRef<SkillBenchConfig>(DEFAULT_SKILL_BENCH_CONFIG);
   const skillBenchProgressRef = useRef<SkillBenchProgress>(DEFAULT_SKILL_BENCH_PROGRESS);
@@ -658,10 +662,17 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const [botTargetRuns, setBotTargetRuns] = useState(5);
   const [botRunning, setBotRunning] = useState(false);
   const [botCompletedRuns, setBotCompletedRuns] = useState(0);
+  const [parallelWorkerCount, setParallelWorkerCount] = useState(0);
   const [botResults, setBotResults] = useState<BotRunResult[]>([]);
   const [skillBenchConfig, setSkillBenchConfig] = useState<SkillBenchConfig>(DEFAULT_SKILL_BENCH_CONFIG);
   const [skillBenchProgress, setSkillBenchProgress] = useState<SkillBenchProgress>(DEFAULT_SKILL_BENCH_PROGRESS);
   const [benchmarkConfig, setBenchmarkConfig] = useState<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
+
+  useEffect(() => () => {
+    parallelSessionRef.current += 1;
+    parallelWorkersRef.current.forEach((worker) => worker.terminate());
+    parallelWorkersRef.current = [];
+  }, []);
 
   useEffect(() => {
     const image = new Image();
@@ -808,11 +819,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       try {
         const skills = normalizeSkillConfigs(raw ? JSON.parse(raw) : DEFAULT_SKILLS);
         activeSkillMap = skillConfigMap(skills);
+        activeSkillConfigsRef.current = skills;
         const catalog = createUpgradeCatalog(skills.filter((entry) => !entry.ultimate));
         upgradeCatalogRef.current = catalog;
         setUpgradeCatalog(catalog);
       } catch {
         activeSkillMap = skillConfigMap(DEFAULT_SKILLS);
+        activeSkillConfigsRef.current = DEFAULT_SKILLS;
         upgradeCatalogRef.current = DEFAULT_UPGRADES;
         setUpgradeCatalog(DEFAULT_UPGRADES);
       }
@@ -3589,7 +3602,87 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     }
   };
 
+  const startParallelBenchmarkSession = () => {
+    const targetRuns = benchmarkConfigRef.current.runs;
+    const workerCount = Math.max(1, Math.min(8, targetRuns, (navigator.hardwareConcurrency || 4) - 1));
+    const session = parallelSessionRef.current + 1;
+    parallelSessionRef.current = session;
+    parallelWorkersRef.current.forEach((worker) => worker.terminate());
+    parallelWorkersRef.current = [];
+    botActiveRef.current = true;
+    botPolicyRef.current = botPolicy;
+    botTargetRunsRef.current = targetRuns;
+    botCompletedRunsRef.current = 0;
+    setBotTargetRuns(targetRuns);
+    setBotCompletedRuns(0);
+    setParallelWorkerCount(workerCount);
+    setBotRunning(true);
+    localStorage.removeItem(BOT_LIVE_STORAGE_KEY);
+
+    let nextRun = 1;
+    let completed = 0;
+    const stopPool = () => {
+      parallelWorkersRef.current.forEach((worker) => worker.terminate());
+      parallelWorkersRef.current = [];
+      setParallelWorkerCount(0);
+    };
+    const failPool = (message: string) => {
+      if (parallelSessionRef.current !== session) return;
+      console.error(`[benchmark-worker] ${message}`);
+      stopPool();
+      botActiveRef.current = false;
+      setBotRunning(false);
+    };
+    const dispatch = (worker: Worker) => {
+      if (parallelSessionRef.current !== session || nextRun > targetRuns) return;
+      const run = nextRun++;
+      const request: HeadlessBenchmarkRequest = {
+        run,
+        seed: 91001 + run * 7919,
+        policy: botPolicy,
+        balanceConfig: { ...balanceConfigRef.current },
+        benchmarkConfig: { ...benchmarkConfigRef.current },
+        skills: activeSkillConfigsRef.current.map((skill) => ({ ...skill, levels: [...skill.levels] as [number, number, number] })),
+      };
+      worker.postMessage(request);
+    };
+
+    const workers = Array.from({ length: workerCount }, () => {
+      const worker = new Worker(new URL("./benchmark-worker.ts", import.meta.url), { type: "module" });
+      worker.onmessage = (event: MessageEvent<{ type: "result"; result: HeadlessBenchmarkResult } | { type: "error"; message: string }>) => {
+        if (parallelSessionRef.current !== session) return;
+        if (event.data.type === "error") {
+          failPool(event.data.message);
+          return;
+        }
+        const record = event.data.result as BotRunResult;
+        completed += 1;
+        botCompletedRunsRef.current = completed;
+        const nextResults = [...botResultsRef.current, record].slice(-1200);
+        botResultsRef.current = nextResults;
+        setBotCompletedRuns(completed);
+        setBotResults(nextResults);
+        localStorage.setItem(BOT_RESULTS_STORAGE_KEY, JSON.stringify(nextResults));
+        if (completed >= targetRuns) {
+          stopPool();
+          botActiveRef.current = false;
+          setBotRunning(false);
+          return;
+        }
+        dispatch(worker);
+      };
+      worker.onerror = (event) => failPool(event.message || "Worker execution failed");
+      return worker;
+    });
+    parallelWorkersRef.current = workers;
+    workers.forEach(dispatch);
+  };
+
   const startBotSession = () => {
+    if (benchmarkMode) {
+      startParallelBenchmarkSession();
+      return;
+    }
     const bench = skillBenchConfigRef.current;
     const queue = bench.environment === "original" ? ["original"] : (bench.mode === "batch" ? bench.skillIds : [bench.skillId]).filter((id) => upgradeCatalogRef.current.some((upgrade) => upgrade.id === id));
     botSkillBenchActiveRef.current = !benchmarkMode && bench.enabled && queue.length > 0;
@@ -3687,6 +3780,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   };
 
   const stopBotSession = () => {
+    if (parallelWorkersRef.current.length > 0) {
+      parallelSessionRef.current += 1;
+      parallelWorkersRef.current.forEach((worker) => worker.terminate());
+      parallelWorkersRef.current = [];
+      setParallelWorkerCount(0);
+    }
     if (botSkillBenchActiveRef.current) {
       const paused = { ...skillBenchProgressRef.current, status: "paused" as const, completedRuns: botCompletedRunsRef.current, updatedAt: Date.now() };
       skillBenchProgressRef.current = paused;
@@ -3831,8 +3930,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             {mode === "lobby" && (
               <div className="overlay lobby-overlay">
                 <p className="overlay-kicker">{benchmarkMode ? `REAL STAGE · W1–W20 · ${benchmarkConfig.runs} RUNS` : "20 WAVES. 60 SECONDS. BREAK OR DEFEND."}</p>
-                <h2>{benchmarkMode ? <>실제 게임과 같은 스테이지<br />하나의 러너에서 테스트합니다.</> : <>패턴을 돌파하고<br />코어를 지키세요.</>}</h2>
-                <p>{benchmarkMode ? "실제 게임의 웨이브 패턴, 블록 타입, 멀티볼, 스킬 보상, 보스 규칙을 그대로 사용합니다." : "웨이브마다 고정 패턴을 60초 동안 공략하세요. 시간이 끝나면 남은 모든 블록이 코어를 공격하고 다음 웨이브가 시작됩니다."}</p>
+                <h2>{benchmarkMode ? <>실제 게임 스테이지를<br />병렬로 테스트합니다.</> : <>패턴을 돌파하고<br />코어를 지키세요.</>}</h2>
+                <p>{benchmarkMode ? "웨이브 패턴, 블록 체력, 보스와 Skill LAB 수치를 헤드리스 Worker가 동시에 시뮬레이션합니다." : "웨이브마다 고정 패턴을 60초 동안 공략하세요. 시간이 끝나면 남은 모든 블록이 코어를 공격하고 다음 웨이브가 시작됩니다."}</p>
                 {!benchmarkMode && <button className="primary-button" onClick={() => startRun(false)}>20 웨이브 시작 <span>→</span></button>}
                 <small>{benchmarkMode ? "오른쪽 플레이테스트 봇에서 실행합니다." : "마우스 또는 터치로 패들을 움직이세요."}</small>
               </div>
@@ -3963,7 +4062,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         {benchmarkMode && <aside className="ghost-panel">
           <section className="bot-panel" aria-label="플레이테스트 봇 설정 및 결과">
             <div className="panel-heading">
-                  <div><p className="eyebrow">NO GHOST · AUTO RUN · TARGET W{benchmarkConfig.targetWave}</p><h2>벤치마크 러너</h2></div>
+                  <div><p className="eyebrow">PARALLEL HEADLESS · {parallelWorkerCount || "AUTO"} WORKERS · TARGET W{benchmarkConfig.targetWave}</p><h2>벤치마크 러너</h2></div>
               <span>{botRunning ? `${botCompletedRuns}/${botTargetRuns}` : `${visibleBotResults.length} DATA`}</span>
             </div>
             <p className="panel-copy">{showSkillBenchmark
@@ -3972,7 +4071,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                 : skillBenchConfig.mode === "batch"
                 ? `배치 스킬 벤치 · ${skillBenchConfig.skillIds.length}개 스킬 · 총 ${skillBenchConfig.skillIds.length * skillBenchConfig.runsPerVariant * 4}회${skillBenchProgress.status === "paused" ? ` · ${skillBenchProgress.completedRuns}회부터 재개` : ""}`
                 : `${skillBenchConfig.environment.toUpperCase()} · ${activeSkillMap[skillBenchConfig.skillId as UpgradeId]?.name ?? skillBenchConfig.skillId} · 기준/LV1/LV2/LV3 각 ${skillBenchConfig.runsPerVariant}회`
-                  : `실제 게임 W1–W${benchmarkConfig.targetWave} · 동일 웨이브/보스/보상 규칙 · ${benchmarkConfig.runs}회 반복`}</p>
+                  : `실제 스테이지 데이터와 Skill LAB 수치를 사용하는 결정론적 헤드리스 시뮬레이션 · ${benchmarkConfig.runs}회 병렬 실행`}</p>
             <div className="bot-controls">
               <label>반복 횟수
                 <select value={benchmarkConfig.runs} onChange={(event) => updateBenchmarkRuns(Number(event.target.value) as BenchmarkConfig["runs"])} disabled={botRunning || mode !== "lobby"}>
@@ -3986,18 +4085,14 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                   <option value="random">무작위</option>
                 </select>
               </label>
-              <label>배속
-                <select value={botSpeed} onChange={(event) => {
-                  const speed = Number(event.target.value) as BotSpeed;
-                  setBotSpeed(speed);
-                  botSpeedRef.current = speed;
-                }} disabled={!botRunning && mode !== "lobby"}>
-                  {[1, 2, 4, 8].map((speed) => <option key={speed} value={speed}>{speed}×</option>)}
+              <label>병렬 처리
+                <select value="auto" disabled>
+                  <option value="auto">CPU 자동 · 최대 8</option>
                 </select>
               </label>
             </div>
             {botRunning
-              ? <button className="bot-stop" type="button" onClick={stopBotSession}>BOT STOP · {botCompletedRuns}/{botTargetRuns} · {botSpeed}×</button>
+              ? <button className="bot-stop" type="button" onClick={stopBotSession}>BOT STOP · {botCompletedRuns}/{botTargetRuns} · {parallelWorkerCount} WORKERS</button>
               : <button className="bot-start" type="button" onClick={startBotSession} disabled={mode !== "lobby"}>{showSkillBenchmark ? skillBenchProgress.status === "paused" ? "SKILL BENCH RESUME" : "SKILL BENCH START" : "BENCHMARK START"}</button>}
             <div className="bot-summary">
               <div><span>AVG TIME</span><strong>{botAverageSurvival.toFixed(1)}s</strong></div>
@@ -4015,10 +4110,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               <button type="button" onClick={clearBotResults} disabled={botRunning || visibleBotResults.length === 0}>CLEAR DATA</button>
             </div>
           </section>
-          <div className="panel-note">
-            <span>CURRENT TEST SCOPE</span>
-            <p>게임 플레이와 동일한 20개 웨이브를 자동 반복합니다. 시작 스킬 2개, 웨이브 보상, 보스 궁극기까지 실제 규칙으로 선택합니다.</p>
-          </div>
+              <div className="panel-note">
+                <span>CURRENT TEST SCOPE</span>
+                <p>동일한 20개 웨이브 데이터로 시작 스킬 2개, 웨이브 보상과 보스 궁극기를 선택합니다. 충돌 물리는 빠른 통계 모델로 계산됩니다.</p>
+              </div>
         </aside>}
       </section>
       {benchmarkMode && <section className="benchmark-dashboard" aria-label="벤치마크 결과 분석">

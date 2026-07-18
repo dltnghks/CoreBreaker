@@ -415,15 +415,23 @@ test("runs a no-ghost playtest bot and persists balance metrics", async () => {
   assert.match(source, /EXPORT JSON/);
 });
 
-test("keeps benchmark telemetry inside the unified live-game runner", async () => {
+test("runs benchmark telemetry through a parallel headless worker pool", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const lab = await readFile(new URL("../app/benchmark/page.tsx", import.meta.url), "utf8");
   const config = await readFile(new URL("../app/benchmark-config.ts", import.meta.url), "utf8");
+  const engine = await readFile(new URL("../app/benchmark-headless.ts", import.meta.url), "utf8");
+  const worker = await readFile(new URL("../app/benchmark-worker.ts", import.meta.url), "utf8");
   assert.match(source, /balanceConfigRef\.current/);
   assert.match(source, /BALANCE_STORAGE_KEY/);
   assert.match(lab, /<GameRuntime benchmarkMode \/>/);
   assert.doesNotMatch(lab, /BalanceSimulator|SkillBench|BenchmarkSetup/);
-  assert.match(source, /실제 게임 W1–W/);
+  assert.match(source, /new Worker\(new URL\("\.\/benchmark-worker\.ts", import\.meta\.url\)/);
+  assert.match(source, /navigator\.hardwareConcurrency/);
+  assert.match(source, /Math\.min\(8, targetRuns/);
+  assert.match(source, /worker\.terminate\(\)/);
+  assert.match(engine, /waveDefinition\(wave\)/);
+  assert.match(engine, /request\.skills\?\.length \? request\.skills : DEFAULT_SKILLS/);
+  assert.match(worker, /runHeadlessBenchmark\(event\.data\)/);
   assert.match(source, /updateBenchmarkRuns/);
   assert.match(source, /\[3, 5, 10, 20, 100\]/);
   assert.match(config, /runs: 3 \| 5 \| 10 \| 20 \| 100/);
@@ -469,7 +477,7 @@ test("renders live benchmark KPIs, wave charts, and per-run data", async () => {
   assert.match(source, /benchmark-skill-table/);
   assert.match(source, /스킬별 벤치마크 성과/);
   assert.match(source, /item\.startingSkills\.map/);
-  assert.match(source, /const BENCHMARK_RULESET: BenchmarkRuleset = "live-v2"/);
+  assert.match(source, /const BENCHMARK_RULESET: BenchmarkRuleset = PARALLEL_BENCHMARK_RULESET/);
   assert.match(source, /benchmarkRuleset === BENCHMARK_RULESET/);
   assert.match(styles, /\.benchmark-dashboard/);
   assert.match(styles, /\.benchmark-charts/);
@@ -526,15 +534,14 @@ test("separates original, isolated, and ecosystem experiment roles", async () =>
   assert.match(bench, /스킬 없는 오리지널 기준군/);
 });
 
-test("runs the playtest bot at selectable fixed-step speeds", async () => {
+test("keeps fixed-step acceleration for the legacy skill benchmark runner", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /type BotSpeed = 1 \| 2 \| 4 \| 8/);
   assert.match(source, /const steps = botActiveRef\.current \? botSpeedRef\.current : 1/);
   assert.match(source, /for \(let step = 0; step < steps && runningRef\.current; step\+\+\) updateGame\(dt\)/);
-  assert.match(source, /<label>배속/);
   assert.match(source, /speed: botSpeedRef\.current/);
-  assert.match(source, /botSpeedRef\.current = speed/);
-  assert.match(source, /disabled=\{!botRunning && mode !== "lobby"\}/);
+  assert.match(source, /botSpeedRef\.current = botSpeed/);
+  assert.match(source, /CPU 자동 · 최대 8/);
 });
 
 test("keeps safety blocks until they reflect a ball", async () => {
