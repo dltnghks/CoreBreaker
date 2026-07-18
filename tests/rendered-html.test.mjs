@@ -222,8 +222,9 @@ test("renders every destructible brick health as large outlined white text", asy
   assert.match(source, /ctx\.font = "900 44px monospace"/);
 });
 
-test("adds six stage brick traits with distinct combat rules", async () => {
+test("adds six stage brick traits with distinct combat rules and readable visual keys", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(source, /type BrickTrait = "standard" \| "guard" \| "explosive" \| "indestructible" \| "healer" \| "reflector"/);
   assert.match(source, /const absorbGuardHit =/);
   assert.match(source, /GUARD \/\/ HIT NULLIFIED/);
@@ -242,9 +243,14 @@ test("adds six stage brick traits with distinct combat rules", async () => {
   assert.match(source, /ctx\.quadraticCurveTo\(brick\.x \+ 4, reflectorLineY/);
   assert.match(source, /ctx\.lineWidth = reflectorThreatened \? 4 : 3/);
   assert.match(source, /const hpBaselineY = brick\.y \+ brick\.h \/ 2 \+ 6/);
-  assert.match(source, /if \(brick\.trait !== "reflector"\)/);
   assert.match(source, /reflectorLineY/);
-  assert.match(source, /fillText\(brick\.guardReady \? "G1" : "G0"/);
+  assert.match(source, /const BRICK_TRAIT_DATA/);
+  assert.match(source, /description: "첫 피격 1회 무시"/);
+  assert.match(source, /description: "파괴 시 주변 피해 · 공 밀어냄"/);
+  assert.match(source, /description: "3초마다 주변 체력 \+1"/);
+  assert.match(source, /aria-label="특수 블록 기능 안내"/);
+  assert.match(source, /traitData\.glyph/);
+  assert.match(styles, /\.brick-key-strip/);
   assert.doesNotMatch(source, /"shield"/);
 });
 
@@ -681,6 +687,12 @@ test("separates impact shockwave damage from fireball damage over time", async (
   assert.match(skills, /legacyDestructionTrigger/);
   assert.match(source, /triggerImpactShockwave\(brick, ball, shockwaveLevel\)/);
   assert.match(source, /igniteFireballArea\(brick, sourcePaddle\.id, fireballLevel\)/);
+  assert.match(source, /emitEffect\("beam", centerX, centerY, classSkillColor\("warrior-shockwave"\)/);
+  assert.match(source, /text: `충격 -\$\{Math\.max\(1, Math\.round\(appliedDamage\)\)\}`/);
+  assert.match(source, /text: `충격파 \/\/ \$\{hitCount\}개 타격`/);
+  assert.match(source, /emitEffect\("beam", centerX, centerY, classSkillColor\("mage-fireball"\)/);
+  assert.match(source, /text: `점화 \$\{2 \+ level\}초`/);
+  assert.match(source, /text: `화염구 \/\/ \$\{ignited\}개 점화`/);
   assert.match(source, /near\.burnTime = Math\.max\(near\.burnTime, 2 \+ level\)/);
   assert.match(source, /recordSkillImpact\("mage-fireball"/);
   assert.match(source, /BURN \$\{Math\.max\(0, Math\.ceil\(brick\.burnTime\)\)\}s/);

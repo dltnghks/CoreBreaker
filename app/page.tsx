@@ -251,6 +251,14 @@ const ITEM_DATA: Record<ItemKind, { label: string; symbol: string; color: string
   multiball: { label: "MULTI BALL", symbol: "+", color: "#ffcf4a" },
 };
 const ITEM_KINDS = Object.keys(ITEM_DATA) as ItemKind[];
+const BRICK_TRAIT_DATA: Record<Exclude<BrickTrait, "standard">, { label: string; glyph: string; color: string; description: string }> = {
+  guard: { label: "가드", glyph: "방", color: "#fff27a", description: "첫 피격 1회 무시" },
+  explosive: { label: "폭발", glyph: "폭", color: "#ff8a3d", description: "파괴 시 주변 피해 · 공 밀어냄" },
+  indestructible: { label: "불괴", glyph: "불", color: "#aeb8ca", description: "파괴 불가" },
+  healer: { label: "회복", glyph: "회", color: "#72f1b8", description: "3초마다 주변 체력 +1" },
+  reflector: { label: "반사", glyph: "반", color: "#65dcff", description: "아래에서 오는 공 반사" },
+};
+const BRICK_TRAITS = Object.keys(BRICK_TRAIT_DATA) as Exclude<BrickTrait, "standard">[];
 
 const CLASS_META: Record<SkillCategory, { tag: string; color: string }> = {
   warrior: { tag: "WARRIOR", color: "#ff6b57" },
@@ -1539,16 +1547,22 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       emitBurst(centerX, centerY, classSkillColor("warrior-shockwave"), 12 + level * 4, 280);
       audioRef.current?.play("explosion", 0.9 + level * 0.2);
       impactFeedback(4.5 + level, classSkillColor("warrior-shockwave"), 0.2, 0.08);
+      let hitCount = 0;
       game.bricks.forEach((near) => {
         if (!near.alive || near === origin || !isDamageableBrick(near)) return;
         const distance = Math.hypot(near.x + near.w / 2 - centerX, near.y + near.h / 2 - centerY);
         if (distance >= range || absorbGuardHit(near)) return;
         const hpBefore = near.hp;
         near.hp -= damage * damageMultiplier(near);
-        recordSkillImpact("warrior-shockwave", Math.min(hpBefore, Math.max(0, hpBefore - near.hp)), near.hp <= 0);
+        const appliedDamage = Math.min(hpBefore, Math.max(0, hpBefore - near.hp));
+        hitCount++;
+        recordSkillImpact("warrior-shockwave", appliedDamage, near.hp <= 0);
+        emitEffect("beam", centerX, centerY, classSkillColor("warrior-shockwave"), 5, near.x + near.w / 2, near.y + near.h / 2, 0.28, 0, "warrior-shockwave");
         emitEffect("ring", near.x + near.w / 2, near.y + near.h / 2, classSkillColor("warrior-shockwave"), 30, near.x + near.w / 2, near.y + near.h / 2, 0.3);
+        game.flashes.push({ text: `충격 -${Math.max(1, Math.round(appliedDamage))}`, x: near.x + near.w / 2, y: near.y - 5, life: 0.55, color: "#fff3d6" });
         if (near.hp <= 0) destroyBrick(near, ball, false, 0);
       });
+      game.flashes.push({ text: `충격파 // ${hitCount}개 타격`, x: centerX, y: centerY - 24, life: 0.8, color: classSkillColor("warrior-shockwave") });
     };
 
     const igniteFireballArea = (origin: Brick, sourcePaddleId: string, level: number) => {
@@ -1565,11 +1579,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         near.burnLevel = Math.max(near.burnLevel, level);
         near.burnSourcePaddleId = sourcePaddleId;
         ignited++;
+        emitEffect("beam", centerX, centerY, classSkillColor("mage-fireball"), 4, near.x + near.w / 2, near.y + near.h / 2, 0.42, 0, "mage-fireball");
         emitEffect("ring", near.x + near.w / 2, near.y + near.h / 2, classSkillColor("mage-fireball"), 28 + level * 4, near.x + near.w / 2, near.y + near.h / 2, 0.4, 0, "mage-fireball");
+        game.flashes.push({ text: `점화 ${2 + level}초`, x: near.x + near.w / 2, y: near.y - 5, life: 0.65, color: "#ffd166" });
       });
       emitSkillEffect("mage-fireball", centerX, centerY, range, 0.72);
       emitBurst(centerX, centerY, classSkillColor("mage-fireball"), 14 + level * 4, 220);
-      game.flashes.push({ text: `화염구 // 점화 ×${ignited}`, x: centerX, y: centerY - 22, life: 0.9, color: classSkillColor("mage-fireball") });
+      game.flashes.push({ text: `화염구 // ${ignited}개 점화`, x: centerX, y: centerY - 22, life: 0.9, color: classSkillColor("mage-fireball") });
       audioRef.current?.play("skill-impact", 1 + level * 0.2);
     };
 
@@ -2454,25 +2470,36 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ctx.shadowBlur = 0;
       ctx.fillStyle = "rgba(255,255,255,.28)";
       ctx.fillRect(brick.x + 3, brick.y + 3, brick.w - 6, 2);
-      if (brick.kind === "normal" && brick.trait === "guard") {
-        ctx.strokeStyle = brick.guardReady ? "#fff27a" : "rgba(255,242,122,.3)";
-        ctx.lineWidth = brick.guardReady ? 3 : 1;
+      if (brick.kind === "normal" && brick.trait !== "standard") {
+        const traitData = BRICK_TRAIT_DATA[brick.trait];
+        const traitPulse = 0.72 + Math.sin(game.elapsed * 6 + brick.x * 0.04) * 0.18;
+        ctx.save();
+        ctx.strokeStyle = brick.trait === "guard" && !brick.guardReady ? "rgba(255,242,122,.32)" : traitData.color;
+        ctx.lineWidth = brick.trait === "indestructible" ? 3 : brick.trait === "guard" && brick.guardReady ? 3 : 2;
+        if (brick.trait === "explosive") ctx.setLineDash([5, 3]);
         ctx.strokeRect(brick.x + 1.5, brick.y + 1.5, brick.w - 3, brick.h - 3);
-        ctx.fillStyle = brick.guardReady ? "#fff27a" : "rgba(255,242,122,.55)";
-        ctx.font = "900 9px monospace";
-        ctx.textAlign = "right";
-        ctx.fillText(brick.guardReady ? "G1" : "G0", brick.x + brick.w - 6, brick.y + 16);
-      } else if (brick.kind === "normal" && brick.trait !== "standard") {
-        const traitLabel = brick.trait === "explosive" ? "EXP" : brick.trait === "indestructible" ? "LOCK" : brick.trait === "healer" ? "+" : "▲";
-        ctx.strokeStyle = brickColor;
-        ctx.lineWidth = brick.trait === "indestructible" ? 3 : 2;
-        ctx.strokeRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4);
+        ctx.setLineDash([]);
         if (brick.trait === "indestructible") {
           ctx.strokeStyle = "rgba(190,199,216,.42)";
+          ctx.lineWidth = 1.5;
           ctx.beginPath();
           ctx.moveTo(brick.x + 8, brick.y + brick.h - 4);
           ctx.lineTo(brick.x + brick.w - 8, brick.y + 4);
+          ctx.moveTo(brick.x + 20, brick.y + brick.h - 4);
+          ctx.lineTo(brick.x + brick.w - 2, brick.y + 3);
           ctx.stroke();
+        }
+        if (brick.trait === "healer") {
+          ctx.globalAlpha = traitPulse;
+          ctx.shadowColor = traitData.color;
+          ctx.shadowBlur = 12;
+          ctx.strokeStyle = traitData.color;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(brick.x + brick.w / 2, brick.y + brick.h / 2, 8 + traitPulse * 3, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.shadowBlur = 0;
         }
         if (brick.trait === "reflector") {
           const reflectorShieldPulse = 0.55 + (Math.sin(game.elapsed * 7 + brick.x * 0.03) + 1) * 0.2;
@@ -2516,12 +2543,21 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ctx.stroke();
           ctx.restore();
         }
-        if (brick.trait !== "reflector") {
-          ctx.fillStyle = brickColor;
-          ctx.font = brick.trait === "healer" ? "900 14px monospace" : "900 8px monospace";
-          ctx.textAlign = "right";
-          ctx.fillText(traitLabel, brick.x + brick.w - 6, brick.y + 16);
-        }
+        const badgeWidth = 18;
+        ctx.globalAlpha = brick.trait === "guard" && !brick.guardReady ? 0.5 : 1;
+        ctx.shadowColor = traitData.color;
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = "rgba(5,8,18,.96)";
+        ctx.fillRect(brick.x + 3, brick.y - 6, badgeWidth, 13);
+        ctx.strokeStyle = traitData.color;
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(brick.x + 3, brick.y - 6, badgeWidth, 13);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = traitData.color;
+        ctx.font = "900 10px 'Noto Sans KR', sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(brick.trait === "guard" && !brick.guardReady ? "소" : traitData.glyph, brick.x + 3 + badgeWidth / 2, brick.y + 4);
+        ctx.restore();
       }
       if (brick.drop) {
         const dropData = ITEM_DATA[brick.drop];
@@ -4062,6 +4098,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             <div className={hud.coreHp <= 3 ? "core-cell core-critical" : "core-cell"}><span>CORE</span><strong>{hud.coreHp}/{hud.maxCoreHp}</strong></div>
             <div className="xp-cell"><span>WAVE PATTERN</span><strong>{hud.waveName}</strong><small>{hud.aliveBricks} BRICKS LEFT</small></div>
             <div><span>WAVE {hud.wave}/{MAX_WAVE} · TIME</span><strong className={(hud.bossActive ? hud.bossTimeRemaining : hud.nextRow) < 10 ? "core-critical" : ""}>{(hud.bossActive ? hud.bossTimeRemaining : hud.nextRow).toFixed(1)}s</strong></div>
+          </div>
+          <div className="brick-key-strip" aria-label="특수 블록 기능 안내">
+            <strong>BLOCK KEY</strong>
+            {BRICK_TRAITS.map((trait) => {
+              const data = BRICK_TRAIT_DATA[trait];
+              return <span key={trait} style={{ "--trait-color": data.color } as React.CSSProperties} title={`${data.label}: ${data.description}`}><b>{data.glyph}</b><em>{data.label}</em><small>{data.description}</small></span>;
+            })}
           </div>
 
           <div className="game-frame">
