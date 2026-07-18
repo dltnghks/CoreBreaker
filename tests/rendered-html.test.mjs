@@ -21,10 +21,10 @@ test("server-renders the Core Breaker playtest", async () => {
   assert.match(html, /LIVE GAMEPLAY/);
   assert.doesNotMatch(html, /고스트 보관함/);
   assert.match(html, /20 웨이브 시작/);
-  assert.match(html, /20 WAVES\. 60 SECONDS\. BREAK OR DEFEND\./);
+  assert.match(html, /20 WAVES\. ONE BALL\. BREAK THROUGH\./);
   assert.match(html, /MULTI BALL/);
   assert.match(html, /CORE/);
-  assert.match(html, /시간이 끝나면 남은 모든 블록이 코어를 공격/);
+  assert.match(html, /공을 놓치면 CORE 1을 잃고 새 공으로 즉시 이어집니다/);
   assert.doesNotMatch(html, /플레이테스트 봇/);
   assert.match(html, /href="\/benchmark"/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|react-loading-skeleton/);
@@ -138,13 +138,13 @@ test("adds synthesized game audio and a persistent mute control", async () => {
   assert.match(audio, /createBufferSource\(\)/);
 });
 
-test("uses stationary 4x3 time-attack bosses with reinforcement bricks", async () => {
+test("uses stationary 4x3 bosses with reinforcement bricks", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const cols = 4;/);
   assert.match(source, /const rows = 3;/);
   assert.match(source, /const width = cols \* cellWidth;/);
   assert.match(source, /return \[\{/);
-  assert.match(source, /bossTimeRemaining/);
+  assert.match(source, /CORE FORTRESS.*HP/);
   assert.match(source, /brick\.kind === "boss-minion"/);
   assert.match(source, /BOSS SKILL \/\/ REINFORCEMENTS/);
 });
@@ -154,7 +154,7 @@ test("defines 20 fixed brick patterns with bosses at waves 10 and 20", async () 
   const waves = await readFile(new URL("../app/wave-config.ts", import.meta.url), "utf8");
   assert.match(source, /import \{ MAX_WAVE, waveDefinition \}/);
   assert.match(source, /makeWaveBricks\(waveNumber/);
-  assert.match(waves, /export const WAVE_TIME_LIMIT = 60/);
+  assert.doesNotMatch(waves, /timeLimit|WAVE_TIME_LIMIT/);
   assert.match(waves, /wave\(10, "MID BOSS/);
   assert.match(waves, /wave\(20, "FINAL BOSS/);
   const patternRows = [...waves.matchAll(/"([.nhgexcr]+)"/g)].map((match) => match[1]);
@@ -179,20 +179,14 @@ test("opens side gaps in the wave 7 reflector wall", async () => {
   assert.doesNotMatch(waves, /"rrrrnnnnrrrr"/);
 });
 
-test("ends a wave on clear or drops every surviving brick at time up", async () => {
+test("ends a wave only after every damageable brick is cleared", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const waveCleared = game\.bossActive/);
   assert.match(source, /game\.waveResolution = \{ timer: 0\.9, maxTimer: 0\.9, cleared: true/);
-  assert.match(source, /const allSurvivors = game\.bricks\.filter\(\(brick\) => brick\.alive\)/);
-  assert.match(source, /const survivors = allSurvivors;/);
-  assert.match(source, /let coreDamage = survivors\.length;/);
-  assert.doesNotMatch(source, /Math\.ceil\(threat \/ 8\)/);
-  assert.match(source, /BLOCK SETTLEMENT \/\/ \$\{survivors\.length\} THREATS/);
-  assert.match(source, /emitEffect\("drop"/);
-  assert.ok(source.indexOf('effect.kind === "drop"') > source.indexOf("game.effects.forEach((effect)"));
-  assert.match(source, /game\.coreHp = Math\.max\(0, game\.coreHp - resolution\.coreDamage\)/);
+  assert.match(source, /BLOCK SETTLEMENT \/\/ THREAT 0/);
+  assert.doesNotMatch(source, /const allSurvivors = game\.bricks\.filter/);
+  assert.doesNotMatch(source, /BLOCK SETTLEMENT \/\/ \$\{survivors\.length\} THREATS/);
   assert.match(source, /completeWave\(resolution\.cleared, resolution\.coreDamage/);
-  assert.ok(source.indexOf("game.coreHp = Math.max(0, game.coreHp - resolution.coreDamage)") > source.indexOf("if (game.waveResolution)"));
 });
 
 test("raises post-wave-5 density, brick health, and boss health", async () => {
@@ -285,10 +279,13 @@ test("respawns a ball at the cost of one core health", async () => {
   assert.match(source, /BALL LOST \/\/ CORE -1 \/\/ RESPAWN/);
 });
 
-test("uses fixed 60 second wave pacing and skill-specific combat effects", async () => {
+test("uses clear-driven waves without a time limit and keeps skill-specific combat effects", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /const STARTING_ROW_INTERVAL = 60;/);
-  assert.match(source, /game\.rowInterval = definition\.timeLimit \+ timeBonus/);
+  assert.match(source, /const STARTING_WAVE_ELAPSED = 0;/);
+  assert.match(source, /game\.rowTimer \+= dt/);
+  assert.match(source, /game\.rowInterval = 0/);
+  assert.doesNotMatch(source, /const timeRemaining = game\.bossActive/);
+  assert.match(source, /game\.bricks\.every\(\(brick\) => !brick\.alive \|\| brick\.trait === "indestructible"\)/);
   assert.match(source, /type GameEffect =/);
   assert.match(source, /HORIZONTAL ENCHANT/);
   assert.match(source, /emitEffect\("beam"/);
@@ -376,15 +373,15 @@ test.skip("uses legacy percentage fracture, upper gravity wells, and homing pier
   assert.match(gameSource, /const turn = Math\.max\(-5\.4 \* dt/);
 });
 
-test("resets wave balls above the paddle and adds one base ball per wave", async () => {
+test("resets every wave to exactly one base ball above the paddle", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const ballCount = game\.balls\.length/);
   assert.match(source, /game\.balls\.forEach\(\(ball, index\) =>/);
   assert.match(source, /ball\.y = PLAYER_PADDLE_Y - ball\.radius - 3/);
   assert.match(source, /ball\.vy = -Math\.sqrt/);
   assert.match(source, /const resetBallsForWave =/);
-  assert.match(source, /ball\.temporaryTime <= 0 && !ball\.waveBonus/);
-  assert.match(source, /while \(game\.balls\.length < game\.wave\) game\.balls\.push\(makePlayerBall/);
+  assert.match(source, /game\.balls = \[makePlayerBall\(game\.upgrades, game\.paddleX\)\]/);
+  assert.doesNotMatch(source, /while \(game\.balls\.length < game\.wave\)/);
 });
 
 test("renders item multiballs gray and removes them after the wave", async () => {
@@ -393,7 +390,7 @@ test("renders item multiballs gray and removes them after the wave", async () =>
   assert.match(source, /waveBonus: boolean/);
   assert.match(source, /waveBonus: true/);
   assert.match(source, /const drawColor = ballBodyColor\(ball\)/);
-  assert.match(source, /!ball\.waveBonus/);
+  assert.match(source, /lostBaseBall/);
 });
 
 test("runs a no-ghost playtest bot and persists balance metrics", async () => {
@@ -563,22 +560,16 @@ test("keeps safety blocks until they reflect a ball", async () => {
   assert.match(source, /game\.safetyBlocks = game\.safetyBlocks\.filter\(\(block\) => block !== safetyBlock\)/);
 });
 
-test("uses a permanent neutral floor that purges ball effects before reflecting", async () => {
+test("removes the neutral floor and spends core health when the base ball falls", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /const BALL_FLOOR_Y = H - 4/);
-  assert.match(source, /ball\.vy > 0 && ball\.y \+ ball\.radius >= BALL_FLOOR_Y/);
-  assert.match(source, /ball\.vx = \(ball\.vx < 0 \? -1 : 1\) \* BASE_BALL_VX/);
-  assert.match(source, /ball\.vy = -BASE_BALL_VY/);
-  assert.match(source, /ball\.payloads = \{\}/);
-  assert.match(source, /ball\.attackPower = 1/);
-  assert.match(source, /ball\.sourcePaddleId = neutralFloor\.id/);
-  assert.match(source, /ball\.missileTime = 0/);
-  assert.match(source, /NEUTRAL FLOOR \/\/ RESET ALL BALL EFFECTS/);
-  const floorLogic = source.slice(source.indexOf("if (ball.vy > 0 && ball.y + ball.radius >= BALL_FLOOR_Y)"), source.indexOf("if (ball.y > H + 30)"));
-  assert.doesNotMatch(floorLogic, /grantPaddlePayloads/);
+  assert.doesNotMatch(source, /BALL_FLOOR_Y|NEUTRAL FLOOR|neutralFloor/);
+  assert.match(source, /if \(ball\.y - ball\.radius > H\)/);
+  assert.match(source, /const lostBaseBall =/);
+  assert.match(source, /game\.coreHp = Math\.max\(0, game\.coreHp - 1\)/);
+  assert.match(source, /BALL LOST \/\/ CORE -1 \/\/ RESPAWN/);
 });
 
-test("uses a faster base ball speed for the neutral-floor ruleset", async () => {
+test("keeps the faster base ball speed for the one-ball ruleset", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const BASE_BALL_VX = 240/);
   assert.match(source, /const BASE_BALL_VY = 320/);
@@ -696,7 +687,7 @@ test("separates impact shockwave damage from fireball damage over time", async (
   assert.match(source, /near\.burnTime = Math\.max\(near\.burnTime, 2 \+ level\)/);
   assert.match(source, /recordSkillImpact\("mage-fireball"/);
   assert.match(source, /BURN \$\{Math\.max\(0, Math\.ceil\(brick\.burnTime\)\)\}s/);
-  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v2"/);
+  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v3"/);
   assert.match(benchmark, /skill\.id === "warrior-shockwave"/);
   assert.match(benchmark, /skill\.id === "mage-fireball"/);
 });
@@ -734,6 +725,9 @@ test("adds common utility skills to gameplay, Skill Lab, and skill benchmarks", 
   const lab = await readFile(new URL("../app/skill-lab/page.tsx", import.meta.url), "utf8");
   const bench = await readFile(new URL("../app/skill-lab/skill-bench.tsx", import.meta.url), "utf8");
   ["common-magnet", "common-luck", "common-wide", "common-xp", "common-combo"].forEach((id) => assert.match(config, new RegExp(`"${id}"`)));
+  assert.match(config, /passiveSkill\("common-xp", "코어 강화", "CORE 최대 체력 증가"/);
+  assert.match(source, /if \(upgrade\.id === "common-xp"\)/);
+  assert.match(source, /game\.maxCoreHp \+= coreGain/);
   assert.match(source, /skillValue\("common-magnet"/);
   assert.match(source, /skillValue\("common-luck"/);
   assert.match(source, /skillValue\("common-wide"/);

@@ -154,7 +154,7 @@ export const DEFAULT_SKILLS: SkillConfig[] = [
   passiveSkill("common-magnet", "아이템 자석", "아이템 흡수 범위 증가", "패들 주변의 아이템을 끌어당기는 범위가 증가합니다.", [70, 120, 180], "px"),
   passiveSkill("common-luck", "행운", "아이템 추가 드롭 확률 증가", "아이템이 없는 브릭을 파괴했을 때 추가로 아이템이 생성될 확률이 증가합니다.", [8, 14, 20], "%"),
   passiveSkill("common-wide", "패들 확장", "패들 길이 증가", "플레이어 패들의 실제 충돌 범위와 표시 길이가 증가합니다.", [20, 35, 50], "px"),
-  passiveSkill("common-xp", "시간 확장", "웨이브 제한시간 증가", "새 웨이브가 시작될 때 제한시간이 추가됩니다.", [2, 3, 4], "초"),
+  passiveSkill("common-xp", "코어 강화", "CORE 최대 체력 증가", "CORE 최대 체력과 현재 체력이 함께 증가합니다.", [1, 2, 3], "HP"),
   passiveSkill("common-combo", "콤보 안정화", "콤보 유지 시간 증가", "브릭을 파괴한 뒤 콤보가 끊기기까지의 시간이 증가합니다.", [0.6, 1.2, 2], "초"),
 ];
 

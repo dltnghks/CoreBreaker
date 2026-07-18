@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Core Breaker - Playtest",
-  description: "A 20-wave brick breaker with fixed patterns, 60-second rounds, and core defense.",
+  description: "A one-ball, 20-wave brick breaker with fixed patterns and core-loss recovery.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

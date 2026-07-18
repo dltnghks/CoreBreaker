@@ -4,7 +4,7 @@ import { DEFAULT_BENCHMARK_CONFIG, type BenchmarkConfig } from "./benchmark-conf
 import { waveDefinition } from "./wave-config";
 
 export type HeadlessBotPolicy = "balanced" | "survival" | "random";
-export const PARALLEL_BENCHMARK_RULESET = "parallel-v2" as const;
+export const PARALLEL_BENCHMARK_RULESET = "parallel-v3" as const;
 
 export type HeadlessBenchmarkRequest = {
   run: number;
@@ -130,11 +130,15 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
   let maxCombo = 0;
   let reachedWave = 1;
   let maxBalls = 1;
+  let ballLosses = 0;
 
   const grant = (skill: SkillConfig | null, wave: number, source: "start" | "wave" | "boss") => {
     if (!skill) return;
+    const previousLevel = levelOf(upgrades, skill.id);
     upgrades.push(skill.id);
-    history.push({ wave, skillId: skill.id, level: levelOf(upgrades, skill.id), source });
+    const nextLevel = levelOf(upgrades, skill.id);
+    if (skill.id === "common-xp") coreHp += Number(skill.levels[nextLevel - 1] ?? 0) - Number(skill.levels[previousLevel - 1] ?? 0);
+    history.push({ wave, skillId: skill.id, level: nextLevel, source });
   };
   grant(chooseSkill(normalSkills, upgrades, request.policy, random), 1, "start");
   grant(chooseSkill(normalSkills, upgrades, request.policy, random), 1, "start");
@@ -143,20 +147,18 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
     reachedWave = wave;
     const definition = waveDefinition(wave);
     const stage = definition.boss ? bossWaveStats(wave, balance) : normalWaveStats(wave, balance);
-    const baseBalls = wave;
+    const baseBalls = 1;
     const temporaryBalls = !definition.boss && [3, 6, 9].includes(((wave - 1) % 10) + 1) ? 1 : 0;
     const balls = baseBalls + temporaryBalls;
     maxBalls = Math.max(maxBalls, balls);
     const skillBonus = skills.reduce((sum, skill) => sum + skillPower(skill, levelOf(upgrades, skill.id)), 0);
     const accuracy = 0.7 + random() * 0.25;
-    const collisionCapacity = (2.05 * Math.sqrt(balls) + skillBonus) * definition.timeLimit * accuracy;
     const bossPressure = definition.boss ? 0.76 : 1;
-    const effectiveDamage = Math.floor(collisionCapacity * bossPressure);
-    const damageDone = Math.min(stage.hp, effectiveDamage);
-    const clearRatio = stage.hp <= 0 ? 1 : Math.min(1, damageDone / stage.hp);
-    const destroyed = Math.min(stage.damageable, Math.floor(stage.damageable * clearRatio + random() * 1.4));
-    const survivors = definition.boss ? (damageDone >= stage.hp ? 0 : 1) : Math.max(0, stage.damageable - destroyed);
-    const waveElapsed = damageDone >= stage.hp ? definition.timeLimit * Math.max(0.16, clearRatio) : definition.timeLimit;
+    const damagePerSecond = Math.max(0.4, (2.05 * Math.sqrt(balls) + skillBonus) * accuracy * bossPressure);
+    const waveElapsed = stage.hp / damagePerSecond;
+    const damageDone = stage.hp;
+    const destroyed = stage.damageable;
+    const survivors = 0;
     elapsed += waveElapsed;
     bricks += destroyed;
     maxCombo = Math.max(maxCombo, Math.round((6 + balls * 1.8 + skillBonus * 2) * (0.75 + random() * 0.5)));
@@ -167,12 +169,18 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
       if (!level) continue;
       const share = skillPower(skill, level) / Math.max(1, 2.05 * Math.sqrt(balls) + skillBonus);
       const damage = Math.round(damageDone * share);
-      const activations = skill.category === "common" ? 0 : Math.max(1, Math.round(definition.timeLimit / Math.max(2, skill.levels[Math.min(2, level - 1)])));
+      const activations = skill.category === "common" ? 0 : Math.max(1, Math.round(waveElapsed / Math.max(2, skill.levels[Math.min(2, level - 1)])));
       const previous = metrics[skill.id] ?? { activations: 0, damage: 0, kills: 0 };
       metrics[skill.id] = { activations: previous.activations + activations, damage: previous.damage + damage, kills: previous.kills + Math.round(destroyed * share) };
     }
 
-    if (survivors > 0) coreHp = Math.max(0, coreHp - survivors);
+    const survivalPower = levelOf(upgrades, "warrior-guard") * 0.018 + levelOf(upgrades, "mage-black-hole") * 0.012 + levelOf(upgrades, "common-wide") * 0.01;
+    const lossChance = Math.max(0.02, Math.min(0.32, 0.045 + wave * 0.004 + (definition.boss ? 0.035 : 0) - survivalPower));
+    const lossChecks = Math.max(1, Math.ceil(waveElapsed / 24));
+    let waveBallLosses = 0;
+    for (let check = 0; check < lossChecks; check++) if (random() < lossChance) waveBallLosses++;
+    ballLosses += waveBallLosses;
+    coreHp = Math.max(0, coreHp - waveBallLosses);
     samples.push({ wave, elapsed, balls, coreHp, aliveBricks: survivors, brickHp: Math.max(0, stage.hp - damageDone), score, bossActive: Boolean(definition.boss) });
     if (coreHp <= 0) break;
     if (definition.boss && wave < benchmark.targetWave) grant(chooseSkill(ultimateSkills, upgrades, request.policy, random), wave, "boss");
@@ -203,7 +211,7 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
     evaluationComplete: reachedWave >= benchmark.targetWave && coreHp > 0,
     skillBench: null,
     maxBalls,
-    ballLosses: 0,
+    ballLosses,
     missileActivations: metrics["archer-rapid"]?.activations ?? 0,
     safetySaves: metrics["warrior-guard"]?.activations ?? 0,
     gravityRescues: metrics["mage-black-hole"]?.activations ?? 0,
