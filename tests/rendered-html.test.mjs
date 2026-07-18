@@ -447,12 +447,30 @@ test("runs benchmark telemetry through a parallel headless worker pool", async (
   assert.match(store, /createObjectStore\(RUN_STORE, \{ keyPath: "id" \}\)/);
 });
 
+test("offers a visible real-physics watch run beside the headless benchmark", async () => {
+  const response = await render("/benchmark");
+  const html = await response.text();
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(html, /WATCH RUN/);
+  assert.match(html, /실제 화면 관찰/);
+  assert.match(source, /type BenchmarkRunMode = "parallel" \| "watch"/);
+  assert.match(source, /benchmarkRunMode === "watch"/);
+  assert.match(source, /WATCH RUN START/);
+  assert.match(source, /\[1, 2, 4, 8\]\.map/);
+  assert.match(source, /benchmarkWatchRef\.current \? "watch-v1" : BENCHMARK_RULESET/);
+  assert.match(source, /const targetRuns = .*benchmarkMode \? 1 : botTargetRuns/);
+  assert.match(source, /LIVE BOT · \{botSpeed\}× · W\{hud\.wave\}/);
+  assert.match(styles, /\.benchmark-mode-switch/);
+  assert.match(styles, /\.watch-run-badge/);
+});
+
 test("finishes bot evaluations at the wave 20 final boss", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const BOT_EVALUATION_WAVE = MAX_WAVE/);
   assert.match(source, /completedWave >= MAX_WAVE/);
   assert.match(source, /evaluationComplete: game\.wave >= \(benchmarkMode \? benchmarkConfigRef\.current\.targetWave : BOT_EVALUATION_WAVE\)/);
-  assert.match(source, /TARGET W\{benchmarkConfig\.targetWave\}/);
+  assert.match(source, /TARGET W\$\{benchmarkConfig\.targetWave\}/);
   assert.match(source, /BENCHMARK START/);
 });
 
