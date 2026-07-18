@@ -7,6 +7,7 @@ import { BALANCE_STORAGE_KEY, BOT_LIVE_STORAGE_KEY, BOT_RESULTS_STORAGE_KEY, DEF
 import { BENCHMARK_STORAGE_KEY, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConfig, type BenchmarkConfig } from "./benchmark-config";
 import { MAX_WAVE, waveDefinition } from "./wave-config";
 import { PARALLEL_BENCHMARK_RULESET, type HeadlessBenchmarkRequest, type HeadlessBenchmarkResult } from "./benchmark-headless";
+import { clearBenchmarkResults, getBenchmarkResults, putBenchmarkResults } from "./benchmark-result-store";
 
 type PayloadId = "pierce" | "blast" | "glass" | "link";
 type ItemKind = "multiball";
@@ -636,6 +637,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const botResultsRef = useRef<BotRunResult[]>([]);
   const parallelWorkersRef = useRef<Worker[]>([]);
   const parallelSessionRef = useRef(0);
+  const parallelPendingResultsRef = useRef<BotRunResult[]>([]);
+  const parallelFlushRef = useRef<() => void>(() => {});
   const balanceConfigRef = useRef<BalanceConfig>(DEFAULT_BALANCE_CONFIG);
   const activeSkillConfigsRef = useRef<SkillConfig[]>(DEFAULT_SKILLS);
   const botLivePersistRef = useRef(0);
@@ -669,6 +672,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const [benchmarkConfig, setBenchmarkConfig] = useState<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
 
   useEffect(() => () => {
+    parallelFlushRef.current();
     parallelSessionRef.current += 1;
     parallelWorkersRef.current.forEach((worker) => worker.terminate());
     parallelWorkersRef.current = [];
@@ -852,9 +856,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   }, [ghosts]);
 
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(BOT_RESULTS_STORAGE_KEY) ?? "[]") as Partial<BotRunResult>[];
-      botResultsRef.current = Array.isArray(saved) ? saved.map((item) => ({
+    let cancelled = false;
+    const normalizeResults = (saved: Partial<BotRunResult>[]) => saved.map((item) => ({
         ...item,
         balanceConfig: normalizeBalanceConfig(item.balanceConfig),
         benchmarkConfig: item.benchmarkConfig ? normalizeBenchmarkConfig(item.benchmarkConfig) : null,
@@ -865,12 +868,43 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         waveSamples: Array.isArray(item.waveSamples) ? item.waveSamples : [],
         evaluationComplete: item.evaluationComplete ?? Number(item.wave) >= BOT_EVALUATION_WAVE,
         skillBench: item.skillBench ?? null,
-      } as BotRunResult)) : [];
-      setBotResults(botResultsRef.current);
-    } catch {
-      botResultsRef.current = [];
-    }
-  }, []);
+      } as BotRunResult));
+    const loadResults = async () => {
+      let localResults: BotRunResult[] = [];
+      try {
+        const saved = JSON.parse(localStorage.getItem(BOT_RESULTS_STORAGE_KEY) ?? "[]") as Partial<BotRunResult>[];
+        localResults = Array.isArray(saved) ? normalizeResults(saved) : [];
+      } catch {
+        localResults = [];
+      }
+      const legacyParallel = localResults.filter((item) => item.benchmarkRuleset === BENCHMARK_RULESET);
+      const localOnly = localResults.filter((item) => item.benchmarkRuleset !== BENCHMARK_RULESET);
+      if (legacyParallel.length > 0) {
+        try {
+          await putBenchmarkResults(legacyParallel);
+          if (localOnly.length > 0) localStorage.setItem(BOT_RESULTS_STORAGE_KEY, JSON.stringify(localOnly));
+          else localStorage.removeItem(BOT_RESULTS_STORAGE_KEY);
+        } catch (error) {
+          console.error("[benchmark-store] migration failed", error);
+        }
+      }
+      let indexedResults: BotRunResult[] = [];
+      if (benchmarkMode) {
+        try {
+          indexedResults = normalizeResults(await getBenchmarkResults<BotRunResult>(BENCHMARK_RULESET));
+        } catch (error) {
+          console.error("[benchmark-store] load failed", error);
+          indexedResults = legacyParallel;
+        }
+      }
+      if (cancelled) return;
+      const merged = [...localOnly, ...indexedResults].filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index);
+      botResultsRef.current = merged;
+      setBotResults(merged);
+    };
+    void loadResults();
+    return () => { cancelled = true; };
+  }, [benchmarkMode]);
 
   const toggleGhost = (id: string) => {
     if (mode !== "lobby") return;
@@ -3606,6 +3640,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const targetRuns = benchmarkConfigRef.current.runs;
     const workerCount = Math.max(1, Math.min(8, targetRuns, (navigator.hardwareConcurrency || 4) - 1));
     const session = parallelSessionRef.current + 1;
+    const sessionId = `${Date.now().toString(36)}-${session}`;
     parallelSessionRef.current = session;
     parallelWorkersRef.current.forEach((worker) => worker.terminate());
     parallelWorkersRef.current = [];
@@ -3618,9 +3653,19 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     setParallelWorkerCount(workerCount);
     setBotRunning(true);
     localStorage.removeItem(BOT_LIVE_STORAGE_KEY);
+    parallelPendingResultsRef.current = [];
 
     let nextRun = 1;
     let completed = 0;
+    const flushPending = () => {
+      const batch = parallelPendingResultsRef.current.splice(0);
+      if (!batch.length) return;
+      const nextResults = [...botResultsRef.current, ...batch].slice(-5000);
+      botResultsRef.current = nextResults;
+      setBotResults(nextResults);
+      void putBenchmarkResults(batch).catch((error) => console.error("[benchmark-store] write failed", error));
+    };
+    parallelFlushRef.current = flushPending;
     const stopPool = () => {
       parallelWorkersRef.current.forEach((worker) => worker.terminate());
       parallelWorkersRef.current = [];
@@ -3629,6 +3674,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const failPool = (message: string) => {
       if (parallelSessionRef.current !== session) return;
       console.error(`[benchmark-worker] ${message}`);
+      flushPending();
       stopPool();
       botActiveRef.current = false;
       setBotRunning(false);
@@ -3639,6 +3685,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const request: HeadlessBenchmarkRequest = {
         run,
         seed: 91001 + run * 7919,
+        sessionId,
         policy: botPolicy,
         balanceConfig: { ...balanceConfigRef.current },
         benchmarkConfig: { ...benchmarkConfigRef.current },
@@ -3658,11 +3705,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const record = event.data.result as BotRunResult;
         completed += 1;
         botCompletedRunsRef.current = completed;
-        const nextResults = [...botResultsRef.current, record].slice(-1200);
-        botResultsRef.current = nextResults;
-        setBotCompletedRuns(completed);
-        setBotResults(nextResults);
-        localStorage.setItem(BOT_RESULTS_STORAGE_KEY, JSON.stringify(nextResults));
+        parallelPendingResultsRef.current.push(record);
+        if (completed % 25 === 0 || completed >= targetRuns) {
+          setBotCompletedRuns(completed);
+          flushPending();
+        }
         if (completed >= targetRuns) {
           stopPool();
           botActiveRef.current = false;
@@ -3781,6 +3828,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
   const stopBotSession = () => {
     if (parallelWorkersRef.current.length > 0) {
+      parallelFlushRef.current();
       parallelSessionRef.current += 1;
       parallelWorkersRef.current.forEach((worker) => worker.terminate());
       parallelWorkersRef.current = [];
@@ -3815,6 +3863,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     setBotResults(nextResults);
     if (nextResults.length > 0) localStorage.setItem(BOT_RESULTS_STORAGE_KEY, JSON.stringify(nextResults));
     else localStorage.removeItem(BOT_RESULTS_STORAGE_KEY);
+    if (benchmarkMode) void clearBenchmarkResults(BENCHMARK_RULESET).catch((error) => console.error("[benchmark-store] clear failed", error));
   };
 
   const onPointerMove = (clientX: number) => {
@@ -4075,7 +4124,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             <div className="bot-controls">
               <label>반복 횟수
                 <select value={benchmarkConfig.runs} onChange={(event) => updateBenchmarkRuns(Number(event.target.value) as BenchmarkConfig["runs"])} disabled={botRunning || mode !== "lobby"}>
-                  {[3, 5, 10, 20, 100].map((runs) => <option key={runs} value={runs}>{runs}회</option>)}
+                  {[3, 5, 10, 20, 100, 500, 1000].map((runs) => <option key={runs} value={runs}>{runs.toLocaleString("ko-KR")}회</option>)}
                 </select>
               </label>
               <label>선택 정책

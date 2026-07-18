@@ -2,7 +2,7 @@ export type BenchmarkStage = 5;
 
 export type BenchmarkConfig = {
   stage: BenchmarkStage;
-  runs: 3 | 5 | 10 | 20 | 100;
+  runs: 3 | 5 | 10 | 20 | 100 | 500 | 1000;
   targetWave: 20;
 };
 
@@ -37,7 +37,7 @@ export function normalizeBenchmarkConfig(saved: unknown): BenchmarkConfig {
   const runs = Number(source.runs);
   return {
     stage: 5,
-    runs: runs === 3 || runs === 10 || runs === 20 || runs === 100 ? runs : 5,
+    runs: runs === 3 || runs === 10 || runs === 20 || runs === 100 || runs === 500 || runs === 1000 ? runs : 5,
     targetWave: 20,
   };
 }

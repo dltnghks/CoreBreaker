@@ -421,6 +421,7 @@ test("runs benchmark telemetry through a parallel headless worker pool", async (
   const config = await readFile(new URL("../app/benchmark-config.ts", import.meta.url), "utf8");
   const engine = await readFile(new URL("../app/benchmark-headless.ts", import.meta.url), "utf8");
   const worker = await readFile(new URL("../app/benchmark-worker.ts", import.meta.url), "utf8");
+  const store = await readFile(new URL("../app/benchmark-result-store.ts", import.meta.url), "utf8");
   assert.match(source, /balanceConfigRef\.current/);
   assert.match(source, /BALANCE_STORAGE_KEY/);
   assert.match(lab, /<GameRuntime benchmarkMode \/>/);
@@ -433,9 +434,14 @@ test("runs benchmark telemetry through a parallel headless worker pool", async (
   assert.match(engine, /request\.skills\?\.length \? request\.skills : DEFAULT_SKILLS/);
   assert.match(worker, /runHeadlessBenchmark\(event\.data\)/);
   assert.match(source, /updateBenchmarkRuns/);
-  assert.match(source, /\[3, 5, 10, 20, 100\]/);
-  assert.match(config, /runs: 3 \| 5 \| 10 \| 20 \| 100/);
-  assert.match(config, /runs === 100/);
+  assert.match(source, /\[3, 5, 10, 20, 100, 500, 1000\]/);
+  assert.match(config, /runs: 3 \| 5 \| 10 \| 20 \| 100 \| 500 \| 1000/);
+  assert.match(config, /runs === 1000/);
+  assert.match(source, /completed % 25 === 0/);
+  assert.match(source, /putBenchmarkResults\(batch\)/);
+  assert.match(source, /getBenchmarkResults<BotRunResult>/);
+  assert.match(store, /indexedDB\.open/);
+  assert.match(store, /createObjectStore\(RUN_STORE, \{ keyPath: "id" \}\)/);
 });
 
 test("finishes bot evaluations at the wave 20 final boss", async () => {

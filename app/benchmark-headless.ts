@@ -9,6 +9,7 @@ export const PARALLEL_BENCHMARK_RULESET = "parallel-v1" as const;
 export type HeadlessBenchmarkRequest = {
   run: number;
   seed: number;
+  sessionId?: string;
   policy: HeadlessBotPolicy;
   balanceConfig?: BalanceConfig;
   benchmarkConfig?: BenchmarkConfig;
@@ -178,7 +179,7 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
   }
 
   return {
-    id: `parallel-${request.seed}-${request.run}`,
+    id: `parallel-${request.sessionId ?? "legacy"}-${request.seed}-${request.run}`,
     run: request.run,
     policy: request.policy,
     speed: 8,
