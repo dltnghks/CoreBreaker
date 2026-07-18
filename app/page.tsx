@@ -3976,7 +3976,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             <div className="bot-controls">
               <label>반복 횟수
                 <select value={benchmarkConfig.runs} onChange={(event) => updateBenchmarkRuns(Number(event.target.value) as BenchmarkConfig["runs"])} disabled={botRunning || mode !== "lobby"}>
-                  {[3, 5, 10, 20].map((runs) => <option key={runs} value={runs}>{runs}회</option>)}
+                  {[3, 5, 10, 20, 100].map((runs) => <option key={runs} value={runs}>{runs}회</option>)}
                 </select>
               </label>
               <label>선택 정책

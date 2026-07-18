@@ -418,12 +418,16 @@ test("runs a no-ghost playtest bot and persists balance metrics", async () => {
 test("keeps benchmark telemetry inside the unified live-game runner", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const lab = await readFile(new URL("../app/benchmark/page.tsx", import.meta.url), "utf8");
+  const config = await readFile(new URL("../app/benchmark-config.ts", import.meta.url), "utf8");
   assert.match(source, /balanceConfigRef\.current/);
   assert.match(source, /BALANCE_STORAGE_KEY/);
   assert.match(lab, /<GameRuntime benchmarkMode \/>/);
   assert.doesNotMatch(lab, /BalanceSimulator|SkillBench|BenchmarkSetup/);
   assert.match(source, /실제 게임 W1–W/);
   assert.match(source, /updateBenchmarkRuns/);
+  assert.match(source, /\[3, 5, 10, 20, 100\]/);
+  assert.match(config, /runs: 3 \| 5 \| 10 \| 20 \| 100/);
+  assert.match(config, /runs === 100/);
 });
 
 test("finishes bot evaluations at the wave 20 final boss", async () => {

@@ -29,7 +29,7 @@ export default function BenchmarkSetup() {
       {Object.entries(features).map(([key, enabled]) => <span key={key} data-enabled={enabled}>{enabled ? "ON" : "OFF"} · {key.toUpperCase()}</span>)}
     </div>
     <div className={styles.controls}>
-      <label>반복 횟수<select value={config.runs} onChange={(event) => setConfig((current) => ({ ...current, runs: Number(event.target.value) as BenchmarkConfig["runs"] }))}>{[3, 5, 10, 20].map((value) => <option key={value} value={value}>{value}회</option>)}</select></label>
+      <label>반복 횟수<select value={config.runs} onChange={(event) => setConfig((current) => ({ ...current, runs: Number(event.target.value) as BenchmarkConfig["runs"] }))}>{[3, 5, 10, 20, 100].map((value) => <option key={value} value={value}>{value}회</option>)}</select></label>
       <label>평가 종료 웨이브<select value={config.targetWave} disabled><option value={20}>W20 · FINAL</option></select></label>
       <button type="button" onClick={apply}>{saved ? "APPLIED" : "APPLY ENVIRONMENT"}</button>
     </div>
