@@ -19,7 +19,8 @@ type SkillBenchVariant = { batchId: string; environment: SkillBenchConfig["envir
 type SkillSelectionSource = "start" | "wave" | "boss";
 type SkillSelectionEvent = { wave: number; skillId: UpgradeId; level: number; source: SkillSelectionSource };
 type SkillRunMetric = { activations: number; damage: number; kills: number };
-type BotRunResult = BotMetrics & { id: string; run: number; policy: BotPolicy; speed: BotSpeed; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; startingSkills: UpgradeId[]; skillHistory: SkillSelectionEvent[]; ultimates: UpgradeId[]; skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig | null; benchmarkRuleset?: "live-v1" | null; waveSamples: BotWaveSample[]; evaluationComplete: boolean; skillBench: SkillBenchVariant | null };
+type BenchmarkRuleset = "live-v1" | "live-v2";
+type BotRunResult = BotMetrics & { id: string; run: number; policy: BotPolicy; speed: BotSpeed; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; startingSkills: UpgradeId[]; skillHistory: SkillSelectionEvent[]; ultimates: UpgradeId[]; skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig | null; benchmarkRuleset?: BenchmarkRuleset | null; waveSamples: BotWaveSample[]; evaluationComplete: boolean; skillBench: SkillBenchVariant | null };
 
 type Upgrade = {
   id: UpgradeId;
@@ -90,6 +91,7 @@ type Brick = {
   poisonSourcePaddleId: string | null;
   blastVulnerability: number;
   blastVulnerabilitySourcePaddleId: string | null;
+  frostVulnerability: number;
   lastHitPaddleId: string | null;
 };
 
@@ -141,7 +143,6 @@ type GameState = {
   autoGuard: boolean;
   rowTimer: number;
   rowInterval: number;
-  freezeTimer: number;
   shakeStrength: number;
   shakeTime: number;
   shakeDuration: number;
@@ -166,6 +167,7 @@ type WaveResolution = { timer: number; maxTimer: number; cleared: boolean; wasBo
 
 const W = 900;
 const H = 600;
+const BENCHMARK_RULESET: BenchmarkRuleset = "live-v2";
 const PLAYER_LINE_Y = H - 84;
 const PLAYER_PADDLE_Y = H - 70;
 const GHOST_PADDLE_Y = H - 42;
@@ -356,7 +358,11 @@ function hasScheduledMultiball(wave: number) {
 }
 
 function brickRuntimeState(trait: BrickTrait = "standard") {
-  return { trait, guardReady: trait === "guard", healTimer: 3, poisonTime: 0, poisonTick: 0, poisonSourcePaddleId: null, blastVulnerability: 1, blastVulnerabilitySourcePaddleId: null, lastHitPaddleId: null };
+  return { trait, guardReady: trait === "guard", healTimer: 3, poisonTime: 0, poisonTick: 0, poisonSourcePaddleId: null, blastVulnerability: 1, blastVulnerabilitySourcePaddleId: null, frostVulnerability: 0, lastHitPaddleId: null };
+}
+
+function lateWaveHpMultiplier(waveNumber: number) {
+  return waveNumber >= 16 ? 1.5 : waveNumber >= 11 ? 1.25 : 1;
 }
 
 function isDamageableBrick(brick: Brick) {
@@ -422,7 +428,7 @@ function makeWaveBricks(waveNumber: number, balance = DEFAULT_BALANCE_CONFIG): B
       : cell === "r" ? "reflector"
       : "standard";
     const hpBonus = cell === "h" ? 1 + Math.floor((waveNumber - 1) / 8) : cell === "c" ? 2 : 0;
-    const maxHp = baseHp + hpBonus;
+    const maxHp = Math.ceil((baseHp + hpBonus) * lateWaveHpMultiplier(waveNumber));
     return [{
       x: margin + col * (width + gap), y: BRICK_ROW_Y + rowIndex * BRICK_ROW_STEP, w: width, h: 24,
       hp: maxHp, maxHp, hue: 178 + waveNumber * 9 + col * 2, alive: true, kind: "normal" as const,
@@ -441,7 +447,8 @@ function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfi
   const height = rows * cellHeight;
   const startX = (W - width) / 2;
   const startY = 94;
-  const coreHp = Math.round(balance.bossBaseHp + stage * balance.bossHpPerStage + ghostCount * 10);
+  const bossHpMultiplier = stage >= 2 ? 1.9 : 1.25;
+  const coreHp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage + ghostCount * 10) * bossHpMultiplier);
   return [{
     x: startX, y: startY, w: width, h: height,
     hp: coreHp, maxHp: coreHp,
@@ -525,7 +532,6 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     autoGuard: false,
     rowTimer: rowInterval,
     rowInterval,
-    freezeTimer: 0,
     shakeStrength: 0,
     shakeTime: 0,
     shakeDuration: 0,
@@ -946,7 +952,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         createdAt: Date.now(),
         balanceConfig: { ...balanceConfigRef.current },
         benchmarkConfig: benchmarkMode ? { ...benchmarkConfigRef.current } : null,
-        benchmarkRuleset: benchmarkMode ? "live-v1" : null,
+        benchmarkRuleset: benchmarkMode ? BENCHMARK_RULESET : null,
         waveSamples: botSkillBenchVariantRef.current ? [] : [...game.botWaveSamples],
         evaluationComplete: game.wave >= (benchmarkMode ? benchmarkConfigRef.current.targetWave : BOT_EVALUATION_WAVE) && game.coreHp > 0,
         skillBench: botSkillBenchVariantRef.current,
@@ -1087,7 +1093,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.bossMultiballsRemaining ??= 0;
     game.bossPending ??= false;
     game.balls.forEach((ball) => { ball.sourcePaddleId ??= "player"; ball.attackPower ??= 1; ball.missileTime ??= 0; ball.missileHitCooldown ??= 0; ball.skillCharges ??= {}; ball.visualSkill ??= null; ball.temporaryTime ??= 0; ball.waveBonus ??= false; });
-    game.freezeTimer ??= 0;
     game.shakeStrength ??= 0;
     game.shakeTime ??= 0;
     game.shakeDuration ??= 0;
@@ -1103,14 +1108,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       brick.poisonSourcePaddleId ??= null;
       brick.blastVulnerability ??= 1;
       brick.blastVulnerabilitySourcePaddleId ??= null;
+      brick.frostVulnerability ??= 0;
       brick.lastHitPaddleId ??= null;
     });
     game.elapsed += dt;
-    game.freezeTimer = Math.max(0, game.freezeTimer - dt);
-    if (game.freezeTimer <= 0) {
-      game.rowTimer -= dt;
-      if (game.bossActive) game.bossTimeRemaining -= dt;
-    }
+    game.rowTimer -= dt;
+    if (game.bossActive) game.bossTimeRemaining -= dt;
     if (game.bossActive) {
       game.bossSkillTimer -= dt;
       if (game.bossSkillTimer <= 0) {
@@ -1500,7 +1503,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const centerY = healer.y + healer.h / 2;
       let healed = 0;
       game.bricks.forEach((target) => {
-        if (!target.alive || !isDamageableBrick(target) || target.hp >= target.maxHp) return;
+        if (!target.alive || !isDamageableBrick(target) || target.hp >= target.maxHp || target.frostVulnerability > 0) return;
         const distance = Math.hypot(target.x + target.w / 2 - centerX, target.y + target.h / 2 - centerY);
         if (distance > 135) return;
         target.hp = Math.min(target.maxHp, target.hp + 1);
@@ -1781,9 +1784,17 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           triggerReflectionSkill("mage-fireball", (level) => chargeBall("mage-fireball", level, "화염구", classSkillColor("mage-fireball")));
           triggerReflectionSkill("mage-lightning", (level) => chargeBall("mage-lightning", level, "연쇄 번개", classSkillColor("mage-lightning")));
           triggerReflectionSkill("mage-freeze", (level) => {
-            game.freezeTimer = Math.max(game.freezeTimer, 2 + level);
-            game.flashes.push({ text: `${paddle.name} // 빙결 ${2 + level}s`, x: W / 2, y: BRICK_ROW_Y - 18, life: 1, color: "#65dcff" });
-            emitEffect("beam", 20, BRICK_ROW_Y, classSkillColor("mage-freeze"), 10, W - 20, BRICK_ROW_Y, 0.7);
+            const frozenTargets = game.bricks.filter((target) => target.alive && isDamageableBrick(target))
+              .sort((a, b) => b.hp - a.hp)
+              .slice(0, 2 + level);
+            frozenTargets.forEach((target) => {
+              target.frostVulnerability = Math.max(target.frostVulnerability, level);
+              const targetX = target.x + target.w / 2;
+              const targetY = target.y + target.h / 2;
+              emitEffect("beam", ball.x, ball.y, classSkillColor("mage-freeze"), 5, targetX, targetY, 0.45);
+              emitEffect("ring", targetX, targetY, classSkillColor("mage-freeze"), 34, targetX, targetY, 0.55);
+            });
+            game.flashes.push({ text: `${paddle.name} // 빙결 표식 ×${frozenTargets.length}`, x: W / 2, y: BRICK_ROW_Y - 18, life: 1, color: "#65dcff" });
             emitSkillEffect("mage-freeze", W / 2, BRICK_ROW_Y + 24, W - 100, 0.9);
           });
           triggerReflectionSkill("mage-black-hole", (level) => {
@@ -1801,7 +1812,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           triggerReflectionSkill("mage-elemental-storm", (level) => {
             ball.skillCharges["mage-fireball"] = level;
             ball.skillCharges["mage-lightning"] = level;
-            game.freezeTimer = Math.max(game.freezeTimer, 3 + level);
+            game.bricks.filter((target) => target.alive && isDamageableBrick(target))
+              .sort((a, b) => b.hp - a.hp)
+              .slice(0, 4 + level)
+              .forEach((target) => { target.frostVulnerability = Math.max(target.frostVulnerability, Math.max(1, level)); });
             game.flashes.push({ text: `${paddle.name} // 원소 폭풍`, x: W / 2, y: H / 2, life: 1.2, color: "#c18cff" });
             emitEffect("ring", W / 2, H / 2, classSkillColor("mage-elemental-storm"), 210, W / 2, H / 2, 0.9);
             emitSkillEffect("mage-elemental-storm", W / 2, H / 2, 190 + level * 12, 1.15);
@@ -1962,10 +1976,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const focusLevel = ball.skillCharges["archer-focus"] ?? 0;
         const weakpointLevel = ball.skillCharges["archer-weakpoint"] ?? 0;
         const repeatedTarget = brick.lastHitPaddleId === sourcePaddle.id;
+        const frostDamage = brick.frostVulnerability;
         const hpBeforeDirect = brick.hp;
         const directSkillContributors = (["warrior-execute", "archer-weakpoint", "warrior-smash", "warrior-crush", "archer-focus"] as ClassSkillId[]).filter((id) => (ball.skillCharges[id] ?? 0) > 0);
         const baselineDirectDamage = (Math.max(1, ball.attackPower) + corrosionDamage) * damageMultiplier(brick);
-        let directDamage = Math.max(1, ball.attackPower) + corrosionDamage + smashLevel;
+        let directDamage = Math.max(1, ball.attackPower) + corrosionDamage + smashLevel + frostDamage;
         if (crushLevel > 0 && brick.trait !== "standard" && brick.trait !== "guard") directDamage += crushLevel + 1;
         if (focusLevel > 0 && repeatedTarget) directDamage += focusLevel + 1;
         if (weakpointLevel > 0) directDamage *= 3;
@@ -1975,6 +1990,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           brick.hp -= directDamage * damageMultiplier(brick);
           brick.lastHitPaddleId = sourcePaddle.id;
           const actualDirectDamage = Math.min(hpBeforeDirect, Math.max(0, hpBeforeDirect - brick.hp));
+          if (frostDamage > 0) {
+            recordSkillImpact("mage-freeze", Math.min(actualDirectDamage, frostDamage * damageMultiplier(brick)), brick.hp <= 0);
+            brick.frostVulnerability = 0;
+            game.flashes.push({ text: `빙결 파쇄 // +${frostDamage}`, x: brick.x + brick.w / 2, y: brick.y - 8, life: 0.8, color: classSkillColor("mage-freeze") });
+            emitSkillEffect("mage-freeze", brick.x + brick.w / 2, brick.y + brick.h / 2, 48 + frostDamage * 8, 0.5);
+          }
           const attributedDamage = Math.max(0, actualDirectDamage - baselineDirectDamage);
           if (directSkillContributors.length > 0) {
             const damageShare = attributedDamage / directSkillContributors.length;
@@ -2426,6 +2447,22 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ctx.font = "900 8px monospace";
         ctx.textAlign = "center";
         ctx.fillText(`EXP ×${brick.blastVulnerability}`, brick.x + brick.w / 2, brick.y - 1);
+        ctx.restore();
+      }
+      if (brick.frostVulnerability > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.72 + Math.sin(game.elapsed * 7 + brick.x * 0.02) * 0.18;
+        ctx.fillStyle = "rgba(101,220,255,.18)";
+        ctx.fillRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4);
+        ctx.strokeStyle = "#b9f4ff";
+        ctx.shadowColor = "#65dcff";
+        ctx.shadowBlur = 12;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(brick.x - 2, brick.y - 2, brick.w + 4, brick.h + 4);
+        ctx.fillStyle = "#e8fcff";
+        ctx.font = "900 10px monospace";
+        ctx.textAlign = "left";
+        ctx.fillText(`❄+${brick.frostVulnerability}`, brick.x + 5, brick.y + 12);
         ctx.restore();
       }
       if (brick.lastHitPaddleId) {
@@ -3663,7 +3700,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   };
 
   const exportBotResults = () => {
-    const exportResults = benchmarkMode ? botResultsRef.current.filter((item) => item.benchmarkRuleset === "live-v1") : botResultsRef.current;
+    const exportResults = benchmarkMode ? botResultsRef.current.filter((item) => item.benchmarkRuleset === BENCHMARK_RULESET) : botResultsRef.current;
     const blob = new Blob([JSON.stringify(exportResults, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -3674,7 +3711,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   };
 
   const clearBotResults = () => {
-    const nextResults = benchmarkMode ? botResultsRef.current.filter((item) => item.benchmarkRuleset !== "live-v1") : [];
+    const nextResults = benchmarkMode ? botResultsRef.current.filter((item) => item.benchmarkRuleset !== BENCHMARK_RULESET) : [];
     botResultsRef.current = nextResults;
     setBotResults(nextResults);
     if (nextResults.length > 0) localStorage.setItem(BOT_RESULTS_STORAGE_KEY, JSON.stringify(nextResults));
@@ -3700,7 +3737,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     } satisfies Upgrade;
   });
   const upgradeCounts = (ids: UpgradeId[]) => [...upgradeCatalog, ...ultimateCatalog].map((u) => ({ ...u, count: ids.filter((id) => id === u.id).length })).filter((u) => u.count > 0);
-  const visibleBotResults = benchmarkMode ? botResults.filter((item) => item.benchmarkRuleset === "live-v1") : botResults;
+  const visibleBotResults = benchmarkMode ? botResults.filter((item) => item.benchmarkRuleset === BENCHMARK_RULESET) : botResults;
   const botAverageSurvival = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.elapsed, 0) / visibleBotResults.length : 0;
   const botAverageWave = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.wave, 0) / visibleBotResults.length : 0;
   const botAverageBalls = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.maxBalls, 0) / visibleBotResults.length : 0;
@@ -3986,7 +4023,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       </section>
       {benchmarkMode && <section className="benchmark-dashboard" aria-label="벤치마크 결과 분석">
         <div className="benchmark-dashboard-heading">
-          <div><p className="eyebrow">LIVE-V1 RESULT ANALYSIS</p><h2>벤치마크 결과</h2></div>
+          <div><p className="eyebrow">{BENCHMARK_RULESET.toUpperCase()} RESULT ANALYSIS</p><h2>벤치마크 결과</h2></div>
           <span>{visibleBotResults.length} RUNS · W1–W{benchmarkConfig.targetWave}</span>
         </div>
         {visibleBotResults.length === 0 ? <div className="benchmark-empty">

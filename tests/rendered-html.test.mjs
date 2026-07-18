@@ -207,6 +207,9 @@ test("raises post-wave-5 density, brick health, and boss health", async () => {
   assert.match(balance, /hardHpWaveStep: 3/);
   assert.match(balance, /bossBaseHp: 280/);
   assert.match(balance, /bossHpPerStage: 160/);
+  assert.match(source, /function lateWaveHpMultiplier/);
+  assert.match(source, /waveNumber >= 16 \? 1\.5 : waveNumber >= 11 \? 1\.25 : 1/);
+  assert.match(source, /const bossHpMultiplier = stage >= 2 \? 1\.9 : 1\.25/);
   assert.match(balance, /echo-breaker-balance-v3/);
 });
 
@@ -462,7 +465,8 @@ test("renders live benchmark KPIs, wave charts, and per-run data", async () => {
   assert.match(source, /benchmark-skill-table/);
   assert.match(source, /스킬별 벤치마크 성과/);
   assert.match(source, /item\.startingSkills\.map/);
-  assert.match(source, /benchmarkRuleset === "live-v1"/);
+  assert.match(source, /const BENCHMARK_RULESET: BenchmarkRuleset = "live-v2"/);
+  assert.match(source, /benchmarkRuleset === BENCHMARK_RULESET/);
   assert.match(styles, /\.benchmark-dashboard/);
   assert.match(styles, /\.benchmark-charts/);
   assert.match(styles, /\.benchmark-skill-table/);
@@ -628,7 +632,7 @@ test("renders the warrior archer mage Skill Lab", async () => {
 
 test("defines all class skills as reflection-driven skills without ball costs", async () => {
   const config = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
-  const names = ["강타", "충격파", "처형", "분쇄", "철벽", "대지 분쇄", "광전사", "연사", "관통 화살", "도탄 화살", "집중 사격", "약점 사격", "화살비", "무한 탄창", "화염구", "연쇄 번개", "빙결", "블랙홀", "마력 폭발", "원소 폭풍", "메테오"];
+  const names = ["강타", "충격파", "처형", "분쇄", "철벽", "대지 분쇄", "광전사", "연사", "관통 화살", "도탄 화살", "집중 사격", "약점 사격", "화살비", "무한 탄창", "화염구", "연쇄 번개", "빙결 표식", "블랙홀", "마력 폭발", "원소 폭풍", "메테오"];
   names.forEach((name) => assert.match(config, new RegExp(`"${name}"`)));
   assert.match(config, /export const NORMAL_SKILLS/);
   assert.match(config, /export const ULTIMATE_SKILLS/);
@@ -785,6 +789,7 @@ test("gives every archer skill a distinct projectile or targeting signature", as
 
 test("gives every mage skill a distinct elemental field signature", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const config = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
   assert.match(source, /emitSkillEffect\("mage-freeze"/);
   assert.match(source, /emitSkillEffect\("mage-black-hole"/);
   assert.match(source, /emitSkillEffect\("mage-mana-blast"/);
@@ -796,4 +801,12 @@ test("gives every mage skill a distinct elemental field signature", async () => 
   assert.match(source, /const stormColors = \["#ff7043", "#a78bfa", "#65dcff"\]/);
   assert.match(source, /const destinationY = effect\.y2 - effect\.y/);
   assert.match(source, /const radius = effect\.size \* 0\.035 \* t/);
+  assert.match(source, /const frozenTargets = game\.bricks/);
+  assert.match(source, /target\.frostVulnerability = Math\.max/);
+  assert.match(source, /const frostDamage = brick\.frostVulnerability/);
+  assert.match(source, /빙결 파쇄/);
+  assert.doesNotMatch(source, /freezeTimer/);
+  assert.match(config, /"빙결 표식"/);
+  assert.match(config, /회복 차단 · 다음 피격 강화/);
+  assert.match(config, /const legacyTimeFreeze/);
 });
