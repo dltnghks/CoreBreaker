@@ -4,7 +4,9 @@ import { DEFAULT_BENCHMARK_CONFIG, type BenchmarkConfig } from "./benchmark-conf
 import { waveDefinition } from "./wave-config";
 
 export type HeadlessBotPolicy = "balanced" | "survival" | "random";
-export const PARALLEL_BENCHMARK_RULESET = "parallel-v3" as const;
+export const PARALLEL_BENCHMARK_RULESET = "parallel-v4" as const;
+const OVERDRIVE_THRESHOLDS = [30, 50, 70, 90] as const;
+const OVERDRIVE_STEP = 0.05;
 
 export type HeadlessBenchmarkRequest = {
   run: number;
@@ -112,6 +114,27 @@ function bossWaveStats(wave: number, balance: BalanceConfig) {
   return { count: 1, damageable: 1, hp };
 }
 
+function overdriveAdjustedDuration(baseDuration: number) {
+  let remainingWork = Math.max(0, baseDuration);
+  let elapsed = 0;
+  let previousThreshold = 0;
+  for (let level = 0; level < OVERDRIVE_THRESHOLDS.length; level++) {
+    const threshold = OVERDRIVE_THRESHOLDS[level];
+    const segmentDuration = threshold - previousThreshold;
+    const multiplier = 1 + level * OVERDRIVE_STEP;
+    const segmentWork = segmentDuration * multiplier;
+    if (remainingWork <= segmentWork) return elapsed + remainingWork / multiplier;
+    remainingWork -= segmentWork;
+    elapsed += segmentDuration;
+    previousThreshold = threshold;
+  }
+  return elapsed + remainingWork / (1 + OVERDRIVE_THRESHOLDS.length * OVERDRIVE_STEP);
+}
+
+function overdriveLevelAt(seconds: number) {
+  return OVERDRIVE_THRESHOLDS.filter((threshold) => seconds >= threshold).length;
+}
+
 export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): HeadlessBenchmarkResult {
   const random = seededRandom(request.seed);
   const balance = { ...DEFAULT_BALANCE_CONFIG, ...request.balanceConfig };
@@ -155,7 +178,7 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
     const accuracy = 0.7 + random() * 0.25;
     const bossPressure = definition.boss ? 0.76 : 1;
     const damagePerSecond = Math.max(0.4, (2.05 * Math.sqrt(balls) + skillBonus) * accuracy * bossPressure);
-    const waveElapsed = stage.hp / damagePerSecond;
+    const waveElapsed = overdriveAdjustedDuration(stage.hp / damagePerSecond);
     const damageDone = stage.hp;
     const destroyed = stage.damageable;
     const survivors = 0;
@@ -175,7 +198,8 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
     }
 
     const survivalPower = levelOf(upgrades, "warrior-guard") * 0.018 + levelOf(upgrades, "mage-black-hole") * 0.012 + levelOf(upgrades, "common-wide") * 0.01;
-    const lossChance = Math.max(0.02, Math.min(0.32, 0.045 + wave * 0.004 + (definition.boss ? 0.035 : 0) - survivalPower));
+    const overdriveRisk = overdriveLevelAt(waveElapsed) * 0.012;
+    const lossChance = Math.max(0.02, Math.min(0.38, 0.045 + wave * 0.004 + (definition.boss ? 0.035 : 0) + overdriveRisk - survivalPower));
     const lossChecks = Math.max(1, Math.ceil(waveElapsed / 24));
     let waveBallLosses = 0;
     for (let check = 0; check < lossChecks; check++) if (random() < lossChance) waveBallLosses++;

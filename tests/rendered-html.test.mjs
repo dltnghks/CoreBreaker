@@ -34,9 +34,27 @@ test("steers paddle rebounds with pointer movement and removes keyboard controls
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const playerPaddleVelocity = dt > 0 \? \(game\.paddleX - previousPaddleX\) \/ dt : 0/);
   assert.match(source, /paddle\.velocity \* PADDLE_ENGLISH_FACTOR/);
-  assert.match(source, /hit \* 330 \+ paddleEnglish/);
+  assert.match(source, /const contactTime = verticalTravel > 0/);
+  assert.match(source, /const reboundSpeed = .*Math\.hypot\(ball\.vx, ball\.vy\)/);
+  assert.match(source, /ball\.vy = -Math\.sqrt/);
   assert.match(source, /MOVE \/ POINTER · TOUCH/);
   assert.doesNotMatch(source, /ArrowLeft|ArrowRight|addEventListener\("keydown"/);
+});
+
+test("ramps ball speed by wave elapsed time and resolves circular brick collisions", async () => {
+  const response = await render();
+  const html = await response.text();
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const benchmark = await readFile(new URL("../app/benchmark-headless.ts", import.meta.url), "utf8");
+  assert.match(html, /BALL[\s\S]*100[\s\S]*%/);
+  assert.match(source, /OVERDRIVE_THRESHOLDS = \[30, 50, 70, 90\]/);
+  assert.match(source, /OVERDRIVE_STEP = 0\.05/);
+  assert.match(source, /OVERDRIVE .* BALL SPEED/);
+  assert.match(source, /function circleRectangleCollision/);
+  assert.match(source, /function separateAndReflectBall/);
+  assert.match(source, /collision\.penetration \+ 0\.1/);
+  assert.match(benchmark, /function overdriveAdjustedDuration/);
+  assert.match(benchmark, /const overdriveRisk = overdriveLevelAt\(waveElapsed\) \* 0\.012/);
 });
 
 test.skip("server-renders the legacy Skill Lab", async () => {
@@ -275,7 +293,8 @@ test("selects two starting skills and settles core damage before wave rewards", 
 test("respawns a ball at the cost of one core health", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /game\.coreHp = Math\.max\(0, game\.coreHp - 1\);/);
-  assert.match(source, /game\.balls\.push\(makePlayerBall\(game\.upgrades, game\.paddleX\)\);/);
+  assert.match(source, /const respawnBall = makePlayerBall\(game\.upgrades, game\.paddleX\);/);
+  assert.match(source, /game\.balls\.push\(respawnBall\);/);
   assert.match(source, /BALL LOST \/\/ CORE -1 \/\/ RESPAWN/);
 });
 
@@ -705,7 +724,7 @@ test("separates impact shockwave damage from fireball damage over time", async (
   assert.match(source, /near\.burnTime = Math\.max\(near\.burnTime, 2 \+ level\)/);
   assert.match(source, /recordSkillImpact\("mage-fireball"/);
   assert.match(source, /BURN \$\{Math\.max\(0, Math\.ceil\(brick\.burnTime\)\)\}s/);
-  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v3"/);
+  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v4"/);
   assert.match(benchmark, /skill\.id === "warrior-shockwave"/);
   assert.match(benchmark, /skill\.id === "mage-fireball"/);
 });

@@ -150,6 +150,7 @@ type GameState = {
   autoGuard: boolean;
   rowTimer: number;
   rowInterval: number;
+  overdriveLevel: number;
   shakeStrength: number;
   shakeTime: number;
   shakeDuration: number;
@@ -190,6 +191,12 @@ const BOSS_MULTIBALL_BUDGET = 2;
 const BOT_EVALUATION_WAVE = MAX_WAVE;
 const BASE_BALL_VX = 240;
 const BASE_BALL_VY = 320;
+const OVERDRIVE_THRESHOLDS = [30, 50, 70, 90] as const;
+const OVERDRIVE_STEP = 0.05;
+const MAX_OVERDRIVE_LEVEL = OVERDRIVE_THRESHOLDS.length;
+const MIN_PADDLE_REBOUND_SPEED = 300;
+const MAX_PADDLE_REBOUND_SPEED = 560;
+const MAX_PADDLE_REBOUND_RATIO = 0.84;
 const PADDLE_ENGLISH_FACTOR = 0.32;
 const RING_EXPLOSION_ASSET = "/assets/vfx/ring-explosion.png";
 const RING_EXPLOSION_COLUMNS = 10;
@@ -212,6 +219,49 @@ const BARRIER_COLOR = "#58a6ff";
 let environmentRandom = () => Math.random();
 let decisionRandom = () => Math.random();
 let effectRandom = () => Math.random();
+
+function overdriveLevelAt(seconds: number) {
+  return OVERDRIVE_THRESHOLDS.filter((threshold) => seconds >= threshold).length;
+}
+
+function overdriveMultiplier(level: number) {
+  return 1 + Math.max(0, Math.min(MAX_OVERDRIVE_LEVEL, level)) * OVERDRIVE_STEP;
+}
+
+function circleRectangleCollision(ball: Pick<Ball, "x" | "y" | "radius">, brick: Pick<Brick, "x" | "y" | "w" | "h">, previousX: number, previousY: number) {
+  const closestX = Math.max(brick.x, Math.min(ball.x, brick.x + brick.w));
+  const closestY = Math.max(brick.y, Math.min(ball.y, brick.y + brick.h));
+  const dx = ball.x - closestX;
+  const dy = ball.y - closestY;
+  const distanceSquared = dx * dx + dy * dy;
+  if (distanceSquared > ball.radius * ball.radius) return null;
+  if (distanceSquared > 0.0001) {
+    const distance = Math.sqrt(distanceSquared);
+    return { normalX: dx / distance, normalY: dy / distance, penetration: ball.radius - distance };
+  }
+
+  const exits = [
+    { normalX: -1, normalY: 0, distance: Math.abs(previousX - (brick.x - ball.radius)) },
+    { normalX: 1, normalY: 0, distance: Math.abs(previousX - (brick.x + brick.w + ball.radius)) },
+    { normalX: 0, normalY: -1, distance: Math.abs(previousY - (brick.y - ball.radius)) },
+    { normalX: 0, normalY: 1, distance: Math.abs(previousY - (brick.y + brick.h + ball.radius)) },
+  ];
+  const exit = exits.sort((a, b) => a.distance - b.distance)[0];
+  const penetration = exit.normalX < 0 ? ball.x + ball.radius - brick.x
+    : exit.normalX > 0 ? brick.x + brick.w - (ball.x - ball.radius)
+    : exit.normalY < 0 ? ball.y + ball.radius - brick.y
+    : brick.y + brick.h - (ball.y - ball.radius);
+  return { normalX: exit.normalX, normalY: exit.normalY, penetration: Math.max(0, penetration) };
+}
+
+function separateAndReflectBall(ball: Ball, collision: { normalX: number; normalY: number; penetration: number }) {
+  ball.x += collision.normalX * (collision.penetration + 0.1);
+  ball.y += collision.normalY * (collision.penetration + 0.1);
+  const approachSpeed = ball.vx * collision.normalX + ball.vy * collision.normalY;
+  if (approachSpeed >= 0) return;
+  ball.vx -= 2 * approachSpeed * collision.normalX;
+  ball.vy -= 2 * approachSpeed * collision.normalY;
+}
 
 function seededRandom(seed: number) {
   let state = seed >>> 0;
@@ -546,6 +596,7 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     autoGuard: false,
     rowTimer: rowInterval,
     rowInterval,
+    overdriveLevel: 0,
     shakeStrength: 0,
     shakeTime: 0,
     shakeDuration: 0,
@@ -571,6 +622,7 @@ function hudFromGame(game: GameState) {
     score: game.score, time: game.elapsed, level: game.level,
     combo: game.combo, bricks: game.bricksBroken, balls: game.balls.filter((ball) => ball.owner === "player").length,
     wave: game.wave, nextRow: Math.max(0, game.rowTimer), coreHp: game.coreHp, maxCoreHp: game.maxCoreHp,
+    overdriveLevel: game.overdriveLevel, overdriveMultiplier: overdriveMultiplier(game.overdriveLevel),
     bossActive: game.bossActive, bossPending: game.bossPending, nextBossWave: game.nextBossWave, bossTimeRemaining: Math.max(0, game.bossTimeRemaining),
     waveName: waveDefinition(game.wave).name, aliveBricks: game.bricks.filter((brick) => brick.alive).length,
   };
@@ -664,7 +716,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const [ghosts, setGhosts] = useState<GhostRecord[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [mode, setMode] = useState<"lobby" | "initialskills" | "playing" | "settlement" | "levelup" | "bossreward" | "result">("lobby");
-  const [hud, setHud] = useState({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0 });
+  const [hud, setHud] = useState({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, overdriveLevel: 0, overdriveMultiplier: 1, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0 });
   const [choices, setChoices] = useState<UpgradeChoice[]>([]);
   const [initialSelectedIds, setInitialSelectedIds] = useState<UpgradeId[]>([]);
   const [settlement, setSettlement] = useState<WaveSettlement | null>(null);
@@ -1183,6 +1235,20 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     });
     game.elapsed += dt;
     game.rowTimer += dt;
+    const nextOverdriveLevel = overdriveLevelAt(game.rowTimer);
+    if (nextOverdriveLevel > game.overdriveLevel) {
+      const speedRatio = overdriveMultiplier(nextOverdriveLevel) / overdriveMultiplier(game.overdriveLevel);
+      game.balls.filter((ball) => ball.owner === "player").forEach((ball) => {
+        ball.vx *= speedRatio;
+        ball.vy *= speedRatio;
+      });
+      game.overdriveLevel = nextOverdriveLevel;
+      const overdrivePercent = Math.round(overdriveMultiplier(nextOverdriveLevel) * 100);
+      game.flashes.push({ text: `OVERDRIVE ${nextOverdriveLevel} // BALL SPEED ${overdrivePercent}%`, x: W / 2, y: H / 2, life: 1.2, color: "#ff9658" });
+      game.effects.push({ kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 150 + nextOverdriveLevel * 18, life: 0.7, maxLife: 0.7, color: "#ff9658", variant: 0, skillId: null });
+      audioRef.current?.play("skill", 0.8 + nextOverdriveLevel * 0.18);
+      setImpactFeedback(game, 2 + nextOverdriveLevel, "#ff9658", 0.16, 0.06);
+    }
     if (game.bossActive) {
       game.bossSkillTimer -= dt;
       if (game.bossSkillTimer <= 0) {
@@ -1792,6 +1858,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           }
         }
       });
+      const previousBallX = ball.x;
+      const previousBallY = ball.y;
       ball.x += ball.vx * dt;
       ball.y += ball.vy * dt;
       if (ball.x < ball.radius) { ball.x = ball.radius; ball.vx = Math.abs(ball.vx); }
@@ -1800,13 +1868,19 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
       if (ball.vy > 0) {
         for (const paddle of paddles) {
-          if (ball.y + ball.radius < paddle.y || ball.y - ball.radius > paddle.y + 12 || ball.x < paddle.x - paddle.width / 2 || ball.x > paddle.x + paddle.width / 2) continue;
-          const hit = (ball.x - paddle.x) / (paddle.width / 2);
+          const verticalTravel = ball.y - previousBallY;
+          const contactTime = verticalTravel > 0 ? (paddle.y - ball.radius - previousBallY) / verticalTravel : -1;
+          if (contactTime < 0 || contactTime > 1) continue;
+          const contactX = previousBallX + (ball.x - previousBallX) * contactTime;
+          if (contactX + ball.radius < paddle.x - paddle.width / 2 || contactX - ball.radius > paddle.x + paddle.width / 2) continue;
+          const hit = Math.max(-1, Math.min(1, (contactX - paddle.x) / (paddle.width / 2)));
           const paddleEnglish = Math.max(-MAX_PADDLE_ENGLISH, Math.min(MAX_PADDLE_ENGLISH, paddle.velocity * PADDLE_ENGLISH_FACTOR));
-          const returnSpeed = 1 + skillValue("speed", upgradeLevel(paddle.upgrades, "speed")) / 100;
-          ball.vx = Math.max(-440, Math.min(440, hit * 330 + paddleEnglish));
-          ball.vy = -Math.min(440, Math.max(215, Math.abs(ball.vy)) * returnSpeed);
-          ball.y = paddle.y - ball.radius;
+          const reboundSpeed = Math.max(MIN_PADDLE_REBOUND_SPEED, Math.min(MAX_PADDLE_REBOUND_SPEED, Math.hypot(ball.vx, ball.vy)));
+          const horizontalRatio = Math.max(-MAX_PADDLE_REBOUND_RATIO, Math.min(MAX_PADDLE_REBOUND_RATIO, hit * 0.74 + paddleEnglish / reboundSpeed));
+          ball.vx = horizontalRatio * reboundSpeed;
+          ball.vy = -Math.sqrt(Math.max(1, reboundSpeed * reboundSpeed - ball.vx * ball.vx));
+          ball.x = contactX;
+          ball.y = paddle.y - ball.radius - 0.1;
           ball.sourcePaddleId = paddle.id;
           audioRef.current?.play("paddle", game.combo);
           const grantedPayloads = grantPaddlePayloads(ball, paddle.upgrades);
@@ -2042,11 +2116,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
       for (const brick of game.bricks) {
         if (!brick.alive) continue;
-        if (ball.x + ball.radius < brick.x || ball.x - ball.radius > brick.x + brick.w || ball.y + ball.radius < brick.y || ball.y - ball.radius > brick.y + brick.h) continue;
+        const collision = circleRectangleCollision(ball, brick, previousBallX, previousBallY);
+        if (!collision) continue;
 
-        const collisionOverlapX = Math.min(ball.x + ball.radius - brick.x, brick.x + brick.w - (ball.x - ball.radius));
-        const collisionOverlapY = Math.min(ball.y + ball.radius - brick.y, brick.y + brick.h - (ball.y - ball.radius));
-        if (brick.trait === "reflector" && ball.vy < 0 && ball.y >= brick.y + brick.h / 2) {
+        if (brick.trait === "reflector" && ball.vy < 0 && collision.normalY > 0) {
           ball.y = brick.y + brick.h + ball.radius;
           ball.vy = Math.abs(ball.vy);
           emitEffect("ring", ball.x, brick.y + brick.h, "#65dcff", 46, ball.x, brick.y + brick.h, 0.42);
@@ -2056,13 +2129,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           break;
         }
         if (brick.trait === "indestructible") {
-          if (collisionOverlapX < collisionOverlapY) {
-            ball.vx *= -1;
-            ball.x = ball.vx > 0 ? brick.x + brick.w + ball.radius : brick.x - ball.radius;
-          } else {
-            ball.vy *= -1;
-            ball.y = ball.vy > 0 ? brick.y + brick.h + ball.radius : brick.y - ball.radius;
-          }
+          separateAndReflectBall(ball, collision);
           emitEffect("ring", ball.x, ball.y, "#8d96a8", 34, ball.x, ball.y, 0.3);
           audioRef.current?.play("brick-hit", 0.7);
           break;
@@ -2136,19 +2203,15 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         );
         if (brick.hp > 0) audioRef.current?.play("brick-hit", directDamage);
         if (corrosionDamage > 0) emitEffect("ring", brick.x + brick.w / 2, brick.y + brick.h / 2, "#c18cff", 28 + corrosionDamage * 5, brick.x + brick.w / 2, brick.y + brick.h / 2, 0.32);
-        const overlapX = collisionOverlapX;
-        const overlapY = collisionOverlapY;
         if (ball.missileTime > 0) {
           ball.missileHitCooldown = 0.09;
         } else if (ball.pierce > 0) {
           ball.pierce--;
           if (ball.pierce <= 0) delete ball.skillCharges["archer-pierce"];
-          if (overlapX < overlapY) ball.x = ball.vx > 0 ? brick.x + brick.w + ball.radius : brick.x - ball.radius;
-          else ball.y = ball.vy > 0 ? brick.y + brick.h + ball.radius : brick.y - ball.radius;
-        } else if (overlapX < overlapY) {
-          ball.vx *= -1;
+          if (Math.abs(ball.vx) > Math.abs(ball.vy)) ball.x = ball.vx > 0 ? brick.x + brick.w + ball.radius + 0.1 : brick.x - ball.radius - 0.1;
+          else ball.y = ball.vy > 0 ? brick.y + brick.h + ball.radius + 0.1 : brick.y - ball.radius - 0.1;
         } else {
-          ball.vy *= -1;
+          separateAndReflectBall(ball, collision);
         }
         if (!guardAbsorbed && linkLevel > 0) {
           randomLinkTargets(brick, linkLevel).forEach((linked) => {
@@ -2228,7 +2291,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           finishRun();
           return;
         }
-        game.balls.push(makePlayerBall(game.upgrades, game.paddleX));
+        const respawnBall = makePlayerBall(game.upgrades, game.paddleX);
+        const respawnOverdrive = overdriveMultiplier(game.overdriveLevel);
+        respawnBall.vx *= respawnOverdrive;
+        respawnBall.vy *= respawnOverdrive;
+        game.balls.push(respawnBall);
         game.flashes.push({ text: "BALL LOST // CORE -1 // RESPAWN", x: W / 2, y: H - 105, life: 1.4, color: "#ffcf4a" });
         emitEffect("ring", game.paddleX, PLAYER_PADDLE_Y, "#ffcf4a", 90, game.paddleX, PLAYER_PADDLE_Y, 0.8);
         emitBurst(game.paddleX, PLAYER_PADDLE_Y, "#ffcf4a", 18, 230);
@@ -2274,6 +2341,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.gravityWells = [];
       game.rowInterval = 0;
       game.rowTimer = 0;
+      game.overdriveLevel = 0;
       game.bossTimeRemaining = 0;
       game.bossSkillTimer = game.bossActive ? 5 : 0;
       game.bossMultiballsRemaining = game.bossActive ? BOSS_MULTIBALL_BUDGET : 0;
@@ -4060,7 +4128,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             <div><span>BALLS</span><strong>{hud.balls}</strong></div>
             <div className={hud.coreHp <= 3 ? "core-cell core-critical" : "core-cell"}><span>CORE</span><strong>{hud.coreHp}/{hud.maxCoreHp}</strong></div>
             <div className="xp-cell"><span>WAVE PATTERN</span><strong>{hud.waveName}</strong><small>{hud.aliveBricks} BRICKS LEFT</small></div>
-            <div><span>WAVE {hud.wave}/{MAX_WAVE} · ELAPSED</span><strong>{hud.nextRow.toFixed(1)}s</strong></div>
+            <div className={hud.overdriveLevel > 0 ? "overdrive-cell active" : "overdrive-cell"}>
+              <span>WAVE {hud.wave}/{MAX_WAVE} · {hud.nextRow.toFixed(1)}s</span>
+              <strong>BALL {Math.round(hud.overdriveMultiplier * 100)}%</strong>
+              <small>{hud.overdriveLevel < MAX_OVERDRIVE_LEVEL ? `NEXT +5% IN ${Math.max(0, OVERDRIVE_THRESHOLDS[hud.overdriveLevel] - hud.nextRow).toFixed(0)}s` : "MAX OVERDRIVE"}</small>
+            </div>
           </div>
           <div className="brick-key-strip" aria-label="특수 블록 기능 안내">
             <strong>BLOCK KEY</strong>
