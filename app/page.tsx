@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GameAudio } from "./game-audio";
-import { DEFAULT_SKILLS, ENCHANT_MODE_LABELS, levelValue, NORMAL_SKILLS, normalizeSkillConfigs, SKILL_COLORS, SKILL_STORAGE_KEY, skillConfigMap, ULTIMATE_SKILLS, type ClassSkillId, type SkillCategory, type SkillConfig, type UpgradeId } from "./skill-config";
+import { DEFAULT_SKILLS, ENCHANT_MODE_LABELS, levelValue, NORMAL_SKILLS, normalizeSkillConfigs, SKILL_COLORS, SKILL_MECHANIC_LABELS, SKILL_STORAGE_KEY, skillConfigMap, ULTIMATE_SKILLS, type ClassSkillId, type SkillCategory, type SkillConfig, type SkillMechanic, type UpgradeId } from "./skill-config";
 import { BALANCE_STORAGE_KEY, BOT_LIVE_STORAGE_KEY, BOT_RESULTS_STORAGE_KEY, DEFAULT_BALANCE_CONFIG, DEFAULT_SKILL_BENCH_CONFIG, DEFAULT_SKILL_BENCH_PROGRESS, normalizeBalanceConfig, normalizeSkillBenchConfig, normalizeSkillBenchProgress, SKILL_BENCH_PROGRESS_KEY, SKILL_BENCH_STORAGE_KEY, type BalanceConfig, type BotWaveSample, type SkillBenchConfig, type SkillBenchProgress } from "./balance-config";
 import { BENCHMARK_STORAGE_KEY, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConfig, type BenchmarkConfig } from "./benchmark-config";
 import { MAX_WAVE, waveDefinition } from "./wave-config";
@@ -29,6 +29,7 @@ type Upgrade = {
   id: UpgradeId;
   name: string;
   category: SkillCategory;
+  mechanic: SkillMechanic;
   tag: string;
   description: string;
   color: string;
@@ -99,6 +100,7 @@ type Brick = {
   blastVulnerability: number;
   blastVulnerabilitySourcePaddleId: string | null;
   frostVulnerability: number;
+  traitLockTime: number;
   lastHitPaddleId: string | null;
 };
 
@@ -323,7 +325,8 @@ function createUpgradeCatalog(skills: SkillConfig[]): Upgrade[] {
     id: skill.id,
     name: skill.name,
     category: skill.category,
-    tag: `${CLASS_META[skill.category].tag}${skill.ultimate ? " · ULTIMATE" : ""}`,
+    mechanic: skill.mechanic,
+    tag: `${CLASS_META[skill.category].tag} · ${SKILL_MECHANIC_LABELS[skill.mechanic]}${skill.ultimate ? " · ULTIMATE" : ""}`,
     description: skill.description,
     color: skill.color,
   }));
@@ -423,7 +426,7 @@ function hasScheduledMultiball(wave: number) {
 }
 
 function brickRuntimeState(trait: BrickTrait = "standard") {
-  return { trait, guardReady: trait === "guard", healTimer: 3, poisonTime: 0, poisonTick: 0, poisonSourcePaddleId: null, burnTime: 0, burnTick: 0, burnLevel: 0, burnSourcePaddleId: null, blastVulnerability: 1, blastVulnerabilitySourcePaddleId: null, frostVulnerability: 0, lastHitPaddleId: null };
+  return { trait, guardReady: trait === "guard", healTimer: 3, poisonTime: 0, poisonTick: 0, poisonSourcePaddleId: null, burnTime: 0, burnTick: 0, burnLevel: 0, burnSourcePaddleId: null, blastVulnerability: 1, blastVulnerabilitySourcePaddleId: null, frostVulnerability: 0, traitLockTime: 0, lastHitPaddleId: null };
 }
 
 function lateWaveHpMultiplier(waveNumber: number) {
@@ -1232,7 +1235,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       brick.blastVulnerability ??= 1;
       brick.blastVulnerabilitySourcePaddleId ??= null;
       brick.frostVulnerability ??= 0;
+      brick.traitLockTime ??= 0;
       brick.lastHitPaddleId ??= null;
+      brick.traitLockTime = Math.max(0, brick.traitLockTime - dt);
     });
     game.elapsed += dt;
     game.rowTimer += dt;
@@ -1417,7 +1422,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     };
     const damageMultiplier = (brick: Brick) => brick.kind === "boss-core" && game.bricks.some((target) => target.alive && target.kind === "boss-armor") ? 0.3 : 1;
     const absorbGuardHit = (target: Brick) => {
-      if (!target.guardReady) return false;
+      if (!target.guardReady || target.traitLockTime > 0) return false;
       target.guardReady = false;
       const centerX = target.x + target.w / 2;
       const centerY = target.y + target.h / 2;
@@ -1697,7 +1702,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     });
 
     game.bricks.forEach((healer) => {
-      if (!healer.alive || healer.trait !== "healer") return;
+      if (!healer.alive || healer.trait !== "healer" || healer.traitLockTime > 0) return;
       healer.healTimer -= dt;
       if (healer.healTimer > 0) return;
       healer.healTimer = 3;
@@ -1705,7 +1710,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const centerY = healer.y + healer.h / 2;
       let healed = 0;
       game.bricks.forEach((target) => {
-        if (!target.alive || !isDamageableBrick(target) || target.hp >= target.maxHp || target.frostVulnerability > 0) return;
+        if (!target.alive || !isDamageableBrick(target) || target.hp >= target.maxHp || target.frostVulnerability > 0 || target.burnTime > 0) return;
         const distance = Math.hypot(target.x + target.w / 2 - centerX, target.y + target.h / 2 - centerY);
         if (distance > 135) return;
         target.hp = Math.min(target.maxHp, target.hp + 1);
@@ -1965,8 +1970,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           });
           triggerReflectionSkill("warrior-berserker", (level) => {
             ball.attackPower = Math.max(ball.attackPower, 4 + level);
-            ball.vx *= 1.25;
-            ball.vy *= 1.25;
+            const currentSpeed = Math.max(1, Math.hypot(ball.vx, ball.vy));
+            const berserkerSpeed = Math.min(MAX_PADDLE_REBOUND_SPEED, Math.hypot(BASE_BALL_VX, BASE_BALL_VY) * overdriveMultiplier(game.overdriveLevel) * 1.25);
+            if (currentSpeed < berserkerSpeed) {
+              ball.vx *= berserkerSpeed / currentSpeed;
+              ball.vy *= berserkerSpeed / currentSpeed;
+            }
             emitSkillEffect("warrior-berserker", ball.x, ball.y, 78 + level * 8, 0.95);
             game.flashes.push({ text: `${paddle.name} // 광전사`, x: paddle.x, y: paddle.y - 32, life: 1, color: "#ff4f78" });
           });
@@ -2005,6 +2014,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               .slice(0, 2 + level);
             frozenTargets.forEach((target) => {
               target.frostVulnerability = Math.max(target.frostVulnerability, level);
+              if (target.trait === "healer" || target.trait === "reflector") {
+                target.traitLockTime = Math.max(target.traitLockTime, 2 + level);
+              }
               const targetX = target.x + target.w / 2;
               const targetY = target.y + target.h / 2;
               emitEffect("beam", ball.x, ball.y, classSkillColor("mage-freeze"), 5, targetX, targetY, 0.45);
@@ -2021,9 +2033,20 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             game.flashes.push({ text: `${paddle.name} // 블랙홀`, x: wellX, y: wellY - 28, life: 1, color: "#9a8cff" });
           });
           triggerReflectionSkill("mage-mana-blast", (level) => {
-            const targets = game.bricks.filter((target) => target.alive).sort((a, b) => Math.hypot(a.x - ball.x, a.y - ball.y) - Math.hypot(b.x - ball.x, b.y - ball.y)).slice(0, 3 + level);
+            const targets = game.bricks
+              .filter((target) => target.alive && (target.trait === "guard" || target.trait === "healer" || target.trait === "reflector"))
+              .sort((a, b) => Math.hypot(a.x - ball.x, a.y - ball.y) - Math.hypot(b.x - ball.x, b.y - ball.y))
+              .slice(0, 1 + level);
+            const lockDuration = 2 + level * 2;
+            targets.forEach((target) => {
+              target.traitLockTime = Math.max(target.traitLockTime, lockDuration);
+              const targetX = target.x + target.w / 2;
+              const targetY = target.y + target.h / 2;
+              emitEffect("beam", ball.x, ball.y, classSkillColor("mage-mana-blast"), 7, targetX, targetY, 0.55);
+              emitEffect("ring", targetX, targetY, classSkillColor("mage-mana-blast"), 42, targetX, targetY, 0.65);
+            });
             emitSkillEffect("mage-mana-blast", ball.x, ball.y, 86 + level * 9, 0.75);
-            strikeTargets(targets, 1, classSkillColor("mage-mana-blast"), "마력 폭발", "mage-mana-blast");
+            game.flashes.push({ text: `${paddle.name} // 마력 봉인 ${lockDuration}s ×${targets.length}`, x: ball.x, y: ball.y - 22, life: 1, color: classSkillColor("mage-mana-blast") });
           });
           triggerReflectionSkill("mage-elemental-storm", (level) => {
             ball.skillCharges["mage-fireball"] = level;
@@ -2126,7 +2149,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const collision = circleRectangleCollision(ball, brick, previousBallX, previousBallY);
         if (!collision) continue;
 
-        if (brick.trait === "reflector" && ball.vy < 0 && collision.normalY > 0) {
+        if (brick.trait === "reflector" && brick.traitLockTime <= 0 && ball.vy < 0 && collision.normalY > 0) {
           ball.y = brick.y + brick.h + ball.radius;
           ball.vy = Math.abs(ball.vy);
           emitEffect("ring", ball.x, brick.y + brick.h, "#65dcff", 46, ball.x, brick.y + brick.h, 0.42);
@@ -2235,8 +2258,15 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         if (!guardAbsorbed && classChainCount > 0) {
           const color = lightningLevel > 0 ? "#9a8cff" : "#72f1b8";
           const chainSkillId: ClassSkillId = lightningLevel > 0 ? "mage-lightning" : "archer-ricochet";
+          const ricochetPriority = (target: Brick) => target.trait === "healer" ? 0 : target.trait === "explosive" ? 1 : target.trait === "guard" ? 2 : target.trait === "reflector" ? 3 : 4;
           game.bricks.filter((target) => target.alive && isDamageableBrick(target) && target !== brick)
-            .sort((a, b) => Math.hypot(a.x - brick.x, a.y - brick.y) - Math.hypot(b.x - brick.x, b.y - brick.y))
+            .sort((a, b) => {
+              if (ricochetLevel > 0 && lightningLevel <= 0) {
+                const priorityDifference = ricochetPriority(a) - ricochetPriority(b);
+                if (priorityDifference !== 0) return priorityDifference;
+              }
+              return Math.hypot(a.x - brick.x, a.y - brick.y) - Math.hypot(b.x - brick.x, b.y - brick.y);
+            })
             .slice(0, classChainCount)
             .forEach((target) => {
               if (absorbGuardHit(target)) return;
@@ -2545,7 +2575,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ctx.globalAlpha = 1;
           ctx.shadowBlur = 0;
         }
-        if (brick.trait === "reflector") {
+        if (brick.trait === "reflector" && brick.traitLockTime <= 0) {
           const reflectorShieldPulse = 0.55 + (Math.sin(game.elapsed * 7 + brick.x * 0.03) + 1) * 0.2;
           const reflectorThreatened = game.balls.some((ball) => ball.vy < 0 && ball.y > brick.y + brick.h && ball.y < brick.y + brick.h + 75 && ball.x > brick.x - 8 && ball.x < brick.x + brick.w + 8);
           const reflectorLineY = brick.y + brick.h + 4;
@@ -2691,6 +2721,25 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ctx.font = "900 10px monospace";
         ctx.textAlign = "left";
         ctx.fillText(`❄+${brick.frostVulnerability}`, brick.x + 5, brick.y + 12);
+        ctx.restore();
+      }
+      if (brick.traitLockTime > 0) {
+        ctx.save();
+        const lockPulse = 0.72 + Math.sin(game.elapsed * 9 + brick.x * 0.025) * 0.18;
+        ctx.globalAlpha = lockPulse;
+        ctx.strokeStyle = classSkillColor("mage-mana-blast");
+        ctx.shadowColor = classSkillColor("mage-mana-blast");
+        ctx.shadowBlur = 14;
+        ctx.lineWidth = 3;
+        ctx.setLineDash([7, 4]);
+        ctx.strokeRect(brick.x - 4, brick.y - 4, brick.w + 8, brick.h + 8);
+        ctx.setLineDash([]);
+        ctx.fillStyle = "rgba(7,4,18,.9)";
+        ctx.fillRect(brick.x + brick.w / 2 - 26, brick.y + brick.h - 12, 52, 12);
+        ctx.fillStyle = "#e4b7ff";
+        ctx.font = "900 9px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(`LOCK ${Math.ceil(brick.traitLockTime)}s`, brick.x + brick.w / 2, brick.y + brick.h - 3);
         ctx.restore();
       }
       if (brick.lastHitPaddleId) {

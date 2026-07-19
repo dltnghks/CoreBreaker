@@ -1,6 +1,17 @@
 export type HeroClass = "warrior" | "archer" | "mage" | "common";
 export type SkillCategory = HeroClass;
+export type SkillMechanic = "impact" | "chain" | "control" | "summon" | "defense" | "passive" | "ultimate";
 export type EnchantMode = "persistent" | "charge" | "single";
+
+export const SKILL_MECHANIC_LABELS: Record<SkillMechanic, string> = {
+  impact: "타격",
+  chain: "연쇄",
+  control: "제어",
+  summon: "소환",
+  defense: "방어",
+  passive: "지속",
+  ultimate: "궁극",
+};
 
 export type ClassSkillId =
   | "warrior-smash" | "warrior-shockwave" | "warrior-execute" | "warrior-crush" | "warrior-guard"
@@ -29,6 +40,7 @@ export type SkillConfig = {
   id: ClassSkillId;
   name: string;
   category: SkillCategory;
+  mechanic: SkillMechanic;
   enchantMode?: EnchantMode;
   owner: "paddle";
   trigger: string;
@@ -75,6 +87,35 @@ export const SKILL_COLORS: Record<ClassSkillId, string> = {
   "common-combo": "#f0abfc",
 };
 
+const SKILL_MECHANICS: Record<ClassSkillId, SkillMechanic> = {
+  "warrior-smash": "impact",
+  "warrior-shockwave": "chain",
+  "warrior-execute": "impact",
+  "warrior-crush": "control",
+  "warrior-guard": "defense",
+  "warrior-earthquake": "ultimate",
+  "warrior-berserker": "ultimate",
+  "archer-rapid": "summon",
+  "archer-pierce": "impact",
+  "archer-ricochet": "chain",
+  "archer-focus": "impact",
+  "archer-weakpoint": "impact",
+  "archer-arrow-rain": "ultimate",
+  "archer-infinite": "ultimate",
+  "mage-fireball": "control",
+  "mage-lightning": "chain",
+  "mage-freeze": "control",
+  "mage-black-hole": "control",
+  "mage-mana-blast": "control",
+  "mage-elemental-storm": "ultimate",
+  "mage-meteor": "ultimate",
+  "common-magnet": "passive",
+  "common-luck": "passive",
+  "common-wide": "passive",
+  "common-xp": "passive",
+  "common-combo": "passive",
+};
+
 const skill = (
   id: ClassSkillId,
   name: string,
@@ -88,6 +129,7 @@ const skill = (
   id,
   name,
   category,
+  mechanic: SKILL_MECHANICS[id],
   owner: "paddle",
   trigger,
   effect,
@@ -113,6 +155,7 @@ const passiveSkill = (
   id,
   name,
   category: "common",
+  mechanic: SKILL_MECHANICS[id],
   owner: "paddle",
   trigger: "획득 즉시 상시 적용",
   effect,
@@ -138,17 +181,17 @@ export const DEFAULT_SKILLS: SkillConfig[] = [
 
   skill("archer-rapid", "연사", "archer", "패들 반사 횟수 충전", "시간제 임시 화살 1발 생성", "충전 완료 시 현재 공을 복제한 임시 화살을 발사합니다. 화살은 레벨에 따라 약 4.75~6.25초 후 사라집니다.", [8, 6, 4]),
   skill("archer-pierce", "관통 화살", "archer", "패들 반사 횟수 충전", "다음 공이 여러 블럭 관통", "충전된 공이 LV+1개의 블럭을 관통합니다.", [6, 5, 4]),
-  skill("archer-ricochet", "도탄 화살", "archer", "패들 반사 횟수 충전", "주변 블럭으로 도탄", "충전된 공이 적중하면 주변 블럭 LV개를 자동으로 추가 공격합니다.", [5, 4, 3]),
+  skill("archer-ricochet", "도탄 화살", "archer", "패들 반사 횟수 충전", "위험 특수 블럭 우선 도탄", "충전된 공이 적중하면 회복·폭발·가드·반사 블럭을 우선해 주변 블럭 LV개를 추가 공격합니다.", [5, 4, 3]),
   skill("archer-focus", "집중 사격", "archer", "패들 반사 횟수 충전", "같은 블럭 재공격 강화", "충전된 공이 이미 같은 패들에 맞은 블럭을 공격하면 LV+1의 추가 피해를 줍니다.", [4, 3, 2]),
   skill("archer-weakpoint", "약점 사격", "archer", "패들 반사 횟수 충전", "다음 공격 확정 치명타", "충전된 공의 다음 직접 공격 피해가 3배가 됩니다.", [8, 6, 4]),
   skill("archer-arrow-rain", "화살비", "archer", "패들 반사 횟수 충전", "다수 블럭 동시 공격", "무작위 일반 블럭 8+LV×4개에 화살을 떨어뜨립니다.", [20, 16, 12], true),
   skill("archer-infinite", "무한 탄창", "archer", "패들 반사 횟수 충전", "임시 화살 3발 생성", "현재 공의 특성을 복제한 임시 화살 3발을 동시에 발사합니다.", [16, 12, 8], true),
 
-  skill("mage-fireball", "화염구", "mage", "패들 반사 횟수 충전", "다음 충돌 시 주변 점화", "충전된 공이 블럭에 충돌하면 주변 블럭을 3/4/5초 동안 점화해 매초 화염 피해를 줍니다.", [6, 5, 4]),
+  skill("mage-fireball", "화염구", "mage", "패들 반사 횟수 충전", "주변 점화 · 회복 차단", "충전된 공이 블럭에 충돌하면 주변 블럭을 3/4/5초 동안 점화해 매초 피해를 주고 회복을 차단합니다.", [6, 5, 4]),
   skill("mage-lightning", "연쇄 번개", "mage", "패들 반사 횟수 충전", "주변 블럭 연쇄 공격", "충전된 공이 적중한 블럭에서 주변 블럭 LV+1개로 번개가 연결됩니다.", [7, 5, 3]),
-  skill("mage-freeze", "빙결 표식", "mage", "패들 반사 횟수 충전", "회복 차단 · 다음 피격 강화", "충전 완료 시 체력이 높은 블록 2+LV개를 빙결합니다. 빙결 블록은 회복되지 않고 다음 직접 피격 피해가 LV만큼 증가한 뒤 해제됩니다.", [12, 9, 6]),
+  skill("mage-freeze", "빙결 표식", "mage", "패들 반사 횟수 충전", "회복·반사 봉인 · 다음 피격 강화", "체력이 높은 블록 2+LV개를 빙결합니다. 회복과 반사 특성은 3/4/5초간 봉인되고 다음 직접 피격 피해가 LV만큼 증가합니다.", [12, 9, 6]),
   skill("mage-black-hole", "블랙홀", "mage", "패들 반사 횟수 충전", "상단에 중력장 생성", "충전 완료 시 맵 상단에 공을 끌어당기는 블랙홀을 생성합니다.", [14, 11, 8]),
-  skill("mage-mana-blast", "마력 폭발", "mage", "패들 반사 횟수 충전", "가까운 블럭 광역 피해", "충전 완료 시 공 주변의 가까운 블럭 3+LV개에 마력 피해를 줍니다.", [10, 8, 6]),
+  skill("mage-mana-blast", "마력 봉인", "mage", "패들 반사 횟수 충전", "특수 블럭 기능 일시 봉인", "충전 완료 시 가까운 특수 블럭 2/3/4개의 가드·회복·반사 기능을 4/6/8초간 봉인합니다. 폭발 기능은 유지됩니다.", [10, 8, 6]),
   skill("mage-elemental-storm", "원소 폭풍", "mage", "패들 반사 횟수 충전", "화염·번개 충전 · 광역 빙결", "현재 공에 화염과 번개를 충전하고 체력이 높은 블록 4+LV개에 빙결 표식을 부여합니다.", [18, 14, 10], true),
   skill("mage-meteor", "메테오", "mage", "패들 반사 횟수 충전", "최고 체력 블럭 대형 폭발", "가장 체력이 높은 블럭에 8+LV×4 피해와 대형 폭발을 가합니다.", [20, 16, 12], true),
   passiveSkill("common-magnet", "아이템 자석", "아이템 흡수 범위 증가", "패들 주변의 아이템을 끌어당기는 범위가 증가합니다.", [70, 120, 180], "px"),
@@ -175,7 +218,7 @@ export function normalizeSkillConfigs(saved: unknown): SkillConfig[] {
     const migrated = base.id === "common-xp" ? base
       : legacyTimeFreeze || legacyDestructionTrigger ? { ...savedSkill, name: base.name, effect: base.effect, description: base.description }
       : savedSkill;
-    return { ...base, ...migrated, id: base.id, category: base.category, color: base.color, owner: "paddle", ballCost: 0, ultimate: base.ultimate, levels: base.id === "common-xp" ? base.levels : levels };
+    return { ...base, ...migrated, id: base.id, category: base.category, mechanic: base.mechanic, color: base.color, owner: "paddle", ballCost: 0, ultimate: base.ultimate, levels: base.id === "common-xp" ? base.levels : levels };
   });
 }
 

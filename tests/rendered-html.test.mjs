@@ -249,7 +249,7 @@ test("adds six stage brick traits with distinct combat rules and readable visual
   assert.match(source, /HEAL PULSE \/\/ \+1/);
   assert.match(source, /text: "\+1"/);
   assert.match(source, /emitEffect\("ring", target\.x \+ target\.w \/ 2, target\.y \+ target\.h \/ 2, "#72f1b8"/);
-  assert.match(source, /brick\.trait === "reflector" && ball\.vy < 0/);
+  assert.match(source, /brick\.trait === "reflector" && brick\.traitLockTime <= 0 && ball\.vy < 0/);
   assert.match(source, /const reflectorShieldPulse/);
   assert.match(source, /const reflectorThreatened = game\.balls\.some/);
   assert.match(source, /const reflectorScan/);
@@ -685,7 +685,7 @@ test("renders the warrior archer mage Skill Lab", async () => {
 
 test("defines all class skills as reflection-driven skills without ball costs", async () => {
   const config = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
-  const names = ["강타", "충격파", "처형", "분쇄", "철벽", "대지 분쇄", "광전사", "연사", "관통 화살", "도탄 화살", "집중 사격", "약점 사격", "화살비", "무한 탄창", "화염구", "연쇄 번개", "빙결 표식", "블랙홀", "마력 폭발", "원소 폭풍", "메테오"];
+  const names = ["강타", "충격파", "처형", "분쇄", "철벽", "대지 분쇄", "광전사", "연사", "관통 화살", "도탄 화살", "집중 사격", "약점 사격", "화살비", "무한 탄창", "화염구", "연쇄 번개", "빙결 표식", "블랙홀", "마력 봉인", "원소 폭풍", "메테오"];
   names.forEach((name) => assert.match(config, new RegExp(`"${name}"`)));
   assert.match(config, /export const NORMAL_SKILLS/);
   assert.match(config, /export const ULTIMATE_SKILLS/);
@@ -713,7 +713,7 @@ test("separates impact shockwave damage from fireball damage over time", async (
   const skills = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
   const benchmark = await readFile(new URL("../app/benchmark-headless.ts", import.meta.url), "utf8");
   assert.match(skills, /"warrior-shockwave"[\s\S]*"다음 충돌 시 주변 즉발 피해"/);
-  assert.match(skills, /"mage-fireball"[\s\S]*"다음 충돌 시 주변 점화"/);
+  assert.match(skills, /"mage-fireball"[\s\S]*"주변 점화 · 회복 차단"/);
   assert.match(skills, /legacyDestructionTrigger/);
   assert.match(source, /triggerImpactShockwave\(brick, ball, shockwaveLevel\)/);
   assert.match(source, /igniteFireballArea\(brick, sourcePaddle\.id, fireballLevel\)/);
@@ -886,6 +886,30 @@ test("gives every mage skill a distinct elemental field signature", async () => 
   assert.match(source, /빙결 파쇄/);
   assert.doesNotMatch(source, /freezeTimer/);
   assert.match(config, /"빙결 표식"/);
-  assert.match(config, /회복 차단 · 다음 피격 강화/);
+  assert.match(config, /회복·반사 봉인 · 다음 피격 강화/);
   assert.match(config, /const legacyTimeFreeze/);
+});
+
+test("classifies skills by both hero class and combat mechanic", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const lab = await readFile(new URL("../app/skill-lab/page.tsx", import.meta.url), "utf8");
+  const config = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
+  assert.match(config, /type SkillMechanic = "impact" \| "chain" \| "control" \| "summon" \| "defense" \| "passive" \| "ultimate"/);
+  ["타격", "연쇄", "제어", "소환", "방어", "지속", "궁극"].forEach((label) => assert.match(config, new RegExp(`"${label}"`)));
+  assert.match(source, /SKILL_MECHANIC_LABELS\[skill\.mechanic\]/);
+  assert.match(lab, /mechanicFilter/);
+  assert.match(lab, /aria-label="스킬 작동 방식 필터"/);
+  assert.match(config, /mechanic: base\.mechanic/);
+});
+
+test("connects control and chain skills to special brick traits", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /target\.burnTime > 0/);
+  assert.match(source, /target\.trait === "healer" \|\| target\.trait === "reflector"/);
+  assert.match(source, /target\.traitLockTime = Math\.max/);
+  assert.match(source, /healer\.traitLockTime > 0/);
+  assert.match(source, /target\.trait === "guard" \|\| target\.trait === "healer" \|\| target\.trait === "reflector"/);
+  assert.match(source, /LOCK \$\{Math\.ceil\(brick\.traitLockTime\)\}s/);
+  assert.match(source, /const ricochetPriority =/);
+  assert.match(source, /target\.trait === "healer" \? 0/);
 });

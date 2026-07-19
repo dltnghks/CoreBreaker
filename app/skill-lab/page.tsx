@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { DEFAULT_SKILLS, normalizeSkillConfigs, SKILL_STORAGE_KEY, type SkillCategory, type SkillConfig } from "../skill-config";
+import { DEFAULT_SKILLS, normalizeSkillConfigs, SKILL_MECHANIC_LABELS, SKILL_STORAGE_KEY, type SkillCategory, type SkillConfig, type SkillMechanic } from "../skill-config";
 import styles from "./skill-lab.module.css";
 
 const CATEGORY_LABELS: Record<SkillCategory, string> = {
@@ -12,6 +12,7 @@ const CATEGORY_LABELS: Record<SkillCategory, string> = {
 };
 
 const CATEGORIES: SkillCategory[] = ["warrior", "archer", "mage", "common"];
+const MECHANICS = Object.keys(SKILL_MECHANIC_LABELS) as SkillMechanic[];
 const CATEGORY_COLORS: Record<SkillCategory, string> = {
   warrior: "#ff6b57",
   archer: "#72f1b8",
@@ -35,6 +36,7 @@ export default function SkillLab() {
   const [skills, setSkills] = useState<SkillConfig[]>(DEFAULT_SKILLS);
   const [selectedId, setSelectedId] = useState(DEFAULT_SKILLS[0].id);
   const [filter, setFilter] = useState<SkillCategory | "all">("all");
+  const [mechanicFilter, setMechanicFilter] = useState<SkillMechanic | "all">("all");
   const [build, setBuild] = useState<Record<string, number>>({});
   const [message, setMessage] = useState("");
 
@@ -50,8 +52,14 @@ export default function SkillLab() {
   }, []);
 
   const selected = skills.find((skill) => skill.id === selectedId) ?? skills[0];
-  const visibleSkills = filter === "all" ? skills : skills.filter((skill) => skill.category === filter);
+  const visibleSkills = skills.filter((skill) => (filter === "all" || skill.category === filter) && (mechanicFilter === "all" || skill.mechanic === mechanicFilter));
   const buildSkills = skills.filter((skill) => build[skill.id]);
+
+  useEffect(() => {
+    if (visibleSkills.length > 0 && !visibleSkills.some((skill) => skill.id === selectedId)) {
+      setSelectedId(visibleSkills[0].id);
+    }
+  }, [mechanicFilter, filter, selectedId, visibleSkills]);
 
   const warnings = useMemo(() => {
     const issues: string[] = [];
@@ -116,11 +124,20 @@ export default function SkillLab() {
         <span>{skills.length} SKILLS · {warnings.length} WARNINGS</span>
       </section>
 
+      <section className={styles.toolbar} aria-label="스킬 작동 방식 필터">
+        {(["all", ...MECHANICS] as const).map((mechanic) => (
+          <button key={mechanic} className={mechanicFilter === mechanic ? styles.active : ""} onClick={() => setMechanicFilter(mechanic)}>
+            {mechanic === "all" ? "모든 작동 방식" : SKILL_MECHANIC_LABELS[mechanic]}
+          </button>
+        ))}
+        <span>{visibleSkills.length} VISIBLE</span>
+      </section>
+
       <section className={styles.workspace}>
         <div className={styles.catalog}>
           {visibleSkills.map((skill) => (
             <button key={skill.id} className={`${styles.skillCard} ${selected.id === skill.id ? styles.selected : ""}`} style={skillStyle(skill)} onClick={() => setSelectedId(skill.id)}>
-              <span>{CATEGORY_LABELS[skill.category]} · {skill.ultimate ? "보스 궁극기" : "일반 스킬"}</span><strong>{skill.name}</strong><small><b>발동</b> {skill.trigger}</small>
+              <span>{CATEGORY_LABELS[skill.category]} · {SKILL_MECHANIC_LABELS[skill.mechanic]} · {skill.ultimate ? "보스 궁극기" : "일반 스킬"}</span><strong>{skill.name}</strong><small><b>발동</b> {skill.trigger}</small>
               <p className={styles.description}>{skill.description}</p>
               <em>{skill.levels.map((value) => `${value}${skill.unit}`).join(" / ")} · {skill.ultimate ? "ULTIMATE" : "REFLECTION"}</em>
             </button>
@@ -128,7 +145,7 @@ export default function SkillLab() {
         </div>
 
         <aside className={styles.editor} style={skillStyle(selected)}>
-          <div className={styles.editorHeading}><span>{CATEGORY_LABELS[selected.category]} · {selected.ultimate ? "ULTIMATE" : "NORMAL"}</span><strong>{selected.name}</strong></div>
+          <div className={styles.editorHeading}><span>{CATEGORY_LABELS[selected.category]} · {SKILL_MECHANIC_LABELS[selected.mechanic]} · {selected.ultimate ? "ULTIMATE" : "NORMAL"}</span><strong>{selected.name}</strong></div>
           <label>이름<input value={selected.name} onChange={(event) => updateSelected({ name: event.target.value })} /></label>
           <label>적용 기준<input value="스킬 보유 패들" readOnly /></label>
           <label>발동 조건<input value={selected.trigger} onChange={(event) => updateSelected({ trigger: event.target.value })} /></label>
