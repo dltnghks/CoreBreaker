@@ -114,11 +114,25 @@ body{background:radial-gradient(circle at 18% -15%,rgba(115,184,195,.11),transpa
 .wave-transition-copy span{font:700 11px/1.2 monospace;letter-spacing:.32em;color:#9a8a66}
 .wave-transition-copy strong{font:900 clamp(30px,5vw,54px)/1 monospace;letter-spacing:.08em}
 .wave-transition-copy i{display:block;width:120px;height:2px;margin-top:8px;background:linear-gradient(90deg,transparent,#d5b96f,transparent);box-shadow:0 0 12px #d5b96f}
+.wave-clear-overlay{position:absolute;z-index:30;inset:0;display:grid;place-items:center;overflow:hidden;pointer-events:none;animation:wave-clear-fade .72s ease-in-out both;background:radial-gradient(circle at 50% 50%,rgba(37,51,38,.28),rgba(3,4,8,.94) 62%)}
+.wave-clear-overlay:before,.wave-clear-overlay:after{content:"";position:absolute;top:0;width:51%;height:100%;background:linear-gradient(180deg,#05070c,#11141c 48%,#05070c);box-shadow:0 0 36px rgba(0,0,0,.9)}
+.wave-clear-overlay:before{left:0;animation:wave-clear-left .72s ease-in-out both}
+.wave-clear-overlay:after{right:0;animation:wave-clear-right .72s ease-in-out both}
+.wave-clear-copy{position:relative;z-index:1;display:grid;justify-items:center;gap:7px;color:#9de7bd;text-align:center;text-shadow:0 2px 12px #000;animation:wave-clear-copy .72s ease-in-out both}
+.wave-clear-overlay.boss .wave-clear-copy{color:#f2cc79}
+.wave-clear-copy span{font:700 11px/1.2 monospace;letter-spacing:.32em;color:#789b86}
+.wave-clear-overlay.boss .wave-clear-copy span{color:#a9905f}
+.wave-clear-copy strong{font:900 clamp(28px,4.5vw,50px)/1 monospace;letter-spacing:.07em}
+.wave-clear-copy i{display:block;width:150px;height:2px;margin-top:8px;background:linear-gradient(90deg,transparent,currentColor,transparent);box-shadow:0 0 12px currentColor}
 @keyframes wave-scene-fade{0%,100%{opacity:0}28%,72%{opacity:1}}
 @keyframes wave-shutter-top{0%{transform:translateY(-104%)}35%,65%{transform:translateY(0)}100%{transform:translateY(-104%)}}
 @keyframes wave-shutter-bottom{0%{transform:translateY(104%)}35%,65%{transform:translateY(0)}100%{transform:translateY(104%)}}
 @keyframes wave-copy-pulse{0%,22%,78%,100%{opacity:0;transform:scale(.94)}42%,64%{opacity:1;transform:scale(1)}}
-@media(prefers-reduced-motion:reduce){.wave-transition-overlay{animation:none;opacity:1}.wave-transition-overlay:before,.wave-transition-overlay:after{animation:none;transform:translateY(0)}.wave-transition-copy{animation:none;opacity:1;transform:none}}
+@keyframes wave-clear-fade{0%,100%{opacity:0}24%,78%{opacity:1}}
+@keyframes wave-clear-left{0%{transform:translateX(-104%)}34%,68%{transform:translateX(0)}100%{transform:translateX(-104%)}}
+@keyframes wave-clear-right{0%{transform:translateX(104%)}34%,68%{transform:translateX(0)}100%{transform:translateX(104%)}}
+@keyframes wave-clear-copy{0%,18%,82%,100%{opacity:0;transform:scale(1.06)}38%,70%{opacity:1;transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.wave-transition-overlay,.wave-clear-overlay{animation:none;opacity:1}.wave-transition-overlay:before,.wave-transition-overlay:after,.wave-clear-overlay:before,.wave-clear-overlay:after{animation:none;transform:none}.wave-transition-copy,.wave-clear-copy{animation:none;opacity:1;transform:none}}
 
 .gameplay-shell .hud-badge{z-index:4;border-color:rgba(199,173,111,.34);background:linear-gradient(180deg,rgba(28,27,25,.94),rgba(8,9,12,.94));box-shadow:0 8px 22px rgba(0,0,0,.5),inset 0 1px rgba(255,236,188,.06);backdrop-filter:blur(4px)}
 .gameplay-shell .hud-wave{top:8px;min-width:250px;justify-content:center;padding:8px 24px;border-color:#8b7441;clip-path:polygon(12px 0,calc(100% - 12px) 0,100% 50%,calc(100% - 12px) 100%,12px 100%,0 50%)}

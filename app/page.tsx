@@ -958,11 +958,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const botSkillBenchVariantRef = useRef<SkillBenchVariant | null>(null);
   const benchmarkConfigRef = useRef<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
   const transitionTimersRef = useRef<number[]>([]);
+  const rewardOpeningRef = useRef(false);
 
   const [ghosts, setGhosts] = useState<GhostRecord[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [mode, setMode] = useState<"lobby" | "initialskills" | "playing" | "levelup" | "bossreward" | "transition" | "result">("lobby");
+  const [mode, setMode] = useState<"lobby" | "initialskills" | "playing" | "levelup" | "bossreward" | "waveclear" | "transition" | "result">("lobby");
   const [transitionWave, setTransitionWave] = useState<number | null>(null);
+  const [clearedWave, setClearedWave] = useState<{ wave: number; boss: boolean } | null>(null);
   const [hud, setHud] = useState({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, barriers: 0, overdriveLevel: 0, overdriveMultiplier: 1, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0 });
   const [choices, setChoices] = useState<UpgradeChoice[]>([]);
   const [initialSelectedIds, setInitialSelectedIds] = useState<UpgradeId[]>([]);
@@ -1016,6 +1018,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   useEffect(() => () => {
     transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     transitionTimersRef.current = [];
+    rewardOpeningRef.current = false;
     parallelFlushRef.current();
     parallelSessionRef.current += 1;
     parallelWorkersRef.current.forEach((worker) => worker.terminate());
@@ -1258,6 +1261,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   };
 
   const enterPendingWave = useCallback((game: GameState) => {
+    rewardOpeningRef.current = false;
     const nextWave = game.pendingWave;
     if (nextWave === null) {
       parkBallsAbovePaddle(game, pointerXRef.current, pointerYRef.current);
@@ -3034,6 +3038,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     }
 
     const completeWave = (wasBoss: boolean) => {
+      if (game.pendingWave !== null || rewardOpeningRef.current) return;
       const completedWave = game.wave;
       const bonus = 1200 + completedWave * 180;
       game.score += bonus;
@@ -3051,22 +3056,42 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       if (wasBoss) {
         audioRef.current?.play("boss-clear", game.bossStage);
         impactFeedback(11, "#ffcf4a", 0.48, 0.24);
-        if (botActiveRef.current) {
-          if (!botSkillBenchActiveRef.current || skillBenchConfigRef.current.environment === "ecosystem") applyBossReward(botPolicyRef.current === "survival" ? "mage-elemental-storm" : "archer-arrow-rain");
+      }
+
+      const openReward = () => {
+        rewardOpeningRef.current = false;
+        transitionTimersRef.current = [];
+        setClearedWave(null);
+        if (wasBoss) {
+          if (botActiveRef.current) {
+            if (!botSkillBenchActiveRef.current || skillBenchConfigRef.current.environment === "ecosystem") {
+              applyBossReward(botPolicyRef.current === "survival" ? "mage-elemental-storm" : "archer-arrow-rain");
+            } else {
+              enterPendingWave(game);
+            }
+            setHud(hudFromGame(game));
+            return;
+          }
           setHud(hudFromGame(game));
+          setMode("bossreward");
           return;
         }
-        runningRef.current = false;
         setHud(hudFromGame(game));
-        setMode("bossreward");
-        return;
-      }
-      if (botActiveRef.current) {
         levelUp();
+      };
+
+      if (botActiveRef.current) {
+        openReward();
         return;
       }
+
+      rewardOpeningRef.current = true;
+      runningRef.current = false;
       setHud(hudFromGame(game));
-      levelUp();
+      setClearedWave({ wave: completedWave, boss: wasBoss });
+      setMode("waveclear");
+      transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+      transitionTimersRef.current = [window.setTimeout(openReward, 720)];
     };
 
     const waveCleared = game.bossActive
@@ -3092,7 +3117,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     }
 
     setHud(hudFromGame(game));
-  }, [applyBossReward, benchmarkMode, finishRun, levelUp]);
+  }, [applyBossReward, benchmarkMode, enterPendingWave, finishRun, levelUp]);
 
   const drawGame = useCallback(() => {
     const canvas = canvasRef.current;
@@ -4752,7 +4777,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const startRun = (asBot = false) => {
     transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     transitionTimersRef.current = [];
+    rewardOpeningRef.current = false;
     setTransitionWave(null);
+    setClearedWave(null);
     const audio = audioRef.current ?? new GameAudio();
     audioRef.current = audio;
     audio.setMuted(!soundEnabled);
@@ -5015,7 +5042,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const backToLobby = () => {
     transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     transitionTimersRef.current = [];
+    rewardOpeningRef.current = false;
     setTransitionWave(null);
+    setClearedWave(null);
     runningRef.current = false;
     gameRef.current = null;
     setResult(null);
@@ -5267,6 +5296,16 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                       <em>LEGENDARY</em>
                     </button>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {mode === "waveclear" && clearedWave !== null && (
+              <div className={`wave-clear-overlay${clearedWave.boss ? " boss" : ""}`} aria-live="polite" aria-label={`웨이브 ${clearedWave.wave} 클리어`}>
+                <div className="wave-clear-copy">
+                  <span>{clearedWave.boss ? "FORTRESS SHATTERED" : "SECTOR SECURED"}</span>
+                  <strong>WAVE {clearedWave.wave} CLEAR</strong>
+                  <i aria-hidden="true" />
                 </div>
               </div>
             )}

@@ -357,6 +357,26 @@ test("selects rewards before preparing the next wave and uses one animated trans
   assert.match(source, /const applyBossReward = useCallback[\s\S]*enterPendingWave\(game\)/);
 });
 
+test("animates wave clear before rewards without delaying bots or the final result", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(source, /"waveclear"/);
+  assert.match(source, /if \(game\.pendingWave !== null \|\| rewardOpeningRef\.current\) return/);
+  assert.match(source, /setClearedWave\(\{ wave: completedWave, boss: wasBoss \}\);\s+setMode\("waveclear"\)/);
+  assert.match(source, /transitionTimersRef\.current = \[window\.setTimeout\(openReward, 720\)\]/);
+  assert.match(source, /if \(botActiveRef\.current\) \{\s+openReward\(\);\s+return/);
+  assert.match(source, /const openReward = \(\) => \{[\s\S]*setMode\("bossreward"\)[\s\S]*levelUp\(\)/);
+  assert.match(source, /skillBenchConfigRef\.current\.environment === "ecosystem"\)[\s\S]*applyBossReward[\s\S]*else \{\s+enterPendingWave\(game\)/);
+  assert.match(source, /if \(completedWave >= MAX_WAVE\) \{[\s\S]*finishRun\(\);\s+return;\s+}\s+game\.pendingWave = completedWave \+ 1/);
+  assert.match(source, /className=\{`wave-clear-overlay/);
+  assert.match(styles, /@keyframes wave-clear-left/);
+  assert.match(styles, /@keyframes wave-clear-right/);
+  assert.match(styles, /@keyframes wave-shutter-top/);
+  assert.match(styles, /@keyframes wave-shutter-bottom/);
+  assert.match(source, /const backToLobby = \(\) => \{\s+transitionTimersRef\.current\.forEach/);
+  assert.match(source, /rewardOpeningRef\.current = false/);
+});
+
 test("respawns a ball at the cost of one core health", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /game\.coreHp = Math\.max\(0, game\.coreHp - 1\);/);
