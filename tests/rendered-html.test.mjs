@@ -41,6 +41,8 @@ test("moves the paddle with A and D while the pointer aims rebounds", async () =
   assert.match(source, /horizontalRatio = Math\.max\(-MAX_PADDLE_REBOUND_RATIO/);
   assert.match(source, /verticalRatio: -Math\.sqrt/);
   assert.match(source, /const AIM_LIMIT_GUIDE_LENGTH = 100/);
+  assert.match(source, /const AIM_LINE_LENGTH = 170/);
+  assert.match(source, /const aimEnd = rayEnd\(aim\.horizontalRatio, aim\.verticalRatio, AIM_LINE_LENGTH\)/);
   assert.match(source, /const leftLimit = rayEnd\(-MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio, AIM_LIMIT_GUIDE_LENGTH/);
   assert.match(source, /const rightLimit = rayEnd\(MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio, AIM_LIMIT_GUIDE_LENGTH/);
   assert.match(source, /paddle\.id === "player"/);

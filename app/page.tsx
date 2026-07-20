@@ -211,6 +211,7 @@ const PADDLE_SIDE_DEPTH = 18;
 const PADDLE_KEYBOARD_SPEED = 460;
 const MIN_AIM_VERTICAL_DISTANCE = 52;
 const AIM_LIMIT_GUIDE_LENGTH = 100;
+const AIM_LINE_LENGTH = 170;
 
 function paddleAimDirection(fromX: number, fromY: number, targetX: number, targetY: number) {
   const deltaX = targetX - fromX;
@@ -3514,7 +3515,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const travel = Math.max(0, Math.min(verticalTime, sideTime, maxTravel));
         return { x: game.paddleX + horizontalRatio * travel, y: PLAYER_PADDLE_Y + verticalRatio * travel };
       };
-      const aimEnd = rayEnd(aim.horizontalRatio, aim.verticalRatio);
+      const aimEnd = rayEnd(aim.horizontalRatio, aim.verticalRatio, AIM_LINE_LENGTH);
       const edgeVerticalRatio = -Math.sqrt(1 - MAX_PADDLE_REBOUND_RATIO * MAX_PADDLE_REBOUND_RATIO);
       const leftLimit = rayEnd(-MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio, AIM_LIMIT_GUIDE_LENGTH);
       const rightLimit = rayEnd(MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio, AIM_LIMIT_GUIDE_LENGTH);
