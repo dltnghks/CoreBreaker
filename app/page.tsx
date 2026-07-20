@@ -3007,6 +3007,33 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     ctx.fillStyle = bg;
     ctx.fillRect(-18, -18, W + 36, H + 36);
 
+    if (game.bossActive) {
+      const fortressGlow = ctx.createRadialGradient(W / 2, 220, 30, W / 2, 220, 360);
+      fortressGlow.addColorStop(0, "rgba(255,79,120,.2)");
+      fortressGlow.addColorStop(0.45, "rgba(88,124,255,.08)");
+      fortressGlow.addColorStop(1, "rgba(5,8,18,0)");
+      ctx.fillStyle = fortressGlow;
+      ctx.fillRect(0, 0, W, H);
+      ctx.save();
+      ctx.globalAlpha = 0.32 + Math.sin(game.elapsed * 4) * 0.08;
+      ctx.fillStyle = "#ff4f78";
+      for (let railY = 110; railY < PLAYER_LINE_Y - 30; railY += 44) {
+        ctx.beginPath();
+        ctx.moveTo(7, railY);
+        ctx.lineTo(19, railY + 10);
+        ctx.lineTo(7, railY + 20);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(W - 7, railY);
+        ctx.lineTo(W - 19, railY + 10);
+        ctx.lineTo(W - 7, railY + 20);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
     ctx.strokeStyle = "rgba(92, 214, 255, .07)";
     ctx.lineWidth = 1;
     for (let x = 0; x < W; x += 45) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
@@ -3067,6 +3094,33 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ctx.stroke();
       ctx.fillStyle = "rgba(255,255,255,.3)";
       ctx.fillRect(brick.x + 8, brick.y + 3, brick.w - 16, 2);
+      if (brick.kind === "boss-core") {
+        const coreX = brick.x + brick.w / 2;
+        const coreY = brick.y + brick.h / 2;
+        const pulse = 0.78 + Math.sin(game.elapsed * 7) * 0.16;
+        ctx.save();
+        ctx.translate(coreX, coreY);
+        ctx.rotate(game.elapsed * 0.45);
+        ctx.strokeStyle = "#ffd7e1";
+        ctx.shadowColor = "#ff4f78";
+        ctx.shadowBlur = 18;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(-brick.w * 0.22 * pulse, -brick.h * 0.22 * pulse, brick.w * 0.44 * pulse, brick.h * 0.44 * pulse);
+        ctx.rotate(Math.PI / 4);
+        ctx.fillStyle = "rgba(255,215,225,.72)";
+        ctx.fillRect(-5, -5, 10, 10);
+        ctx.restore();
+      } else if (brick.kind === "boss-armor") {
+        ctx.save();
+        ctx.strokeStyle = "rgba(180,198,255,.72)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(brick.x + 5, brick.y + brick.h - 5);
+        ctx.lineTo(brick.x + brick.w / 2, brick.y + 6);
+        ctx.lineTo(brick.x + brick.w - 5, brick.y + brick.h - 5);
+        ctx.stroke();
+        ctx.restore();
+      }
       if (brick.kind === "normal" && brick.trait !== "standard") {
         const traitData = BRICK_TRAIT_DATA[brick.trait];
         const traitPulse = 0.72 + Math.sin(game.elapsed * 6 + brick.x * 0.04) * 0.18;
@@ -3389,10 +3443,27 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
     if (game.bossActive) {
       const bossCore = game.bricks.find((brick) => brick.alive && brick.kind === "boss-core");
+      const bossRatio = Math.max(0, Math.min(1, (bossCore?.hp ?? 0) / Math.max(1, bossCore?.maxHp ?? 1)));
+      const attackCharge = Math.max(0, Math.min(1, 1 - game.bossSkillTimer / 5));
+      ctx.fillStyle = "rgba(4,7,16,.88)";
+      ctx.fillRect(W / 2 - 190, 38, 380, 42);
+      ctx.strokeStyle = "rgba(255,79,120,.65)";
+      ctx.strokeRect(W / 2 - 190, 38, 380, 42);
       ctx.fillStyle = "#ff6b87";
-      ctx.font = "900 18px monospace";
+      ctx.font = "900 14px monospace";
       ctx.textAlign = "center";
-      ctx.fillText(`CORE FORTRESS ${game.bossStage} // HP ${Math.max(0, Math.ceil(bossCore?.hp ?? 0))}`, W / 2, 58);
+      ctx.fillText(`CORE FORTRESS ${game.bossStage} // HP ${Math.max(0, Math.ceil(bossCore?.hp ?? 0))}`, W / 2, 54);
+      ctx.fillStyle = "rgba(255,255,255,.1)";
+      ctx.fillRect(W / 2 - 170, 62, 340, 6);
+      ctx.fillStyle = "#ff4f78";
+      ctx.fillRect(W / 2 - 170, 62, 340 * bossRatio, 6);
+      ctx.fillStyle = attackCharge > 0.72 ? "#ffcf4a" : "rgba(157,180,225,.36)";
+      ctx.fillRect(W / 2 - 170, 72, 340 * attackCharge, 2);
+      if (attackCharge > 0.72) {
+        ctx.fillStyle = "#ffcf4a";
+        ctx.font = "900 8px monospace";
+        ctx.fillText("FORTRESS ATTACK CHARGING", W / 2, 91);
+      }
     }
 
     const emergencyDanger = game.bricks.some((brick) => brick.alive && brick.y + brick.h >= PLAYER_LINE_Y - BRICK_ROW_STEP * 2);

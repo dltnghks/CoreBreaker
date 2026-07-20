@@ -198,6 +198,9 @@ test("uses stationary 4x3 bosses with reinforcement bricks", async () => {
   assert.match(source, /const width = cols \* cellWidth;/);
   assert.match(source, /return \[\{/);
   assert.match(source, /CORE FORTRESS.*HP/);
+  assert.match(source, /const fortressGlow = ctx\.createRadialGradient/);
+  assert.match(source, /brick\.kind === "boss-core"/);
+  assert.match(source, /FORTRESS ATTACK CHARGING/);
   assert.match(source, /brick\.kind === "boss-minion"/);
   assert.match(source, /BOSS SKILL \/\/ \$\{attack\.name\}/);
   ["SCATTER BOMB", "GUARD WINGS", "REFLECTOR GATE", "REPAIR CROSS", "BLAST MAZE"].forEach((name) => assert.match(source, new RegExp(name)));
