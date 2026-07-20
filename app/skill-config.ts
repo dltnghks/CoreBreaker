@@ -46,6 +46,7 @@ export type SkillConfig = {
   trigger: string;
   effect: string;
   description: string;
+  evolution: string | null;
   color: string;
   unit: string;
   levels: [number, number, number];
@@ -116,6 +117,24 @@ const SKILL_MECHANICS: Record<ClassSkillId, SkillMechanic> = {
   "common-combo": "passive",
 };
 
+export const SKILL_EVOLUTIONS: Partial<Record<ClassSkillId, string>> = {
+  "warrior-smash": "강타 충돌 지점 주변 2개 블럭에 1 피해를 줍니다.",
+  "warrior-shockwave": "충격파로 블럭을 파괴하면 그 블럭에서 새로운 충격파가 이어집니다.",
+  "warrior-execute": "처형 기준이 현재 체력 25%에서 40%로 증가합니다.",
+  "warrior-crush": "특수 블럭 파괴 시 같은 특성의 모든 블럭에 1 피해를 줍니다.",
+  "warrior-guard": "철벽 발동 시 CORE 방어막을 2개 충전합니다.",
+  "archer-rapid": "연사 발동 시 서로 다른 각도의 임시 화살 2발을 생성합니다.",
+  "archer-pierce": "공이 블럭을 관통할 때마다 다음 직접 피해가 1씩 증가합니다.",
+  "archer-ricochet": "도탄으로 블럭을 파괴하면 남은 블럭을 향해 도탄이 계속 이어집니다.",
+  "archer-focus": "같은 블럭을 재공격할 때 집중 추가 피해가 1.5배로 증폭됩니다.",
+  "archer-weakpoint": "약점 사격의 직접 피해 배율이 3배에서 4배로 증가합니다.",
+  "mage-fireball": "화상으로 블럭을 파괴하면 주변 블럭으로 화염이 다시 퍼집니다.",
+  "mage-lightning": "번개로 블럭을 파괴하면 다음 블럭으로 연쇄 번개가 계속 이어집니다.",
+  "mage-freeze": "빙결 표식을 파쇄하면 가까운 블럭 2개에 빙결 표식이 전이됩니다.",
+  "mage-black-hole": "블랙홀의 지속 시간이 6초, 흡입 범위가 220px로 증가합니다.",
+  "mage-mana-blast": "기능이 봉인된 블럭은 직접 공격으로 1의 추가 피해를 받습니다.",
+};
+
 const skill = (
   id: ClassSkillId,
   name: string,
@@ -134,6 +153,7 @@ const skill = (
   trigger,
   effect,
   description,
+  evolution: SKILL_EVOLUTIONS[id] ?? null,
   color: SKILL_COLORS[id],
   unit: "회",
   levels,
@@ -160,6 +180,7 @@ const passiveSkill = (
   trigger: "획득 즉시 상시 적용",
   effect,
   description,
+  evolution: null,
   color: SKILL_COLORS[id],
   unit,
   levels,
@@ -176,24 +197,24 @@ export const DEFAULT_SKILLS: SkillConfig[] = [
   skill("warrior-execute", "처형", "warrior", "패들 반사 횟수 충전", "저체력 블럭 즉시 파괴", "충전된 공이 현재 체력 25% 이하인 일반 블럭을 즉시 파괴합니다.", [7, 5, 3]),
   skill("warrior-crush", "분쇄", "warrior", "패들 반사 횟수 충전", "가드 파괴·특수 블록 추가 피해", "충전된 공은 가드를 제거하고 폭발·회복·반사 블록에 LV+1의 추가 피해를 줍니다.", [5, 4, 3]),
   skill("warrior-guard", "철벽", "warrior", "패들 반사 횟수 충전", "CORE LINE 방어막 충전", "충전 완료 시 CORE LINE 피해를 한 번 막는 방어막을 얻습니다.", [14, 11, 8]),
-  skill("warrior-earthquake", "대지 분쇄", "warrior", "패들 반사 횟수 충전", "필드 전체 충격파", "모든 일반 블럭에 1 피해를 주고 강한 화면 충격을 발생시킵니다.", [18, 14, 10], true),
-  skill("warrior-berserker", "광전사", "warrior", "패들 반사 횟수 충전", "공 공격력·속도 폭증", "충전된 공이 기본 공격력 +3과 25% 추가 속도를 얻습니다.", [15, 12, 9], true),
+  skill("warrior-earthquake", "대지 분쇄", "warrior", "패들 반사 횟수 충전", "필드 타격 · 여진 활성화", "모든 블럭에 1 피해를 주고, 이번 웨이브 동안 직접 충돌마다 주변에 작은 여진을 발생시킵니다.", [18, 14, 10], true),
+  skill("warrior-berserker", "광전사", "warrior", "패들 반사 횟수 충전", "공 공격력·속도·충돌 범위 폭증", "충전된 공이 기본 공격력 +3, 25% 추가 속도와 공격력에 비례한 충돌 파동을 얻습니다.", [15, 12, 9], true),
 
   skill("archer-rapid", "연사", "archer", "패들 반사 횟수 충전", "시간제 임시 화살 1발 생성", "충전 완료 시 현재 공을 복제한 임시 화살을 발사합니다. 화살은 레벨에 따라 약 4.75~6.25초 후 사라집니다.", [8, 6, 4]),
   skill("archer-pierce", "관통 화살", "archer", "패들 반사 횟수 충전", "다음 공이 여러 블럭 관통", "충전된 공이 LV+1개의 블럭을 관통합니다.", [6, 5, 4]),
   skill("archer-ricochet", "도탄 화살", "archer", "패들 반사 횟수 충전", "위험 특수 블럭 우선 도탄", "충전된 공이 적중하면 회복·폭발·가드·반사 블럭을 우선해 주변 블럭 LV개를 추가 공격합니다.", [5, 4, 3]),
   skill("archer-focus", "집중 사격", "archer", "패들 반사 횟수 충전", "같은 블럭 재공격 강화", "충전된 공이 이미 같은 패들에 맞은 블럭을 공격하면 LV+1의 추가 피해를 줍니다.", [4, 3, 2]),
   skill("archer-weakpoint", "약점 사격", "archer", "패들 반사 횟수 충전", "다음 공격 확정 치명타", "충전된 공의 다음 직접 공격 피해가 3배가 됩니다.", [8, 6, 4]),
-  skill("archer-arrow-rain", "화살비", "archer", "패들 반사 횟수 충전", "다수 블럭 동시 공격", "무작위 일반 블럭 8+LV×4개에 화살을 떨어뜨립니다.", [20, 16, 12], true),
-  skill("archer-infinite", "무한 탄창", "archer", "패들 반사 횟수 충전", "임시 화살 3발 생성", "현재 공의 특성을 복제한 임시 화살 3발을 동시에 발사합니다.", [16, 12, 8], true),
+  skill("archer-arrow-rain", "화살비", "archer", "패들 반사 횟수 충전", "보유 궁수 스킬을 복제한 일제 사격", "관통·도탄·약점 사격 레벨에 따라 대상 수와 피해가 강화된 화살비를 발사합니다.", [20, 16, 12], true),
+  skill("archer-infinite", "무한 탄창", "archer", "패들 반사 횟수 충전", "임시 화살 3발 · 궁수 스킬 복제", "임시 화살 3발을 발사하고, 이후 일반 궁수 스킬이 발동할 때마다 임시 화살 1발을 추가 발사합니다.", [16, 12, 8], true),
 
   skill("mage-fireball", "화염구", "mage", "패들 반사 횟수 충전", "주변 점화 · 회복 차단", "충전된 공이 블럭에 충돌하면 주변 블럭을 3/4/5초 동안 점화해 매초 피해를 주고 회복을 차단합니다.", [6, 5, 4]),
   skill("mage-lightning", "연쇄 번개", "mage", "패들 반사 횟수 충전", "주변 블럭 연쇄 공격", "충전된 공이 적중한 블럭에서 주변 블럭 LV+1개로 번개가 연결됩니다.", [7, 5, 3]),
   skill("mage-freeze", "빙결 표식", "mage", "패들 반사 횟수 충전", "회복·반사 봉인 · 다음 피격 강화", "체력이 높은 블록 2+LV개를 빙결합니다. 회복과 반사 특성은 3/4/5초간 봉인되고 다음 직접 피격 피해가 LV만큼 증가합니다.", [12, 9, 6]),
   skill("mage-black-hole", "블랙홀", "mage", "패들 반사 횟수 충전", "상단에 중력장 생성", "충전 완료 시 맵 상단에 공을 끌어당기는 블랙홀을 생성합니다.", [14, 11, 8]),
   skill("mage-mana-blast", "마력 봉인", "mage", "패들 반사 횟수 충전", "특수 블럭 기능 일시 봉인", "충전 완료 시 가까운 특수 블럭 2/3/4개의 가드·회복·반사 기능을 4/6/8초간 봉인합니다. 폭발 기능은 유지됩니다.", [10, 8, 6]),
-  skill("mage-elemental-storm", "원소 폭풍", "mage", "패들 반사 횟수 충전", "화염·번개 충전 · 광역 빙결", "현재 공에 화염과 번개를 충전하고 체력이 높은 블록 4+LV개에 빙결 표식을 부여합니다.", [18, 14, 10], true),
-  skill("mage-meteor", "메테오", "mage", "패들 반사 횟수 충전", "최고 체력 블럭 대형 폭발", "가장 체력이 높은 블럭에 8+LV×4 피해와 대형 폭발을 가합니다.", [20, 16, 12], true),
+  skill("mage-elemental-storm", "원소 폭풍", "mage", "패들 반사 횟수 충전", "화염·번개 충전 · 광역 빙결·봉인", "현재 공에 화염과 번개를 충전하고 체력이 높은 블럭에 빙결과 특성 봉인을 함께 적용합니다.", [18, 14, 10], true),
+  skill("mage-meteor", "메테오", "mage", "패들 반사 횟수 충전", "상태이상 수에 비례한 연속 운석", "기본 운석 1개에 더해 화상·빙결·봉인 블럭 4개마다 운석 1개를 추가로 떨어뜨립니다.", [20, 16, 12], true),
   passiveSkill("common-magnet", "아이템 자석", "아이템 흡수 범위 증가", "패들 주변의 아이템을 끌어당기는 범위가 증가합니다.", [70, 120, 180], "px"),
   passiveSkill("common-luck", "행운", "아이템 추가 드롭 확률 증가", "아이템이 없는 브릭을 파괴했을 때 추가로 아이템이 생성될 확률이 증가합니다.", [8, 14, 20], "%"),
   passiveSkill("common-wide", "패들 확장", "패들 길이 증가", "플레이어 패들의 실제 충돌 범위와 표시 길이가 증가합니다.", [20, 35, 50], "px"),

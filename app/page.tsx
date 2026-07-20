@@ -138,6 +138,7 @@ type GameState = {
   safetyBlocks: SafetyBlock[];
   gravityWells: GravityWell[];
   paddleBarriers: Record<string, number>;
+  ultimateAuras: Partial<Record<ClassSkillId, boolean>>;
   paddleCounters: Record<string, PaddleCounter>;
   coreHp: number;
   maxCoreHp: number;
@@ -396,7 +397,8 @@ function syncBallPayloadDisplay(ball: Ball, upgrades: UpgradeId[] = []) {
   }
   const corrosionPower = skillValue("corrosion", upgradeLevel(upgrades, "corrosion"));
   const enchantPower = (ball.payloads.blast ?? 0) * 0.65 + (ball.payloads.link ?? 0) * 0.35 + (ball.payloads.glass ?? 0) * 0.25 + Math.min(1.5, ball.pierce * 0.2);
-  ball.attackPower = 1 + corrosionPower + enchantPower;
+  const berserkerLevel = ball.skillCharges?.["warrior-berserker"] ?? 0;
+  ball.attackPower = Math.max(1 + corrosionPower + enchantPower, berserkerLevel > 0 ? 4 + berserkerLevel : 1);
   ball.color = ballBodyColor(ball);
 }
 
@@ -586,6 +588,7 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     safetyBlocks: [],
     gravityWells: [],
     paddleBarriers: {},
+    ultimateAuras: {},
     paddleCounters: Object.fromEntries(["player", ...activeGhosts.map((_, index) => `ghost-${index}`)].map((id) => [id, newPaddleCounter()])),
     coreHp: MAX_CORE_HP,
     maxCoreHp: MAX_CORE_HP,
@@ -1015,6 +1018,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     }
     game.effects.push({ kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 150, life: 0.8, maxLife: 0.8, color: upgrade.color });
     game.flashes.push({ text: upgrade.name, x: W / 2, y: H / 2, life: 1.2, color: upgrade.color });
+    const evolution = activeSkillMap[upgrade.id]?.evolution;
+    if (nextLevel === 3 && evolution) {
+      game.flashes.push({ text: `LV3 EVOLUTION // ${upgrade.name}`, x: W / 2, y: H / 2 + 38, life: 1.8, color: upgrade.color });
+      game.effects.push({ kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 230, life: 1.1, maxLife: 1.1, color: upgrade.color, variant: 0, skillId: upgrade.id as ClassSkillId });
+    }
     audioRef.current?.play("skill", nextLevel);
     setImpactFeedback(game, 4 + nextLevel * 0.5, upgrade.color, 0.2, 0.1);
     setHud(hudFromGame(game));
@@ -1201,6 +1209,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const game = gameRef.current;
     if (!game) return;
     game.paddleCounters ??= {};
+    game.ultimateAuras ??= {};
     game.skillHistory ??= [];
     game.skillMetrics ??= {};
     game.effects ??= [];
@@ -1615,31 +1624,43 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     };
 
     const triggerImpactShockwave = (origin: Brick, ball: Ball, level: number) => {
-      const centerX = origin.x + origin.w / 2;
-      const centerY = origin.y + origin.h / 2;
       const range = 60 + level * 20;
       const damage = level >= 3 ? 2 : 1;
-      emitEffect("blast", centerX, centerY, classSkillColor("warrior-shockwave"), range, centerX, centerY, 0.58, 0, "warrior-shockwave");
-      emitSkillEffect("warrior-shockwave", centerX, centerY, range, 0.62);
-      emitBurst(centerX, centerY, classSkillColor("warrior-shockwave"), 12 + level * 4, 280);
-      audioRef.current?.play("explosion", 0.9 + level * 0.2);
-      impactFeedback(4.5 + level, classSkillColor("warrior-shockwave"), 0.2, 0.08);
+      const waveQueue: Brick[] = [origin];
+      const reacted = new Set<Brick>([origin]);
       let hitCount = 0;
-      game.bricks.forEach((near) => {
-        if (!near.alive || near === origin || !isDamageableBrick(near)) return;
-        const distance = Math.hypot(near.x + near.w / 2 - centerX, near.y + near.h / 2 - centerY);
-        if (distance >= range || absorbGuardHit(near)) return;
-        const hpBefore = near.hp;
-        near.hp -= damage * damageMultiplier(near);
-        const appliedDamage = Math.min(hpBefore, Math.max(0, hpBefore - near.hp));
-        hitCount++;
-        recordSkillImpact("warrior-shockwave", appliedDamage, near.hp <= 0);
-        emitEffect("beam", centerX, centerY, classSkillColor("warrior-shockwave"), 5, near.x + near.w / 2, near.y + near.h / 2, 0.28, 0, "warrior-shockwave");
-        emitEffect("ring", near.x + near.w / 2, near.y + near.h / 2, classSkillColor("warrior-shockwave"), 30, near.x + near.w / 2, near.y + near.h / 2, 0.3);
-        game.flashes.push({ text: `충격 -${Math.max(1, Math.round(appliedDamage))}`, x: near.x + near.w / 2, y: near.y - 5, life: 0.55, color: "#fff3d6" });
-        if (near.hp <= 0) destroyBrick(near, ball, false, 0);
-      });
-      game.flashes.push({ text: `충격파 // ${hitCount}개 타격`, x: centerX, y: centerY - 24, life: 0.8, color: classSkillColor("warrior-shockwave") });
+      let waveCount = 0;
+      while (waveQueue.length > 0) {
+        const waveOrigin = waveQueue.shift()!;
+        const centerX = waveOrigin.x + waveOrigin.w / 2;
+        const centerY = waveOrigin.y + waveOrigin.h / 2;
+        waveCount++;
+        emitEffect("blast", centerX, centerY, classSkillColor("warrior-shockwave"), range, centerX, centerY, 0.58, 0, "warrior-shockwave");
+        emitSkillEffect("warrior-shockwave", centerX, centerY, range, 0.62);
+        emitBurst(centerX, centerY, classSkillColor("warrior-shockwave"), 12 + level * 4, 280);
+        game.bricks.forEach((near) => {
+          if (!near.alive || near === waveOrigin || reacted.has(near) || !isDamageableBrick(near)) return;
+          const distance = Math.hypot(near.x + near.w / 2 - centerX, near.y + near.h / 2 - centerY);
+          if (distance >= range || absorbGuardHit(near)) return;
+          reacted.add(near);
+          const hpBefore = near.hp;
+          near.hp -= damage * damageMultiplier(near);
+          const appliedDamage = Math.min(hpBefore, Math.max(0, hpBefore - near.hp));
+          hitCount++;
+          recordSkillImpact("warrior-shockwave", appliedDamage, near.hp <= 0);
+          emitEffect("beam", centerX, centerY, classSkillColor("warrior-shockwave"), 5, near.x + near.w / 2, near.y + near.h / 2, 0.28, 0, "warrior-shockwave");
+          emitEffect("ring", near.x + near.w / 2, near.y + near.h / 2, classSkillColor("warrior-shockwave"), 30, near.x + near.w / 2, near.y + near.h / 2, 0.3);
+          game.flashes.push({ text: `충격 -${Math.max(1, Math.round(appliedDamage))}`, x: near.x + near.w / 2, y: near.y - 5, life: 0.55, color: "#fff3d6" });
+          if (near.hp <= 0) {
+            destroyBrick(near, ball, false, 0);
+            if (level >= 3) waveQueue.push(near);
+          }
+        });
+        if (level < 3) break;
+      }
+      audioRef.current?.play("explosion", 0.9 + level * 0.2 + Math.min(1, waveCount * 0.08));
+      impactFeedback(4.5 + level + Math.min(4, waveCount * 0.3), classSkillColor("warrior-shockwave"), 0.2, 0.08);
+      game.flashes.push({ text: `충격파 // ${hitCount} HIT · CHAIN ×${waveCount}`, x: origin.x + origin.w / 2, y: origin.y - 24, life: 1, color: classSkillColor("warrior-shockwave") });
     };
 
     const igniteFireballArea = (origin: Brick, sourcePaddleId: string, level: number) => {
@@ -1664,6 +1685,27 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       emitBurst(centerX, centerY, classSkillColor("mage-fireball"), 14 + level * 4, 220);
       game.flashes.push({ text: `화염구 // ${ignited}개 점화`, x: centerX, y: centerY - 22, life: 0.9, color: classSkillColor("mage-fireball") });
       audioRef.current?.play("skill-impact", 1 + level * 0.2);
+    };
+
+    const strikeEvolutionPulse = (origin: Brick, ball: Ball, skillId: ClassSkillId, range: number, targetLimit: number, damage = 1) => {
+      const centerX = origin.x + origin.w / 2;
+      const centerY = origin.y + origin.h / 2;
+      const targets = game.bricks.filter((target) => target.alive && target !== origin && isDamageableBrick(target))
+        .map((target) => ({ target, distance: Math.hypot(target.x + target.w / 2 - centerX, target.y + target.h / 2 - centerY) }))
+        .filter((entry) => entry.distance < range)
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, targetLimit)
+        .map((entry) => entry.target);
+      targets.forEach((target) => {
+        if (absorbGuardHit(target)) return;
+        const hpBefore = target.hp;
+        target.hp -= damage * damageMultiplier(target);
+        recordSkillImpact(skillId, Math.min(hpBefore, Math.max(0, hpBefore - target.hp)), target.hp <= 0);
+        emitEffect("beam", centerX, centerY, classSkillColor(skillId), 5, target.x + target.w / 2, target.y + target.h / 2, 0.32, 0, skillId);
+        emitEffect("ring", target.x + target.w / 2, target.y + target.h / 2, classSkillColor(skillId), 28, target.x + target.w / 2, target.y + target.h / 2, 0.32, 0, skillId);
+        if (target.hp <= 0) destroyBrick(target, ball, false, 0);
+      });
+      return targets.length;
     };
 
     const lostPlayerBalls = new Set<Ball>();
@@ -1698,7 +1740,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.flashes.push({ text: "화상 -1", x: centerX, y: brick.y - 7, life: 0.6, color: classSkillColor("mage-fireball") });
       emitEffect("spark", centerX, centerY, classSkillColor("mage-fireball"), 36, centerX, centerY, 0.32, 0, "mage-fireball");
       const sourceBall = game.balls.find((ball) => ball.sourcePaddleId === firePaddle.id) ?? game.balls[0];
-      if (brick.hp <= 0 && sourceBall) destroyBrick(brick, sourceBall, false, 0);
+      if (brick.hp <= 0 && sourceBall) {
+        if (upgradeLevel(firePaddle.upgrades, "mage-fireball") >= 3) igniteFireballArea(brick, firePaddle.id, 3);
+        destroyBrick(brick, sourceBall, false, 0);
+      }
     });
 
     game.bricks.forEach((healer) => {
@@ -1941,6 +1986,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               color: classSkillColor(skillId),
             });
           };
+          const spawnInfiniteBonus = (sourceId: ClassSkillId) => {
+            const infiniteLevel = upgradeLevel(paddle.upgrades, "archer-infinite");
+            if (infiniteLevel <= 0) return;
+            spawnArrow(ball.vx >= 0 ? -20 : 20, 4 + infiniteLevel, "archer-infinite");
+            game.flashes.push({ text: `무한 탄창 // ${activeSkillMap[sourceId]?.name ?? sourceId} 복제`, x: paddle.x, y: paddle.y - 52, life: 0.8, color: classSkillColor("archer-infinite") });
+          };
           const strikeTargets = (targets: Brick[], damage: number, color: string, label: string, skillId: ClassSkillId) => {
             targets.forEach((target) => {
               if (!target.alive || !isDamageableBrick(target) || absorbGuardHit(target)) return;
@@ -1957,19 +2008,23 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           triggerReflectionSkill("warrior-shockwave", (level) => chargeBall("warrior-shockwave", level, "충격파 준비", classSkillColor("warrior-shockwave")));
           triggerReflectionSkill("warrior-execute", (level) => chargeBall("warrior-execute", level, "처형 준비", classSkillColor("warrior-execute")));
           triggerReflectionSkill("warrior-crush", (level) => chargeBall("warrior-crush", level, "분쇄 준비", classSkillColor("warrior-crush")));
-          triggerReflectionSkill("warrior-guard", () => {
-            game.paddleBarriers[paddle.id] = Math.min(3, (game.paddleBarriers[paddle.id] ?? 0) + 1);
-            game.flashes.push({ text: `${paddle.name} // 철벽 +1`, x: paddle.x, y: PLAYER_LINE_Y - 24, life: 1, color: classSkillColor("warrior-guard") });
+          triggerReflectionSkill("warrior-guard", (level) => {
+            const barrierGain = level >= 3 ? 2 : 1;
+            game.paddleBarriers[paddle.id] = Math.min(4, (game.paddleBarriers[paddle.id] ?? 0) + barrierGain);
+            game.flashes.push({ text: `${paddle.name} // 철벽 +${barrierGain}${level >= 3 ? " · EVOLVED" : ""}`, x: paddle.x, y: PLAYER_LINE_Y - 24, life: 1, color: classSkillColor("warrior-guard") });
             emitEffect("beam", 20, PLAYER_LINE_Y, classSkillColor("warrior-guard"), 10, W - 20, PLAYER_LINE_Y, 0.65);
             emitSkillEffect("warrior-guard", W / 2, PLAYER_LINE_Y, 120, 0.9, W - 24, PLAYER_LINE_Y);
           });
           triggerReflectionSkill("warrior-earthquake", (level) => {
             strikeTargets(game.bricks.filter((target) => target.alive && target.kind !== "boss-core"), 1, classSkillColor("warrior-earthquake"), "대지 분쇄", "warrior-earthquake");
+            game.ultimateAuras["warrior-earthquake"] = true;
             emitEffect("beam", 10, H / 2, classSkillColor("warrior-earthquake"), 18 + level * 3, W - 10, H / 2, 0.8);
             emitSkillEffect("warrior-earthquake", 20, H / 2, W - 40, 0.9, W - 20, H / 2);
+            game.flashes.push({ text: "대지 분쇄 // WAVE AURA ACTIVE", x: W / 2, y: H / 2 + 38, life: 1.3, color: classSkillColor("warrior-earthquake") });
           });
           triggerReflectionSkill("warrior-berserker", (level) => {
             ball.attackPower = Math.max(ball.attackPower, 4 + level);
+            ball.skillCharges["warrior-berserker"] = level;
             const currentSpeed = Math.max(1, Math.hypot(ball.vx, ball.vy));
             const berserkerSpeed = Math.min(MAX_PADDLE_REBOUND_SPEED, Math.hypot(BASE_BALL_VX, BASE_BALL_VY) * overdriveMultiplier(game.overdriveLevel) * 1.25);
             if (currentSpeed < berserkerSpeed) {
@@ -1982,21 +2037,32 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
           triggerReflectionSkill("archer-rapid", (level) => {
             spawnArrow(ball.vx >= 0 ? -12 : 12, 4 + level * 0.75);
+            if (level >= 3) spawnArrow(ball.vx >= 0 ? 16 : -16, 4 + level * 0.75);
+            spawnInfiniteBonus("archer-rapid");
             emitSkillEffect("archer-rapid", ball.x, ball.y, 58 + level * 6, 0.55, ball.x + ball.vx * 0.12, ball.y + ball.vy * 0.12);
-            game.flashes.push({ text: `${paddle.name} // 연사 +1`, x: paddle.x, y: paddle.y - 32, life: 0.9, color: "#72f1b8" });
+            game.flashes.push({ text: `${paddle.name} // 연사 +${level >= 3 ? 2 : 1}`, x: paddle.x, y: paddle.y - 32, life: 0.9, color: "#72f1b8" });
           });
           triggerReflectionSkill("archer-pierce", (level) => {
             ball.pierce = level + 1;
             ball.maxPierce = ball.pierce;
             chargeBall("archer-pierce", level, "관통 화살", classSkillColor("archer-pierce"));
+            spawnInfiniteBonus("archer-pierce");
           });
-          triggerReflectionSkill("archer-ricochet", (level) => chargeBall("archer-ricochet", level, "도탄 화살", classSkillColor("archer-ricochet")));
-          triggerReflectionSkill("archer-focus", (level) => chargeBall("archer-focus", level, "집중 사격", classSkillColor("archer-focus")));
-          triggerReflectionSkill("archer-weakpoint", (level) => chargeBall("archer-weakpoint", level, "약점 사격", classSkillColor("archer-weakpoint")));
+          triggerReflectionSkill("archer-ricochet", (level) => { chargeBall("archer-ricochet", level, "도탄 화살", classSkillColor("archer-ricochet")); spawnInfiniteBonus("archer-ricochet"); });
+          triggerReflectionSkill("archer-focus", (level) => { chargeBall("archer-focus", level, "집중 사격", classSkillColor("archer-focus")); spawnInfiniteBonus("archer-focus"); });
+          triggerReflectionSkill("archer-weakpoint", (level) => { chargeBall("archer-weakpoint", level, "약점 사격", classSkillColor("archer-weakpoint")); spawnInfiniteBonus("archer-weakpoint"); });
           triggerReflectionSkill("archer-arrow-rain", (level) => {
-            const targets = game.bricks.filter((target) => target.alive && target.kind !== "boss-core").sort(() => decisionRandom() - 0.5).slice(0, 8 + level * 4);
+            const pierceBuild = upgradeLevel(paddle.upgrades, "archer-pierce");
+            const ricochetBuild = upgradeLevel(paddle.upgrades, "archer-ricochet");
+            const weakpointBuild = upgradeLevel(paddle.upgrades, "archer-weakpoint");
+            const targetCount = 8 + level * 4 + pierceBuild * 2 + ricochetBuild * 2;
+            const arrowDamage = weakpointBuild >= 3 ? 2 : 1;
+            const targetPriority = (target: Brick) => ricochetBuild > 0 && target.trait !== "standard" ? 0 : 1;
+            const targets = game.bricks.filter((target) => target.alive && target.kind !== "boss-core" && isDamageableBrick(target))
+              .sort((a, b) => targetPriority(a) - targetPriority(b) || decisionRandom() - 0.5)
+              .slice(0, targetCount);
             emitSkillEffect("archer-arrow-rain", W / 2, BRICK_ROW_Y, W - 80, 0.9, W / 2, PLAYER_LINE_Y);
-            strikeTargets(targets, 1, classSkillColor("archer-arrow-rain"), "화살비", "archer-arrow-rain");
+            strikeTargets(targets, arrowDamage, classSkillColor("archer-arrow-rain"), `화살비 ${targetCount}발 · DMG ${arrowDamage}`, "archer-arrow-rain");
           });
           triggerReflectionSkill("archer-infinite", (level) => {
             spawnArrow(-18, 5 + level, "archer-infinite");
@@ -2028,7 +2094,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           triggerReflectionSkill("mage-black-hole", (level) => {
             const wellX = Math.max(150, Math.min(W - 150, ball.x));
             const wellY = 145 + decisionRandom() * 80;
-            game.gravityWells.push({ ownerPaddleId: paddle.id, x: wellX, y: wellY, radius: 155 + level * 15, life: 3.5, maxLife: 3.5, color: classSkillColor("mage-black-hole") });
+            const wellLife = level >= 3 ? 6 : 3.5;
+            const wellRadius = level >= 3 ? 220 : 155 + level * 15;
+            game.gravityWells.push({ ownerPaddleId: paddle.id, x: wellX, y: wellY, radius: wellRadius, life: wellLife, maxLife: wellLife, color: classSkillColor("mage-black-hole") });
             emitSkillEffect("mage-black-hole", wellX, wellY, 120 + level * 12, 1.05);
             game.flashes.push({ text: `${paddle.name} // 블랙홀`, x: wellX, y: wellY - 28, life: 1, color: "#9a8cff" });
           });
@@ -2051,27 +2119,33 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           triggerReflectionSkill("mage-elemental-storm", (level) => {
             ball.skillCharges["mage-fireball"] = level;
             ball.skillCharges["mage-lightning"] = level;
-            game.bricks.filter((target) => target.alive && isDamageableBrick(target))
+            const stormTargets = game.bricks.filter((target) => target.alive && isDamageableBrick(target))
               .sort((a, b) => b.hp - a.hp)
-              .slice(0, 4 + level)
-              .forEach((target) => { target.frostVulnerability = Math.max(target.frostVulnerability, Math.max(1, level)); });
+              .slice(0, 4 + level);
+            stormTargets.forEach((target) => {
+              target.frostVulnerability = Math.max(target.frostVulnerability, Math.max(1, level));
+              target.traitLockTime = Math.max(target.traitLockTime, 4 + level);
+            });
             game.flashes.push({ text: `${paddle.name} // 원소 폭풍`, x: W / 2, y: H / 2, life: 1.2, color: "#c18cff" });
             emitEffect("ring", W / 2, H / 2, classSkillColor("mage-elemental-storm"), 210, W / 2, H / 2, 0.9);
             emitSkillEffect("mage-elemental-storm", W / 2, H / 2, 190 + level * 12, 1.15);
           });
           triggerReflectionSkill("mage-meteor", (level) => {
-            const target = game.bricks.filter((entry) => entry.alive && isDamageableBrick(entry)).sort((a, b) => b.hp - a.hp)[0];
-            if (!target) return;
-            const hpBefore = target.hp;
-            target.hp -= (8 + level * 4) * damageMultiplier(target);
-            recordSkillImpact("mage-meteor", Math.min(hpBefore, Math.max(0, hpBefore - target.hp)), target.hp <= 0);
-            emitSkillEffect("mage-meteor", target.x + target.w / 2, BRICK_ROW_Y - 35, 120 + level * 15, 0.95, target.x + target.w / 2, target.y + target.h / 2);
-            emitEffect("blast", target.x + target.w / 2, target.y + target.h / 2, classSkillColor("mage-meteor"), 110 + level * 15, target.x + target.w / 2, target.y + target.h / 2, 0.85);
-            emitBurst(target.x + target.w / 2, target.y + target.h / 2, classSkillColor("mage-meteor"), 28, 360);
+            const afflictedCount = game.bricks.filter((entry) => entry.alive && (entry.burnTime > 0 || entry.frostVulnerability > 0 || entry.traitLockTime > 0)).length;
+            const meteorCount = 1 + Math.floor(afflictedCount / 4);
+            const targets = game.bricks.filter((entry) => entry.alive && isDamageableBrick(entry)).sort((a, b) => b.hp - a.hp).slice(0, meteorCount);
+            targets.forEach((target, index) => {
+              const hpBefore = target.hp;
+              target.hp -= (8 + level * 4) * damageMultiplier(target);
+              recordSkillImpact("mage-meteor", Math.min(hpBefore, Math.max(0, hpBefore - target.hp)), target.hp <= 0);
+              emitSkillEffect("mage-meteor", target.x + target.w / 2, BRICK_ROW_Y - 35 - index * 8, 120 + level * 15, 0.95, target.x + target.w / 2, target.y + target.h / 2);
+              emitEffect("blast", target.x + target.w / 2, target.y + target.h / 2, classSkillColor("mage-meteor"), 110 + level * 15, target.x + target.w / 2, target.y + target.h / 2, 0.85);
+              emitBurst(target.x + target.w / 2, target.y + target.h / 2, classSkillColor("mage-meteor"), 28, 360);
+              if (target.hp <= 0) destroyBrick(target, ball, false, 0);
+            });
             audioRef.current?.play("ultimate", 1 + level * 0.25);
             impactFeedback(10 + level, classSkillColor("mage-meteor"), 0.42, 0.2);
-            game.flashes.push({ text: `${paddle.name} // 메테오 -${8 + level * 4}`, x: target.x + target.w / 2, y: target.y - 18, life: 1.1, color: "#ff9658" });
-            if (target.hp <= 0) destroyBrick(target, ball, false, 0);
+            game.flashes.push({ text: `${paddle.name} // 메테오 ×${targets.length} · -${8 + level * 4}`, x: W / 2, y: BRICK_ROW_Y - 18, life: 1.1, color: "#ff9658" });
           });
           const missileLevel = upgradeLevel(paddle.upgrades, "missile-mode");
           if (missileLevel > 0 && ++paddleCounter.missileReflections >= 12) {
@@ -2198,11 +2272,14 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const hpBeforeDirect = brick.hp;
         const directSkillContributors = (["warrior-execute", "archer-weakpoint", "warrior-smash", "warrior-crush", "archer-focus"] as ClassSkillId[]).filter((id) => (ball.skillCharges[id] ?? 0) > 0);
         const baselineDirectDamage = (Math.max(1, ball.attackPower) + corrosionDamage) * damageMultiplier(brick);
-        let directDamage = Math.max(1, ball.attackPower) + corrosionDamage + smashLevel + frostDamage;
+        const pierceEvolutionDamage = ball.skillCharges["archer-pierce"] === 3 ? Math.max(0, ball.maxPierce - ball.pierce) : 0;
+        const sealedEvolutionDamage = brick.traitLockTime > 0 && upgradeLevel(sourcePaddle.upgrades, "mage-mana-blast") >= 3 ? 1 : 0;
+        let directDamage = Math.max(1, ball.attackPower) + corrosionDamage + smashLevel + frostDamage + pierceEvolutionDamage + sealedEvolutionDamage;
         if (crushLevel > 0 && brick.trait !== "standard" && brick.trait !== "guard") directDamage += crushLevel + 1;
-        if (focusLevel > 0 && repeatedTarget) directDamage += focusLevel + 1;
-        if (weakpointLevel > 0) directDamage *= 3;
-        if (executeLevel > 0 && brick.kind !== "boss-core" && brick.hp / Math.max(1, brick.maxHp) <= 0.25) directDamage = brick.hp;
+        if (focusLevel > 0 && repeatedTarget) directDamage += (focusLevel + 1) * (focusLevel >= 3 ? 1.5 : 1);
+        if (weakpointLevel > 0) directDamage *= weakpointLevel >= 3 ? 4 : 3;
+        const executeThreshold = executeLevel >= 3 ? 0.4 : 0.25;
+        if (executeLevel > 0 && brick.kind !== "boss-core" && brick.hp / Math.max(1, brick.maxHp) <= executeThreshold) directDamage = brick.hp;
         if (!guardAbsorbed) applyDebuffs(brick, sourcePaddle);
         if (!guardAbsorbed) {
           brick.hp -= directDamage * damageMultiplier(brick);
@@ -2213,6 +2290,15 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             brick.frostVulnerability = 0;
             game.flashes.push({ text: `빙결 파쇄 // +${frostDamage}`, x: brick.x + brick.w / 2, y: brick.y - 8, life: 0.8, color: classSkillColor("mage-freeze") });
             emitSkillEffect("mage-freeze", brick.x + brick.w / 2, brick.y + brick.h / 2, 48 + frostDamage * 8, 0.5);
+            if (upgradeLevel(sourcePaddle.upgrades, "mage-freeze") >= 3) {
+              game.bricks.filter((target) => target.alive && target !== brick && isDamageableBrick(target))
+                .sort((a, b) => Math.hypot(a.x - brick.x, a.y - brick.y) - Math.hypot(b.x - brick.x, b.y - brick.y))
+                .slice(0, 2)
+                .forEach((target) => {
+                  target.frostVulnerability = Math.max(target.frostVulnerability, 1);
+                  emitEffect("beam", brick.x + brick.w / 2, brick.y + brick.h / 2, classSkillColor("mage-freeze"), 5, target.x + target.w / 2, target.y + target.h / 2, 0.4, 0, "mage-freeze");
+                });
+            }
           }
           const attributedDamage = Math.max(0, actualDirectDamage - baselineDirectDamage);
           if (directSkillContributors.length > 0) {
@@ -2233,6 +2319,23 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         );
         if (brick.hp > 0) audioRef.current?.play("brick-hit", directDamage);
         if (corrosionDamage > 0) emitEffect("ring", brick.x + brick.w / 2, brick.y + brick.h / 2, "#c18cff", 28 + corrosionDamage * 5, brick.x + brick.w / 2, brick.y + brick.h / 2, 0.32);
+        if (!guardAbsorbed && smashLevel >= 3) strikeEvolutionPulse(brick, ball, "warrior-smash", 115, 2);
+        if (!guardAbsorbed && game.ultimateAuras["warrior-earthquake"]) strikeEvolutionPulse(brick, ball, "warrior-earthquake", 78, game.bricks.length);
+        if (!guardAbsorbed && (ball.skillCharges["warrior-berserker"] ?? 0) > 0) {
+          const berserkerTargets = Math.max(1, Math.floor(ball.attackPower / 2));
+          strikeEvolutionPulse(brick, ball, "warrior-berserker", 75 + ball.attackPower * 6, berserkerTargets);
+        }
+        if (!guardAbsorbed && crushLevel >= 3 && brick.hp <= 0 && brick.trait !== "standard" && brick.trait !== "indestructible") {
+          game.bricks.filter((target) => target.alive && target !== brick && target.trait === brick.trait && isDamageableBrick(target)).forEach((target) => {
+            if (absorbGuardHit(target)) return;
+            const hpBefore = target.hp;
+            target.hp -= damageMultiplier(target);
+            recordSkillImpact("warrior-crush", Math.min(hpBefore, Math.max(0, hpBefore - target.hp)), target.hp <= 0);
+            emitEffect("beam", brick.x + brick.w / 2, brick.y + brick.h / 2, classSkillColor("warrior-crush"), 6, target.x + target.w / 2, target.y + target.h / 2, 0.38, 0, "warrior-crush");
+            if (target.hp <= 0) destroyBrick(target, ball, false, 0);
+          });
+          game.flashes.push({ text: `분쇄 진화 // ${BRICK_TRAIT_DATA[brick.trait as Exclude<BrickTrait, "standard">]?.label ?? brick.trait} 공명`, x: brick.x + brick.w / 2, y: brick.y - 20, life: 0.9, color: classSkillColor("warrior-crush") });
+        }
         if (ball.missileTime > 0) {
           ball.missileHitCooldown = 0.09;
         } else if (ball.pierce > 0) {
@@ -2258,24 +2361,38 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         if (!guardAbsorbed && classChainCount > 0) {
           const color = lightningLevel > 0 ? "#9a8cff" : "#72f1b8";
           const chainSkillId: ClassSkillId = lightningLevel > 0 ? "mage-lightning" : "archer-ricochet";
+          const evolvedChain = Math.max(ricochetLevel, lightningLevel) >= 3;
           const ricochetPriority = (target: Brick) => target.trait === "healer" ? 0 : target.trait === "explosive" ? 1 : target.trait === "guard" ? 2 : target.trait === "reflector" ? 3 : 4;
-          game.bricks.filter((target) => target.alive && isDamageableBrick(target) && target !== brick)
-            .sort((a, b) => {
-              if (ricochetLevel > 0 && lightningLevel <= 0) {
-                const priorityDifference = ricochetPriority(a) - ricochetPriority(b);
-                if (priorityDifference !== 0) return priorityDifference;
-              }
-              return Math.hypot(a.x - brick.x, a.y - brick.y) - Math.hypot(b.x - brick.x, b.y - brick.y);
-            })
-            .slice(0, classChainCount)
-            .forEach((target) => {
+          const chainQueue: Array<{ source: Brick; count: number }> = [{ source: brick, count: classChainCount }];
+          const chained = new Set<Brick>([brick]);
+          let chainedHits = 0;
+          while (chainQueue.length > 0) {
+            const { source, count } = chainQueue.shift()!;
+            const nextTargets = game.bricks.filter((target) => target.alive && isDamageableBrick(target) && !chained.has(target))
+              .sort((a, b) => {
+                if (ricochetLevel > 0 && lightningLevel <= 0) {
+                  const priorityDifference = ricochetPriority(a) - ricochetPriority(b);
+                  if (priorityDifference !== 0) return priorityDifference;
+                }
+                return Math.hypot(a.x - source.x, a.y - source.y) - Math.hypot(b.x - source.x, b.y - source.y);
+              })
+              .slice(0, count);
+            nextTargets.forEach((target) => {
+              chained.add(target);
               if (absorbGuardHit(target)) return;
               const hpBefore = target.hp;
               target.hp -= damageMultiplier(target);
+              chainedHits++;
               recordSkillImpact(chainSkillId, Math.min(hpBefore, Math.max(0, hpBefore - target.hp)), target.hp <= 0);
-              emitEffect("beam", brick.x + brick.w / 2, brick.y + brick.h / 2, color, 6, target.x + target.w / 2, target.y + target.h / 2, 0.4);
-              if (target.hp <= 0) destroyBrick(target, ball, false, 0);
+              emitEffect("beam", source.x + source.w / 2, source.y + source.h / 2, color, 6, target.x + target.w / 2, target.y + target.h / 2, 0.4, 0, chainSkillId);
+              if (target.hp <= 0) {
+                destroyBrick(target, ball, false, 0);
+                if (evolvedChain) chainQueue.push({ source: target, count: 1 });
+              }
             });
+            if (!evolvedChain) break;
+          }
+          if (evolvedChain && chainedHits > classChainCount) game.flashes.push({ text: `${activeSkillMap[chainSkillId]?.name} 진화 // CHAIN ×${chainedHits}`, x: brick.x + brick.w / 2, y: brick.y - 22, life: 1, color });
         }
         const shockwaveLevel = ball.skillCharges["warrior-shockwave"] ?? 0;
         const fireballLevel = ball.skillCharges["mage-fireball"] ?? 0;
@@ -2376,6 +2493,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.items = [];
       game.safetyBlocks = [];
       game.gravityWells = [];
+      game.ultimateAuras = {};
       game.rowInterval = 0;
       game.rowTimer = 0;
       game.overdriveLevel = 0;
@@ -4239,7 +4357,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                         <strong>{upgrade.name}</strong>
                         <div className="upgrade-level-values"><span className="next"><small>START</small><b>{config.levels[0]}{config.unit}</b></span></div>
                         <em>{initialSelectedIds.length === 0 ? "FIRST PICK" : "SECOND PICK"}</em>
-                        <div className="upgrade-tooltip" role="tooltip"><span>발동 조건</span><b>{config.trigger}</b><p>{config.description}</p></div>
+                        <div className="upgrade-tooltip" role="tooltip"><span>발동 조건</span><b>{config.trigger}</b><p>{config.description}</p>{config.evolution && <p className="upgrade-evolution"><b>LV3 진화</b>{config.evolution}</p>}</div>
                       </button>
                     );
                   })}
@@ -4278,15 +4396,16 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                         <strong>{upgrade.name}</strong>
                         <div className="upgrade-level-values" aria-label={`${upgrade.name} 레벨별 수치`}>
                           {config!.levels.map((value, levelIndex) => (
-                            <span key={levelIndex} className={currentLevel === levelIndex ? "next" : currentLevel > levelIndex ? "owned" : ""}>
+                            <span key={levelIndex} className={`${currentLevel === levelIndex ? "next" : currentLevel > levelIndex ? "owned" : ""} ${levelIndex === 2 && config!.evolution ? "evolution" : ""}`}>
                               <small>LV{levelIndex + 1}</small><b>{value}{config!.unit}</b>
                             </span>
                           ))}
                         </div>
-                        <em>{currentLevel > 0 ? `LV ${currentLevel + 1} 획득` : "NEW SKILL"}</em>
+                        <em>{currentLevel === 2 && config?.evolution ? "LV3 EVOLUTION" : currentLevel > 0 ? `LV ${currentLevel + 1} 획득` : "NEW SKILL"}</em>
                         <div className="upgrade-tooltip" role="tooltip">
                           <span>발동 조건</span><b>{config!.trigger}</b>
                           <p>{config!.description}</p>
+                          {config!.evolution && <p className="upgrade-evolution"><b>LV3 진화</b>{config!.evolution}</p>}
                         </div>
                       </button>
                     );

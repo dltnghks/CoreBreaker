@@ -719,14 +719,14 @@ test("separates impact shockwave damage from fireball damage over time", async (
   assert.match(source, /igniteFireballArea\(brick, sourcePaddle\.id, fireballLevel\)/);
   assert.match(source, /emitEffect\("beam", centerX, centerY, classSkillColor\("warrior-shockwave"\)/);
   assert.match(source, /text: `충격 -\$\{Math\.max\(1, Math\.round\(appliedDamage\)\)\}`/);
-  assert.match(source, /text: `충격파 \/\/ \$\{hitCount\}개 타격`/);
+  assert.match(source, /text: `충격파 \/\/ \$\{hitCount\} HIT · CHAIN ×\$\{waveCount\}`/);
   assert.match(source, /emitEffect\("beam", centerX, centerY, classSkillColor\("mage-fireball"\)/);
   assert.match(source, /text: `점화 \$\{2 \+ level\}초`/);
   assert.match(source, /text: `화염구 \/\/ \$\{ignited\}개 점화`/);
   assert.match(source, /near\.burnTime = Math\.max\(near\.burnTime, 2 \+ level\)/);
   assert.match(source, /recordSkillImpact\("mage-fireball"/);
   assert.match(source, /BURN \$\{Math\.max\(0, Math\.ceil\(brick\.burnTime\)\)\}s/);
-  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v4"/);
+  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v5"/);
   assert.match(benchmark, /skill\.id === "warrior-shockwave"/);
   assert.match(benchmark, /skill\.id === "mage-fireball"/);
 });
@@ -912,4 +912,34 @@ test("connects control and chain skills to special brick traits", async () => {
   assert.match(source, /LOCK \$\{Math\.ceil\(brick\.traitLockTime\)\}s/);
   assert.match(source, /const ricochetPriority =/);
   assert.match(source, /target\.trait === "healer" \? 0/);
+});
+
+test("evolves every normal class skill at level three", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const config = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
+  const lab = await readFile(new URL("../app/skill-lab/page.tsx", import.meta.url), "utf8");
+  assert.match(config, /export const SKILL_EVOLUTIONS/);
+  ["warrior-smash", "warrior-shockwave", "warrior-execute", "warrior-crush", "warrior-guard", "archer-rapid", "archer-pierce", "archer-ricochet", "archer-focus", "archer-weakpoint", "mage-fireball", "mage-lightning", "mage-freeze", "mage-black-hole", "mage-mana-blast"].forEach((id) => assert.match(config, new RegExp(`"${id}"`)));
+  assert.match(source, /LV3 EVOLUTION/);
+  assert.match(source, /const waveQueue: Brick\[\] = \[origin\]/);
+  assert.match(source, /const evolvedChain = Math\.max\(ricochetLevel, lightningLevel\) >= 3/);
+  assert.match(source, /upgradeLevel\(firePaddle\.upgrades, "mage-fireball"\) >= 3/);
+  assert.match(source, /weakpointLevel >= 3 \? 4 : 3/);
+  assert.match(source, /executeLevel >= 3 \? 0\.4 : 0\.25/);
+  assert.match(source, /wellLife = level >= 3 \? 6 : 3\.5/);
+  assert.match(lab, /LV3 진화 규칙/);
+});
+
+test("turns ultimates into build amplifiers", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const benchmark = await readFile(new URL("../app/benchmark-headless.ts", import.meta.url), "utf8");
+  assert.match(source, /game\.ultimateAuras\["warrior-earthquake"\] = true/);
+  assert.match(source, /game\.ultimateAuras\["warrior-earthquake"\]/);
+  assert.match(source, /spawnInfiniteBonus/);
+  assert.match(source, /pierceBuild \* 2 \+ ricochetBuild \* 2/);
+  assert.match(source, /target\.traitLockTime = Math\.max\(target\.traitLockTime, 4 \+ level\)/);
+  assert.match(source, /const meteorCount = 1 \+ Math\.floor\(afflictedCount \/ 4\)/);
+  assert.match(source, /ball\.skillCharges\["warrior-berserker"\] = level/);
+  assert.match(benchmark, /const evolutionMultiplier = level >= 3 && skill\.evolution \? 1\.55 : 1/);
+  assert.match(benchmark, /const ultimateBuildMultiplier/);
 });

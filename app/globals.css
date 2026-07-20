@@ -46,6 +46,8 @@ button{font:inherit}.app-shell{min-height:100vh;padding:0 28px 30px}
 
 .upgrade-choice-actions{display:flex;justify-content:center;gap:9px;margin-top:14px}.upgrade-choice-actions button{min-width:150px;border:1px solid rgba(255,242,122,.42);padding:10px 16px;color:#fff27a;background:rgba(10,15,27,.92);font:900 11px monospace;cursor:pointer}.upgrade-choice-actions button:disabled{color:#617087;border-color:rgba(157,180,225,.16);cursor:not-allowed}
 
+.upgrade-level-values span.evolution{border-color:#fff27a;background:linear-gradient(145deg,rgba(255,242,122,.14),rgba(255,107,87,.08));box-shadow:inset 0 0 14px rgba(255,242,122,.08)}.upgrade-level-values span.evolution small:after{content:" · 진화";color:#fff27a}.upgrade-evolution{display:grid;gap:4px;margin-top:9px!important;padding:9px;border:1px solid rgba(255,242,122,.34);color:#f4eec5!important;background:rgba(255,242,122,.06)}.upgrade-evolution>b{color:#fff27a;font:900 9px monospace;letter-spacing:.12em}
+
 @media(max-width:700px){.upgrade-card{min-height:230px}.upgrade-tooltip{padding:14px}.upgrade-tooltip p{font-size:11px}}
 .bot-controls{grid-template-columns:repeat(3,1fr)}
 @keyframes coreWarning{from{opacity:.6}to{opacity:1}}

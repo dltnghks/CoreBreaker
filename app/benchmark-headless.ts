@@ -4,7 +4,7 @@ import { DEFAULT_BENCHMARK_CONFIG, type BenchmarkConfig } from "./benchmark-conf
 import { waveDefinition } from "./wave-config";
 
 export type HeadlessBotPolicy = "balanced" | "survival" | "random";
-export const PARALLEL_BENCHMARK_RULESET = "parallel-v4" as const;
+export const PARALLEL_BENCHMARK_RULESET = "parallel-v5" as const;
 const OVERDRIVE_THRESHOLDS = [30, 50, 70, 90] as const;
 const OVERDRIVE_STEP = 0.05;
 
@@ -81,12 +81,15 @@ function chooseSkill(pool: SkillConfig[], upgrades: UpgradeId[], policy: Headles
   })[0];
 }
 
-function skillPower(skill: SkillConfig, level: number) {
+function skillPower(skill: SkillConfig, level: number, upgrades: UpgradeId[] = []) {
   const categoryPower: Record<SkillCategory, number> = { warrior: 1.08, archer: 1.12, mage: 1.14, common: 0.55 };
   const trigger = Math.max(1, Number(skill.levels[Math.min(2, Math.max(0, level - 1))]) || 6);
   const cadence = skill.category === "common" ? 0.35 : Math.min(1.3, 5 / trigger);
   const impactModel = skill.id === "warrior-shockwave" ? 1.1 : skill.id === "mage-fireball" ? 1.25 : 1;
-  return categoryPower[skill.category] * level * cadence * impactModel;
+  const evolutionMultiplier = level >= 3 && skill.evolution ? 1.55 : 1;
+  const sameClassBuild = upgrades.filter((id) => DEFAULT_SKILLS.some((entry) => entry.id === id && !entry.ultimate && entry.category === skill.category)).length;
+  const ultimateBuildMultiplier = skill.ultimate ? 1 + Math.min(0.75, sameClassBuild * 0.08) : 1;
+  return categoryPower[skill.category] * level * cadence * impactModel * evolutionMultiplier * ultimateBuildMultiplier;
 }
 
 function normalWaveStats(wave: number, balance: BalanceConfig) {
@@ -174,7 +177,7 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
     const temporaryBalls = !definition.boss && [3, 6, 9].includes(((wave - 1) % 10) + 1) ? 1 : 0;
     const balls = baseBalls + temporaryBalls;
     maxBalls = Math.max(maxBalls, balls);
-    const skillBonus = skills.reduce((sum, skill) => sum + skillPower(skill, levelOf(upgrades, skill.id)), 0);
+    const skillBonus = skills.reduce((sum, skill) => sum + skillPower(skill, levelOf(upgrades, skill.id), upgrades), 0);
     const accuracy = 0.7 + random() * 0.25;
     const bossPressure = definition.boss ? 0.76 : 1;
     const damagePerSecond = Math.max(0.4, (2.05 * Math.sqrt(balls) + skillBonus) * accuracy * bossPressure);
@@ -190,7 +193,7 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
     for (const skill of skills) {
       const level = levelOf(upgrades, skill.id);
       if (!level) continue;
-      const share = skillPower(skill, level) / Math.max(1, 2.05 * Math.sqrt(balls) + skillBonus);
+      const share = skillPower(skill, level, upgrades) / Math.max(1, 2.05 * Math.sqrt(balls) + skillBonus);
       const damage = Math.round(damageDone * share);
       const activations = skill.category === "common" ? 0 : Math.max(1, Math.round(waveElapsed / Math.max(2, skill.levels[Math.min(2, level - 1)])));
       const previous = metrics[skill.id] ?? { activations: 0, damage: 0, kills: 0 };
