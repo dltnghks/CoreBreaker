@@ -204,10 +204,10 @@ const BOT_EVALUATION_WAVE = MAX_WAVE;
 const BASE_BALL_VX = 240;
 const BASE_BALL_VY = 320;
 const OVERDRIVE_THRESHOLDS = [30, 50, 70, 90] as const;
-const OVERDRIVE_STEP = 0.05;
+const OVERDRIVE_STEP = 0.25;
 const MAX_OVERDRIVE_LEVEL = OVERDRIVE_THRESHOLDS.length;
 const MIN_PADDLE_REBOUND_SPEED = 300;
-const MAX_PADDLE_REBOUND_SPEED = 560;
+const MAX_PADDLE_REBOUND_SPEED = Math.hypot(BASE_BALL_VX, BASE_BALL_VY) * 2;
 const MAX_PADDLE_REBOUND_RATIO = 0.84;
 const PADDLE_COLLISION_SLOP = 3;
 const PADDLE_SIDE_FORGIVENESS = 14;
@@ -4763,7 +4763,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             <div className={hud.overdriveLevel > 0 ? "overdrive-cell active" : "overdrive-cell"}>
               <span>WAVE {hud.wave}/{MAX_WAVE} · {hud.nextRow.toFixed(1)}s</span>
               <strong>BALL {Math.round(hud.overdriveMultiplier * 100)}%</strong>
-              <small>{hud.overdriveLevel < MAX_OVERDRIVE_LEVEL ? `NEXT +5% IN ${Math.max(0, OVERDRIVE_THRESHOLDS[hud.overdriveLevel] - hud.nextRow).toFixed(0)}s` : "MAX OVERDRIVE"}</small>
+              <small>{hud.overdriveLevel < MAX_OVERDRIVE_LEVEL ? `NEXT +${Math.round(OVERDRIVE_STEP * 100)}% IN ${Math.max(0, OVERDRIVE_THRESHOLDS[hud.overdriveLevel] - hud.nextRow).toFixed(0)}s` : "MAX OVERDRIVE · 200%"}</small>
             </div>
           </div>
           <div className="brick-key-strip" aria-label="특수 블록 기능 안내">

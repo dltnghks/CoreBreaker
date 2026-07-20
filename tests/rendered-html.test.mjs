@@ -52,7 +52,9 @@ test("ramps ball speed by wave elapsed time and resolves circular brick collisio
   const benchmark = await readFile(new URL("../app/benchmark-headless.ts", import.meta.url), "utf8");
   assert.match(html, /BALL[\s\S]*100[\s\S]*%/);
   assert.match(source, /OVERDRIVE_THRESHOLDS = \[30, 50, 70, 90\]/);
-  assert.match(source, /OVERDRIVE_STEP = 0\.05/);
+  assert.match(source, /OVERDRIVE_STEP = 0\.25/);
+  assert.match(source, /MAX_PADDLE_REBOUND_SPEED = Math\.hypot\(BASE_BALL_VX, BASE_BALL_VY\) \* 2/);
+  assert.match(source, /MAX OVERDRIVE · 200%/);
   assert.match(source, /OVERDRIVE .* BALL SPEED/);
   assert.match(source, /function circleRectangleCollision/);
   assert.match(source, /function separateAndReflectBall/);
@@ -796,7 +798,7 @@ test("separates impact shockwave damage from fireball damage over time", async (
   assert.match(source, /near\.burnTime = Math\.max\(near\.burnTime, 2 \+ level\)/);
   assert.match(source, /recordSkillImpact\("mage-fireball"/);
   assert.match(source, /BURN \$\{Math\.max\(0, Math\.ceil\(brick\.burnTime\)\)\}s/);
-  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v7"/);
+  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v8"/);
   assert.match(benchmark, /skill\.id === "warrior-shockwave"/);
   assert.match(benchmark, /skill\.id === "mage-fireball"/);
 });
