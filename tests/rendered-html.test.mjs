@@ -715,6 +715,17 @@ test("applies class skills from brick hits and grants ultimates after bosses", a
   assert.doesNotMatch(source, /activeSkillMap\[upgrade\.id\]\.ballCost/);
 });
 
+test("lets balls pass through black-hole centers and restores their entry speed", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /gravityBaseSpeed: number \| null/);
+  assert.match(source, /ball\.gravityBaseSpeed \?\?= Math\.max\(1, Math\.hypot\(ball\.vx, ball\.vy\)\)/);
+  assert.match(source, /const gravitySpeedRatio = 0\.58 \+ 0\.42 \* deepestRatio/);
+  assert.match(source, /ball\.vx \*= ball\.gravityBaseSpeed \/ affectedSpeed/);
+  assert.match(source, /ball\.gravityBaseSpeed = null/);
+  assert.doesNotMatch(source, /ball\.y = Math\.min\(ball\.y, well\.y \+ 14\)/);
+  assert.doesNotMatch(source, /ball\.vy = -Math\.max\(230, Math\.abs\(ball\.vy\)\)/);
+});
+
 test("separates impact shockwave damage from fireball damage over time", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const skills = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");

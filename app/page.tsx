@@ -70,6 +70,7 @@ type Ball = {
   missileTime: number;
   missileHitCooldown: number;
   gravityRescueCooldown: number;
+  gravityBaseSpeed: number | null;
   skillCharges: Partial<Record<ClassSkillId, number>>;
   skillCooldowns: Partial<Record<ClassSkillId, number>>;
   visualSkill: ClassSkillId | null;
@@ -448,6 +449,7 @@ function clearBallEnchantments(ball: Ball, upgrades: UpgradeId[] = []) {
   ball.missileTime = 0;
   ball.missileHitCooldown = 0;
   ball.gravityRescueCooldown = 0;
+  ball.gravityBaseSpeed = null;
   ball.skillCharges = {};
   ball.skillCooldowns = {};
   ball.visualSkill = null;
@@ -618,7 +620,7 @@ function makeInitialBricks(ghostCount: number, balance: BalanceConfig): Brick[] 
 
 function makePlayerBall(upgrades: UpgradeId[], x = W / 2): Ball {
   const speed = 1 + upgrades.filter((u) => u === "speed").length * 0.12;
-  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8 + skillValue("common-ball-size", upgradeLevel(upgrades, "common-ball-size")), owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false };
+  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8 + skillValue("common-ball-size", upgradeLevel(upgrades, "common-ball-size")), owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, gravityBaseSpeed: null, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false };
   syncBallPayloadDisplay(ball, upgrades);
   return ball;
 }
@@ -1294,7 +1296,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.bossAttackPattern ??= 0;
     game.bossMultiballsRemaining ??= 0;
     game.bossPending ??= false;
-    game.balls.forEach((ball) => { ball.sourcePaddleId ??= "player"; ball.attackPower ??= 1; ball.missileTime ??= 0; ball.missileHitCooldown ??= 0; ball.skillCharges ??= {}; ball.skillCooldowns ??= {}; ball.visualSkill ??= null; ball.temporaryTime ??= 0; ball.waveBonus ??= false; });
+    game.balls.forEach((ball) => { ball.sourcePaddleId ??= "player"; ball.attackPower ??= 1; ball.missileTime ??= 0; ball.missileHitCooldown ??= 0; ball.gravityBaseSpeed ??= null; ball.skillCharges ??= {}; ball.skillCooldowns ??= {}; ball.visualSkill ??= null; ball.temporaryTime ??= 0; ball.waveBonus ??= false; });
     game.shakeStrength ??= 0;
     game.shakeTime ??= 0;
     game.shakeDuration ??= 0;
@@ -1327,6 +1329,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.balls.filter((ball) => ball.owner === "player").forEach((ball) => {
         ball.vx *= speedRatio;
         ball.vy *= speedRatio;
+        if (ball.gravityBaseSpeed !== null) ball.gravityBaseSpeed *= speedRatio;
       });
       game.overdriveLevel = nextOverdriveLevel;
       const overdrivePercent = Math.round(overdriveMultiplier(nextOverdriveLevel) * 100);
@@ -1913,6 +1916,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             missileTime: 0,
             missileHitCooldown: 0,
             gravityRescueCooldown: 0,
+            gravityBaseSpeed: null,
             skillCharges: {},
             skillCooldowns: {},
             temporaryTime: 0,
@@ -1991,25 +1995,36 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ball.vy = Math.sin(currentAngle + turn) * speed;
         }
       }
-      game.gravityWells.forEach((well) => {
-        if (ball.missileTime > 0) return;
-        const dx = well.x - ball.x;
-        const dy = well.y - ball.y;
-        const distance = Math.max(1, Math.hypot(dx, dy));
-        if (distance >= well.radius) return;
-        const force = 1050 * (1 - distance / well.radius);
-        ball.vx += dx / distance * force * dt;
-        ball.vy += dy / distance * force * dt;
-        if (distance < 34) {
-          ball.y = Math.min(ball.y, well.y + 14);
-          ball.vx += (ball.x < well.x ? -1 : 1) * 70;
-          ball.vy = -Math.max(230, Math.abs(ball.vy));
-          if (botActiveRef.current && ball.gravityRescueCooldown <= 0) {
-            game.botMetrics.gravityRescues++;
-            ball.gravityRescueCooldown = 1;
-          }
+      const influencingWells = ball.missileTime > 0 ? [] : game.gravityWells
+        .map((well) => {
+          const dx = well.x - ball.x;
+          const dy = well.y - ball.y;
+          return { well, dx, dy, distance: Math.max(1, Math.hypot(dx, dy)) };
+        })
+        .filter(({ well, distance }) => distance < well.radius);
+      if (influencingWells.length > 0) {
+        ball.gravityBaseSpeed ??= Math.max(1, Math.hypot(ball.vx, ball.vy));
+        influencingWells.forEach(({ well, dx, dy, distance }) => {
+          const force = 1050 * (1 - distance / well.radius);
+          ball.vx += dx / distance * force * dt;
+          ball.vy += dy / distance * force * dt;
+        });
+        const deepestRatio = Math.min(...influencingWells.map(({ well, distance }) => distance / well.radius));
+        const gravitySpeedRatio = 0.58 + 0.42 * deepestRatio;
+        const gravitySpeed = Math.max(1, Math.hypot(ball.vx, ball.vy));
+        const targetGravitySpeed = ball.gravityBaseSpeed * gravitySpeedRatio;
+        ball.vx *= targetGravitySpeed / gravitySpeed;
+        ball.vy *= targetGravitySpeed / gravitySpeed;
+        if (botActiveRef.current && ball.gravityRescueCooldown <= 0 && influencingWells.some(({ distance }) => distance < 34)) {
+          game.botMetrics.gravityRescues++;
+          ball.gravityRescueCooldown = 1;
         }
-      });
+      } else if (ball.gravityBaseSpeed !== null) {
+        const affectedSpeed = Math.max(1, Math.hypot(ball.vx, ball.vy));
+        ball.vx *= ball.gravityBaseSpeed / affectedSpeed;
+        ball.vy *= ball.gravityBaseSpeed / affectedSpeed;
+        ball.gravityBaseSpeed = null;
+      }
       const previousBallX = ball.x;
       const previousBallY = ball.y;
       ball.x += ball.vx * dt;
@@ -2066,6 +2081,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               payloads: { ...ball.payloads },
               skillCharges: {},
               skillCooldowns: {},
+              gravityBaseSpeed: null,
               visualSkill: skillId,
               x: ball.x + offset,
               vx: ball.vx * (offset < 0 ? -0.86 : 0.86),
@@ -2428,6 +2444,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               payloads: { ...ball.payloads },
               skillCharges: { ...ball.skillCharges },
               skillCooldowns: { ...ball.skillCooldowns },
+              gravityBaseSpeed: null,
               x: ball.x + offset,
               vx: ball.vx * (offset === 0 ? -0.88 : offset < 0 ? -0.82 : 0.82),
               vy: -Math.abs(ball.vy),
