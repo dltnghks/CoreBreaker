@@ -702,9 +702,9 @@ test("defines all class skills as permanent ball-owned skills without ball costs
 
 test("applies class skills from brick hits and grants ultimates after bosses", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /const smashLevel = upgradeLevel\(sourcePaddle\.upgrades, "warrior-smash"\)/);
-  assert.match(source, /const ricochetLevel = upgradeLevel\(sourcePaddle\.upgrades, "archer-ricochet"\)/);
-  assert.match(source, /const fireballLevel = upgradeLevel\(sourcePaddle\.upgrades, "mage-fireball"\)/);
+  assert.match(source, /const smashLevel = availableBallSkillLevel\("warrior-smash"\)/);
+  assert.match(source, /const ricochetLevel = availableBallSkillLevel\("archer-ricochet"\)/);
+  assert.match(source, /const fireballLevel = availableBallSkillLevel\("mage-fireball"\)/);
   assert.match(source, /const activateHitSkill =/);
   assert.match(source, /activateHitSkill\("archer-rapid"/);
   assert.match(source, /activateHitSkill\("mage-black-hole"/);
@@ -741,7 +741,7 @@ test("removes reflection counters and keeps permanent skill icons on the paddle"
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const COUNTED_SKILL_IDS: UpgradeId\[\] = \[\]/);
   assert.match(source, /const drawSkillPanel =/);
-  assert.match(source, /모든 스킬은 획득 즉시 영구 적용/);
+  assert.match(source, /스킬은 공마다 독립 쿨타임으로 발동/);
   assert.doesNotMatch(source, /paddleCounter\.chargePulse = 1\.2/);
   assert.doesNotMatch(source, /paddleCounter\.skillReflections\[id\]/);
 });
@@ -765,7 +765,7 @@ test("adds common utility skills to gameplay, Skill Lab, and skill benchmarks", 
   const config = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
   const lab = await readFile(new URL("../app/skill-lab/page.tsx", import.meta.url), "utf8");
   const bench = await readFile(new URL("../app/skill-lab/skill-bench.tsx", import.meta.url), "utf8");
-  ["common-magnet", "common-luck", "common-wide", "common-xp", "common-combo", "common-ball-size", "common-skill-range", "common-chain", "common-damage"].forEach((id) => assert.match(config, new RegExp(`"${id}"`)));
+  ["common-magnet", "common-luck", "common-wide", "common-xp", "common-combo", "common-ball-size", "common-skill-range", "common-chain", "common-damage", "common-cooldown"].forEach((id) => assert.match(config, new RegExp(`"${id}"`)));
   assert.match(config, /passiveSkill\("common-xp", "코어 강화", "CORE 최대 체력 증가"/);
   assert.match(source, /if \(upgrade\.id === "common-xp"\)/);
   assert.match(source, /game\.maxCoreHp \+= coreGain/);
@@ -788,7 +788,7 @@ test("uses neutral common colors and highlights explicit skill values", async ()
   const lab = await readFile(new URL("../app/skill-lab/page.tsx", import.meta.url), "utf8");
   const labCss = await readFile(new URL("../app/skill-lab/skill-lab.module.css", import.meta.url), "utf8");
   const commonColors = [...config.matchAll(/"common-[^"]+": "(#[0-9a-f]+)"/g)].map((match) => match[1]);
-  assert.equal(commonColors.length, 9);
+  assert.equal(commonColors.length, 10);
   assert.ok(commonColors.every((color) => color === "#9aa3b2"));
   assert.match(source, /common: \{ tag: "COMMON", color: "#9aa3b2" \}/);
   assert.match(lab, /common: "#9aa3b2"/);
@@ -796,12 +796,27 @@ test("uses neutral common colors and highlights explicit skill values", async ()
   assert.match(config, /"스킬의 연계 횟수가 1\/2\/3회 증가합니다\."/);
   assert.match(config, /"공의 최종 반경이 9\/10\/11px로 증가합니다\."/);
   assert.match(config, /"공의 기본 직접 피해가 2\/3\/4로 증가합니다\."/);
+  assert.match(config, /"모든 공의 스킬 쿨타임이 10\/20\/30% 감소합니다\."/);
   assert.doesNotMatch(config, /"[^"]*(?:LV만큼|LV\+1|2\+LV|레벨에 따라)[^"]*", \[/);
   assert.match(source, /function SkillDescriptionText/);
   assert.match(source, /className=.*skill-value-accent/);
   assert.match(globalCss, /\.skill-value-accent/);
   assert.match(lab, /styles\.valueAccent/);
   assert.match(labCss, /\.valueAccent/);
+});
+
+test("tracks independent per-ball skill cooldowns and applies common cooldown reduction", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const config = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
+  const lab = await readFile(new URL("../app/skill-lab/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /skillCooldowns: Partial<Record<ClassSkillId, number>>/);
+  assert.match(source, /ball\.skillCooldowns\[skillId\] = Math\.max\(0/);
+  assert.match(source, /ball\.skillCooldowns\[id\] = skillCooldownSeconds/);
+  assert.match(source, /skillValue\("common-cooldown"/);
+  assert.match(config, /export const SKILL_COOLDOWNS/);
+  assert.match(config, /passiveSkill\("common-cooldown", "재사용 가속"/);
+  assert.match(lab, /공별 독립 쿨타임/);
+  assert.match(lab, /updateCooldown/);
 });
 
 test("layers screen shake, flashes, impact visuals, and stronger synthesized sound", async () => {

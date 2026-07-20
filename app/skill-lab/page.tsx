@@ -95,6 +95,12 @@ export default function SkillLab() {
     updateSelected({ levels });
   };
 
+  const updateCooldown = (index: number, value: number) => {
+    const cooldown = [...selected.cooldown] as [number, number, number];
+    cooldown[index] = Number.isFinite(value) ? Math.max(0, value) : 0;
+    updateSelected({ cooldown });
+  };
+
   const addToBuild = (skill: SkillConfig) => {
     setBuild((current) => current[skill.id]
       ? Object.fromEntries(Object.entries(current).filter(([id]) => id !== skill.id))
@@ -148,7 +154,7 @@ export default function SkillLab() {
             <button key={skill.id} className={`${styles.skillCard} ${selected.id === skill.id ? styles.selected : ""}`} style={skillStyle(skill)} onClick={() => setSelectedId(skill.id)}>
               <span>{CATEGORY_LABELS[skill.category]} · {SKILL_MECHANIC_LABELS[skill.mechanic]} · {skill.ultimate ? "보스 궁극기" : "일반 스킬"}</span><strong>{skill.name}</strong><small><b>발동</b> {skill.trigger}</small>
               <p className={styles.description}><SkillDescriptionText text={skill.description} /></p>
-              <em>{skill.levels.map((value) => `${value}${skill.unit}`).join(" / ")} · {skill.evolution ? "LV3 EVOLUTION" : skill.ultimate ? "ULTIMATE" : "PERMANENT"}</em>
+              <em>{skill.levels.map((value) => `${value}${skill.unit}`).join(" / ")}{skill.cooldown.some((value) => value > 0) ? ` · CD ${skill.cooldown.join("/")}s` : ""} · {skill.evolution ? "LV3 EVOLUTION" : skill.ultimate ? "ULTIMATE" : "PERMANENT"}</em>
             </button>
           ))}
         </div>
@@ -156,13 +162,16 @@ export default function SkillLab() {
         <aside className={styles.editor} style={skillStyle(selected)}>
           <div className={styles.editorHeading}><span>{CATEGORY_LABELS[selected.category]} · {SKILL_MECHANIC_LABELS[selected.mechanic]} · {selected.ultimate ? "ULTIMATE" : "NORMAL"}</span><strong>{selected.name}</strong></div>
           <label>이름<input value={selected.name} onChange={(event) => updateSelected({ name: event.target.value })} /></label>
-          <label>적용 기준<input value="스킬 보유 패들" readOnly /></label>
+          <label>적용 기준<input value="스킬 보유 공 · 공별 독립 쿨타임" readOnly /></label>
           <label>발동 조건<input value={selected.trigger} onChange={(event) => updateSelected({ trigger: event.target.value })} /></label>
           <label>수치가 의미하는 효과<input value={selected.effect} onChange={(event) => updateSelected({ effect: event.target.value })} /></label>
           <label>게임 내 상세 설명<textarea rows={5} value={selected.description} onChange={(event) => updateSelected({ description: event.target.value })} /></label>
           {selected.evolution && <label>LV3 진화 규칙<textarea rows={3} value={selected.evolution} onChange={(event) => updateSelected({ evolution: event.target.value })} /></label>}
           <div className={styles.levelGrid}>
             {selected.levels.map((value, index) => <label key={index}>LV{index + 1}<input type="number" step="0.1" value={value} onChange={(event) => updateLevel(index, Number(event.target.value))} /></label>)}
+          </div>
+          <div className={styles.levelGrid}>
+            {selected.cooldown.map((value, index) => <label key={index}>LV{index + 1} 쿨타임<input type="number" min="0" step="0.1" value={value} onChange={(event) => updateCooldown(index, Number(event.target.value))} /></label>)}
           </div>
           <label>위험도 <b>{selected.risk}%</b><input type="range" min="0" max="100" value={selected.risk} onChange={(event) => updateSelected({ risk: Number(event.target.value) })} /></label>
           <button className={styles.buildButton} onClick={() => addToBuild(selected)}>{build[selected.id] ? "REMOVE FROM BUILD" : "ADD TO TEST BUILD"}</button>

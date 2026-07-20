@@ -90,7 +90,12 @@ function skillPower(skill: SkillConfig, level: number, upgrades: UpgradeId[] = [
     : skill.unit === "px" ? value * 0.003
     : skill.unit === "개" || skill.unit === "발" ? value * 0.08
     : value * 0.05;
-  const cadence = skill.category === "common" ? 0.35 : skill.ultimate ? 0.72 : 1;
+  const cooldownLevel = levelOf(upgrades, "common-cooldown");
+  const cooldownConfig = DEFAULT_SKILLS.find((entry) => entry.id === "common-cooldown");
+  const cooldownReduction = cooldownLevel > 0 ? Number(cooldownConfig?.levels[Math.min(2, cooldownLevel - 1)] ?? 0) / 100 : 0;
+  const baseCooldown = Number(skill.cooldown[Math.min(2, Math.max(0, level - 1))] ?? 0);
+  const effectiveCooldown = baseCooldown > 0 ? Math.max(0.2, baseCooldown * (1 - cooldownReduction)) : 0;
+  const cadence = skill.category === "common" ? 0.35 : effectiveCooldown > 0 ? Math.min(1.25, 2.5 / effectiveCooldown) : skill.ultimate ? 0.72 : 1;
   const impactModel = skill.id === "warrior-shockwave" ? 1.1 : skill.id === "mage-fireball" ? 1.25 : 1;
   const evolutionMultiplier = level >= 3 && skill.evolution ? 1.55 : 1;
   const sameClassBuild = upgrades.filter((id) => DEFAULT_SKILLS.some((entry) => entry.id === id && !entry.ultimate && entry.category === skill.category)).length;
@@ -201,7 +206,10 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
       if (!level) continue;
       const share = skillPower(skill, level, upgrades) / Math.max(1, 2.05 * Math.sqrt(balls) + skillBonus);
       const damage = Math.round(damageDone * share);
-      const activationInterval = skill.ultimate ? 5 : skill.trigger.includes("자동") ? 2.5 : 1.2;
+      const cooldownLevel = levelOf(upgrades, "common-cooldown");
+      const cooldownReduction = cooldownLevel > 0 ? Number(skills.find((entry) => entry.id === "common-cooldown")?.levels[Math.min(2, cooldownLevel - 1)] ?? 0) / 100 : 0;
+      const baseCooldown = Number(skill.cooldown[Math.min(2, level - 1)] ?? 0);
+      const activationInterval = baseCooldown > 0 ? Math.max(0.2, baseCooldown * (1 - cooldownReduction)) : 1.2;
       const activations = skill.category === "common" ? 0 : Math.max(1, Math.round(waveElapsed / activationInterval));
       const previous = metrics[skill.id] ?? { activations: 0, damage: 0, kills: 0 };
       metrics[skill.id] = { activations: previous.activations + activations, damage: previous.damage + damage, kills: previous.kills + Math.round(destroyed * share) };

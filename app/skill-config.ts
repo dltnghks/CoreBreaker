@@ -21,7 +21,7 @@ export type ClassSkillId =
   | "mage-fireball" | "mage-lightning" | "mage-freeze" | "mage-black-hole" | "mage-mana-blast"
   | "mage-elemental-storm" | "mage-meteor"
   | "common-magnet" | "common-luck" | "common-wide" | "common-xp" | "common-combo"
-  | "common-ball-size" | "common-skill-range" | "common-chain" | "common-damage";
+  | "common-ball-size" | "common-skill-range" | "common-chain" | "common-damage" | "common-cooldown";
 
 export type LegacyUpgradeId =
   | "pierce" | "blast" | "glass" | "link" | "speed" | "wide" | "magnet" | "chain" | "fever"
@@ -51,6 +51,7 @@ export type SkillConfig = {
   color: string;
   unit: string;
   levels: [number, number, number];
+  cooldown: [number, number, number];
   direction: "up" | "down";
   risk: number;
   ghost: boolean;
@@ -91,6 +92,7 @@ export const SKILL_COLORS: Record<ClassSkillId, string> = {
   "common-skill-range": "#9aa3b2",
   "common-chain": "#9aa3b2",
   "common-damage": "#9aa3b2",
+  "common-cooldown": "#9aa3b2",
 };
 
 const SKILL_MECHANICS: Record<ClassSkillId, SkillMechanic> = {
@@ -124,6 +126,41 @@ const SKILL_MECHANICS: Record<ClassSkillId, SkillMechanic> = {
   "common-skill-range": "passive",
   "common-chain": "passive",
   "common-damage": "passive",
+  "common-cooldown": "passive",
+};
+
+export const SKILL_COOLDOWNS: Record<ClassSkillId, [number, number, number]> = {
+  "warrior-smash": [1.2, 1, 0.8],
+  "warrior-shockwave": [2.8, 2.4, 2],
+  "warrior-execute": [3, 2.5, 2],
+  "warrior-crush": [2.4, 2, 1.6],
+  "warrior-guard": [7, 6, 5],
+  "warrior-earthquake": [4.5, 4, 3.5],
+  "warrior-berserker": [0, 0, 0],
+  "archer-rapid": [2.2, 1.8, 1.4],
+  "archer-pierce": [2.5, 2.1, 1.7],
+  "archer-ricochet": [2.2, 1.8, 1.4],
+  "archer-focus": [1.8, 1.5, 1.2],
+  "archer-weakpoint": [3, 2.5, 2],
+  "archer-arrow-rain": [6, 5, 4],
+  "archer-infinite": [7, 6, 5],
+  "mage-fireball": [2.8, 2.3, 1.8],
+  "mage-lightning": [2.5, 2, 1.5],
+  "mage-freeze": [3, 2.5, 2],
+  "mage-black-hole": [6, 5, 4],
+  "mage-mana-blast": [3, 2.5, 2],
+  "mage-elemental-storm": [7, 6, 5],
+  "mage-meteor": [8, 7, 6],
+  "common-magnet": [0, 0, 0],
+  "common-luck": [0, 0, 0],
+  "common-wide": [0, 0, 0],
+  "common-xp": [0, 0, 0],
+  "common-combo": [0, 0, 0],
+  "common-ball-size": [0, 0, 0],
+  "common-skill-range": [0, 0, 0],
+  "common-chain": [0, 0, 0],
+  "common-damage": [0, 0, 0],
+  "common-cooldown": [0, 0, 0],
 };
 
 export const SKILL_EVOLUTIONS: Partial<Record<ClassSkillId, string>> = {
@@ -161,13 +198,14 @@ const skill = (
   category,
   mechanic: SKILL_MECHANICS[id],
   owner: "ball",
-  trigger,
+  trigger: SKILL_COOLDOWNS[id][0] > 0 ? "공별 쿨타임 완료 후 블록 타격" : trigger,
   effect,
   description,
   evolution: SKILL_EVOLUTIONS[id] ?? null,
   color: SKILL_COLORS[id],
   unit,
   levels,
+  cooldown: SKILL_COOLDOWNS[id],
   direction,
   risk: ultimate ? 30 : 10,
   ghost: false,
@@ -195,6 +233,7 @@ const passiveSkill = (
   color: SKILL_COLORS[id],
   unit,
   levels,
+  cooldown: SKILL_COOLDOWNS[id],
   direction: "up",
   risk: 5,
   ghost: false,
@@ -203,24 +242,24 @@ const passiveSkill = (
 });
 
 export const DEFAULT_SKILLS: SkillConfig[] = [
-  skill("warrior-smash", "강타", "warrior", "블록 타격 시 상시 적용", "직접 피해 증가", "모든 직접 타격에 +1/+2/+3 피해를 추가합니다.", [1, 2, 3], "DMG"),
-  skill("warrior-shockwave", "충격파", "warrior", "블록 타격 시 상시 적용", "주변 즉발 피해", "모든 타격 지점에서 주변 블록에 1/1/2 피해를 줍니다.", [1, 1, 2], "DMG"),
+  skill("warrior-smash", "강타", "warrior", "블록 타격 시 상시 적용", "직접 피해 증가", "쿨타임이 준비된 직접 타격에 +1/+2/+3 피해를 추가합니다.", [1, 2, 3], "DMG"),
+  skill("warrior-shockwave", "충격파", "warrior", "블록 타격 시 상시 적용", "주변 즉발 피해", "쿨타임이 준비된 타격 지점에서 주변 블록에 1/1/2 피해를 줍니다.", [1, 1, 2], "DMG"),
   skill("warrior-execute", "처형", "warrior", "블록 타격 시 상시 적용", "저체력 블록 즉시 파괴", "현재 체력이 25/32/40% 이하인 일반 블록을 즉시 파괴합니다.", [25, 32, 40], "%"),
   skill("warrior-crush", "분쇄", "warrior", "블록 타격 시 상시 적용", "가드 파괴·특수 블록 추가 피해", "가드를 제거하고 특수 블록에 +2/+3/+4 피해를 추가합니다.", [2, 3, 4], "DMG"),
   skill("warrior-guard", "철벽", "warrior", "블록 타격 시 자동 발동", "CORE LINE 방어막 충전", "블록을 타격하면 6/5/4초마다 CORE LINE 방어막을 얻습니다.", [6, 5, 4], "초", "down"),
-  skill("warrior-earthquake", "대지 분쇄", "warrior", "블록 타격 시 상시 적용", "모든 타격에 여진 발생", "모든 직접 타격마다 주변 블록에 여진 피해를 줍니다.", [1, 1, 2], "DMG", "up", true),
+  skill("warrior-earthquake", "대지 분쇄", "warrior", "블록 타격 시 상시 적용", "쿨타임 타격에 여진 발생", "쿨타임이 준비된 직접 타격에서 주변 블록에 여진 피해를 줍니다.", [1, 1, 2], "DMG", "up", true),
   skill("warrior-berserker", "광전사", "warrior", "획득 즉시 상시 적용", "공 공격력·속도·충돌 범위 폭증", "모든 공이 공격력 +3/+4/+5와 25% 추가 속도를 얻습니다.", [3, 4, 5], "DMG", "up", true),
 
   skill("archer-rapid", "연사", "archer", "블록 타격 시 자동 발동", "시간제 임시 화살 생성", "블록을 타격하면 임시 화살을 생성합니다. 화살은 4.75/5.5/6.25초 유지됩니다.", [4.75, 5.5, 6.25], "초"),
-  skill("archer-pierce", "관통 화살", "archer", "블록 타격 시 상시 적용", "모든 공이 블록 관통", "모든 공이 블록 2/3/4개를 연속 관통합니다.", [2, 3, 4], "개"),
-  skill("archer-ricochet", "도탄 화살", "archer", "블록 타격 시 상시 적용", "위험 특수 블록 우선 도탄", "모든 타격이 주변 블록 1/2/3개로 도탄됩니다.", [1, 2, 3], "개"),
+  skill("archer-pierce", "관통 화살", "archer", "블록 타격 시 상시 적용", "쿨타임마다 블록 관통", "쿨타임이 준비된 공이 블록 2/3/4개를 연속 관통합니다.", [2, 3, 4], "개"),
+  skill("archer-ricochet", "도탄 화살", "archer", "블록 타격 시 상시 적용", "위험 특수 블록 우선 도탄", "쿨타임이 준비된 타격이 주변 블록 1/2/3개로 도탄됩니다.", [1, 2, 3], "개"),
   skill("archer-focus", "집중 사격", "archer", "블록 타격 시 상시 적용", "같은 블록 재공격 강화", "같은 블록을 다시 타격하면 +2/+3/+4 피해를 추가합니다.", [2, 3, 4], "DMG"),
-  skill("archer-weakpoint", "약점 사격", "archer", "블록 타격 시 상시 적용", "직접 피해 증폭", "모든 직접 타격 피해가 2/2.5/3배로 증가합니다.", [2, 2.5, 3], "배"),
+  skill("archer-weakpoint", "약점 사격", "archer", "블록 타격 시 상시 적용", "직접 피해 증폭", "쿨타임이 준비된 직접 타격 피해가 2/2.5/3배로 증가합니다.", [2, 2.5, 3], "배"),
   skill("archer-arrow-rain", "화살비", "archer", "블록 타격 시 자동 발동", "보유 궁수 스킬을 복제한 일제 사격", "블록 타격 시 일정 간격으로 강화된 화살비를 발사합니다.", [8, 12, 16], "발", "up", true),
   skill("archer-infinite", "무한 탄창", "archer", "블록 타격 시 자동 발동", "임시 화살 3발 생성", "블록 타격 시 일정 간격으로 임시 화살 3발을 생성합니다.", [5, 6, 7], "초", "up", true),
 
-  skill("mage-fireball", "화염구", "mage", "블록 타격 시 상시 적용", "주변 점화 · 회복 차단", "모든 타격이 주변 블록을 3/4/5초 동안 점화합니다.", [3, 4, 5], "초"),
-  skill("mage-lightning", "연쇄 번개", "mage", "블록 타격 시 상시 적용", "주변 블록 연쇄 공격", "모든 타격에서 주변 블록 2/3/4개로 번개가 연결됩니다.", [2, 3, 4], "개"),
+  skill("mage-fireball", "화염구", "mage", "블록 타격 시 상시 적용", "주변 점화 · 회복 차단", "쿨타임이 준비된 타격이 주변 블록을 3/4/5초 동안 점화합니다.", [3, 4, 5], "초"),
+  skill("mage-lightning", "연쇄 번개", "mage", "블록 타격 시 상시 적용", "주변 블록 연쇄 공격", "쿨타임이 준비된 타격에서 주변 블록 2/3/4개로 번개가 연결됩니다.", [2, 3, 4], "개"),
   skill("mage-freeze", "빙결 표식", "mage", "블록 타격 시 상시 적용", "회복·반사 봉인 · 다음 피격 강화", "타격한 블록을 빙결해 다음 피격에 +1/+2/+3 피해를 주고 특성을 봉인합니다.", [1, 2, 3], "DMG"),
   skill("mage-black-hole", "블랙홀", "mage", "블록 타격 시 자동 발동", "상단에 중력장 유지", "블록을 타격하면 상단의 블랙홀이 생성되거나 갱신됩니다.", [155, 170, 220], "px"),
   skill("mage-mana-blast", "마력 봉인", "mage", "블록 타격 시 상시 적용", "특수 블록 기능 일시 봉인", "타격한 특수 블록의 가드·회복·반사 기능을 4/6/8초 동안 봉인합니다.", [4, 6, 8], "초"),
@@ -235,6 +274,7 @@ export const DEFAULT_SKILLS: SkillConfig[] = [
   passiveSkill("common-skill-range", "범위 증폭", "스킬 범위 증가", "스킬의 적용 범위가 10/20/30% 증가합니다.", [10, 20, 30], "%"),
   passiveSkill("common-chain", "연계 증폭", "스킬 연계 횟수 증가", "스킬의 연계 횟수가 1/2/3회 증가합니다.", [1, 2, 3], "회"),
   passiveSkill("common-damage", "공격 강화", "공 기본 피해 증가", "공의 기본 직접 피해가 2/3/4로 증가합니다.", [1, 2, 3], "DMG"),
+  passiveSkill("common-cooldown", "재사용 가속", "스킬 쿨타임 감소", "모든 공의 스킬 쿨타임이 10/20/30% 감소합니다.", [10, 20, 30], "%"),
 ];
 
 export const ULTIMATE_SKILL_IDS = new Set<ClassSkillId>(DEFAULT_SKILLS.filter((entry) => entry.ultimate).map((entry) => entry.id));
@@ -252,12 +292,16 @@ export function normalizeSkillConfigs(saved: unknown): SkillConfig[] {
     const legacyDestructionTrigger = (base.id === "warrior-shockwave" || base.id === "mage-fireball")
       && `${savedSkill?.effect ?? ""} ${savedSkill?.description ?? ""}`.includes("파괴");
     const formulaDescription = /(?:LV|레벨에 따라|2\+LV)/.test(savedSkill?.description ?? "");
-    const refreshedCommonSpec = (["common-ball-size", "common-skill-range", "common-chain", "common-damage"] as ClassSkillId[]).includes(base.id);
+    const refreshedCommonSpec = (["common-ball-size", "common-skill-range", "common-chain", "common-damage", "common-cooldown"] as ClassSkillId[]).includes(base.id);
     const legacyReflectionTrigger = /패들|반사 횟수|충전/.test(savedSkill?.trigger ?? "");
+    const legacyAlwaysOnTrigger = base.category !== "common" && /상시 적용|자동 발동/.test(savedSkill?.trigger ?? "");
     const migrated = base.id === "common-xp" ? base
-      : legacyTimeFreeze || legacyDestructionTrigger || formulaDescription || refreshedCommonSpec || legacyReflectionTrigger ? { ...savedSkill, name: base.name, trigger: base.trigger, effect: base.effect, description: base.description, levels: base.levels, unit: base.unit, direction: base.direction }
+      : legacyTimeFreeze || legacyDestructionTrigger || formulaDescription || refreshedCommonSpec || legacyReflectionTrigger || legacyAlwaysOnTrigger ? { ...savedSkill, name: base.name, trigger: base.trigger, effect: base.effect, description: base.description, levels: base.levels, unit: base.unit, direction: base.direction }
       : savedSkill;
-    return { ...base, ...migrated, id: base.id, category: base.category, mechanic: base.mechanic, color: base.color, owner: "ball", ballCost: 0, ultimate: base.ultimate, levels: base.id === "common-xp" || legacyReflectionTrigger ? base.levels : levels };
+    const savedCooldown = Array.isArray(savedSkill?.cooldown) && savedSkill.cooldown.length === 3 && savedSkill.cooldown.every((value) => Number.isFinite(Number(value)))
+      ? savedSkill.cooldown.map(Number) as [number, number, number]
+      : base.cooldown;
+    return { ...base, ...migrated, id: base.id, category: base.category, mechanic: base.mechanic, color: base.color, owner: "ball", ballCost: 0, ultimate: base.ultimate, levels: base.id === "common-xp" || legacyReflectionTrigger ? base.levels : levels, cooldown: legacyReflectionTrigger ? base.cooldown : savedCooldown };
   });
 }
 
