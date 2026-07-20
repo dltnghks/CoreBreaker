@@ -715,6 +715,21 @@ function makePlayerBall(upgrades: UpgradeId[], x = W / 2): Ball {
   return ball;
 }
 
+function parkBallsAbovePaddle(game: GameState) {
+  const playerBalls = game.balls.filter((ball) => ball.owner === "player");
+  const paddleWidth = effectivePaddleWidth(game.paddleWidth, game.upgrades);
+  const spread = Math.min(paddleWidth * 0.72, Math.max(0, (playerBalls.length - 1) * 14));
+  playerBalls.forEach((ball, index) => {
+    const position = playerBalls.length <= 1 ? 0.5 : index / (playerBalls.length - 1);
+    const horizontalRatio = (position - 0.5) * 0.9;
+    const speed = Math.max(MIN_PADDLE_REBOUND_SPEED, Math.hypot(ball.vx, ball.vy));
+    ball.x = game.paddleX - spread / 2 + spread * position;
+    ball.y = PLAYER_PADDLE_Y - ball.radius - 3;
+    ball.vx = horizontalRatio * speed;
+    ball.vy = -Math.sqrt(Math.max(1, speed * speed - ball.vx * ball.vx));
+  });
+}
+
 function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameState {
   const balls: Ball[] = [makePlayerBall([])];
   const rowInterval = 0;
@@ -1216,6 +1231,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     setImpactFeedback(game, 4 + nextLevel * 0.5, upgrade.color, 0.2, 0.1);
     setHud(hudFromGame(game));
     if (resume) {
+      parkBallsAbovePaddle(game);
       levelUpRef.current = false;
       runningRef.current = true;
       setMode("playing");
@@ -1239,6 +1255,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.flashes.push({ text: "ULTIMATE ACQUIRED", x: W / 2, y: H / 2 + 42, life: 1.8, color: reward.color });
     setImpactFeedback(game, 9, reward.color, 0.38, 0.2);
     audioRef.current?.play("ultimate", 1.6);
+    parkBallsAbovePaddle(game);
     runningRef.current = true;
     setMode("playing");
     lastRef.current = performance.now();
@@ -1355,6 +1372,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   }, [choices, rerollsLeft]);
 
   const skipUpgradeChoice = useCallback(() => {
+    const game = gameRef.current;
+    if (game) parkBallsAbovePaddle(game);
     levelUpRef.current = false;
     runningRef.current = true;
     setMode("playing");

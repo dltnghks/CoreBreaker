@@ -449,6 +449,9 @@ test("resets every wave to exactly one base ball above the paddle", async () => 
   assert.match(source, /ball\.vy = -Math\.sqrt/);
   assert.match(source, /const resetBallsForWave =/);
   assert.match(source, /game\.balls = \[makePlayerBall\(game\.upgrades, game\.paddleX\)\]/);
+  assert.match(source, /function parkBallsAbovePaddle\(game: GameState\)/);
+  assert.match(source, /if \(resume\) \{\s+parkBallsAbovePaddle\(game\)/);
+  assert.match(source, /if \(game\) parkBallsAbovePaddle\(game\)/);
   assert.doesNotMatch(source, /while \(game\.balls\.length < game\.wave\)/);
 });
 
