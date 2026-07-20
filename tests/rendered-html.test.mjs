@@ -37,7 +37,11 @@ test("moves the paddle with A and D while the pointer aims rebounds", async () =
   assert.match(source, /key !== "a" && key !== "d"/);
   assert.match(source, /Number\(keyboardRef\.current\.right\) - Number\(keyboardRef\.current\.left\)/);
   assert.match(source, /pointerYRef/);
-  assert.match(source, /const aimedHorizontalRatio = aimDeltaX \/ aimLength/);
+  assert.match(source, /function paddleAimDirection/);
+  assert.match(source, /horizontalRatio = Math\.max\(-MAX_PADDLE_REBOUND_RATIO/);
+  assert.match(source, /verticalRatio: -Math\.sqrt/);
+  assert.match(source, /const leftLimit = rayEnd\(-MAX_PADDLE_REBOUND_RATIO/);
+  assert.match(source, /const rightLimit = rayEnd\(MAX_PADDLE_REBOUND_RATIO/);
   assert.match(source, /paddle\.id === "player"/);
   assert.match(source, /const rawContactTime = verticalTravel > 0/);
   assert.match(source, /const alreadyTouchingTop = previousBallY <= paddle\.y \+ PADDLE_COLLISION_SLOP/);
@@ -60,8 +64,8 @@ test("ramps ball speed by wave elapsed time and resolves circular brick collisio
   assert.match(source, /MAX_OVERDRIVE_LEVEL = 50/);
   assert.match(source, /const dt = Math\.max\(0, Math\.min\(0\.025/);
   assert.match(source, /MAX_PADDLE_REBOUND_SPEED = Math\.hypot\(BASE_BALL_VX, BASE_BALL_VY\) \* 2/);
-  assert.match(source, /\+1% \/ SEC · MAX 150%/);
-  assert.match(source, /MAX OVERDRIVE · 150%/);
+  assert.match(source, /\+1%\/s/);
+  assert.match(source, /hud\.overdriveLevel < MAX_OVERDRIVE_LEVEL \? "\+1%\/s" : "MAX"/);
   assert.match(source, /OVERDRIVE .* BALL SPEED/);
   assert.match(source, /function circleRectangleCollision/);
   assert.match(source, /function separateAndReflectBall/);
@@ -226,11 +230,12 @@ test("opens side gaps in the wave 7 reflector wall", async () => {
 test("ends a wave only after every damageable brick is cleared", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const waveCleared = game\.bossActive/);
-  assert.match(source, /game\.waveResolution = \{ timer: 0\.9, maxTimer: 0\.9, cleared: true/);
-  assert.match(source, /BLOCK SETTLEMENT \/\/ THREAT 0/);
+  assert.match(source, /completeWave\(wasBoss\)/);
+  assert.match(source, /setMode\("bossreward"\)/);
+  assert.match(source, /levelUp\(\);/);
+  assert.doesNotMatch(source, /waveResolution|BLOCK SETTLEMENT/);
   assert.doesNotMatch(source, /const allSurvivors = game\.bricks\.filter/);
   assert.doesNotMatch(source, /BLOCK SETTLEMENT \/\/ \$\{survivors\.length\} THREATS/);
-  assert.match(source, /completeWave\(resolution\.cleared, resolution\.coreDamage/);
 });
 
 test("raises post-wave-5 density, brick health, and boss health", async () => {
@@ -306,15 +311,14 @@ test("renders beam links and clears wave-scoped skill state", async () => {
   assert.match(source, /game\.bossActive = false;\s+clearWaveScopedSkillState\(\)/);
 });
 
-test("selects two starting skills and settles core damage before wave rewards", async () => {
+test("selects two starting skills and opens rewards immediately after wave clear", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /"initialskills"/);
   assert.match(source, /STARTING SKILL/);
   assert.match(source, /selected\.length < 2/);
-  assert.match(source, /"settlement"/);
-  assert.match(source, /WAVE \{settlement\.wave\} SETTLEMENT/);
-  assert.match(source, /setMode\("settlement"\)/);
-  assert.match(source, /스킬 보상 받기/);
+  assert.match(source, /startWave\(completedWave \+ 1\)/);
+  assert.match(source, /setMode\("bossreward"\)/);
+  assert.doesNotMatch(source, /settlement|claimWaveReward/);
 });
 
 test("respawns a ball at the cost of one core health", async () => {
@@ -346,7 +350,7 @@ test("propagates paddle debuffs and reports barriers in the in-game HUD", async 
   assert.match(source, /applyDebuffs\(brick, sourcePaddle\)/);
   assert.match(source, /emitEffect\("blast"/);
   assert.match(source, /barriers: game\.paddleBarriers\.player/);
-  assert.match(source, /className="ingame-hud"/);
+  assert.match(source, /hud-badge hud-core/);
   assert.match(source, /SHIELD ×\{hud\.barriers\}/);
   assert.doesNotMatch(source, /barrierSummary|CORE LINE/);
   assert.match(source, /EXP ×/);

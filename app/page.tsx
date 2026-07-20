@@ -175,16 +175,12 @@ type GameState = {
   botMetrics: BotMetrics;
   botWaveSamples: BotWaveSample[];
   botSampleKey: string;
-  waveResolution: WaveResolution | null;
 };
 
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
 type Flash = { text: string; x: number; y: number; life: number; color: string; emphasis?: "damage" };
 type GameEffect = { kind: "ring" | "beam" | "blast" | "drop" | "spark" | "lightning" | "skill"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string; variant: number; skillId: ClassSkillId | null };
 type PaddleCounter = { reflections: number; barrierReflections: number; missileReflections: number; safetyTimer: number; gravityTimer: number; directKills: number; pierceKills: number; feverMilestone: number; lastShotTimer: number; combo: number; comboTimer: number; skillCooldowns: Partial<Record<ClassSkillId, number>>; skillReflections?: Partial<Record<ClassSkillId, number>>; chargePulse?: number; chargeColor?: string };
-type WaveSettlement = { wave: number; waveName: string; cleared: boolean; wasBoss: boolean; survivors: number; coreDamage: number; blocked: number; coreHp: number; elapsed: number; finalWave: boolean };
-type WaveResolution = { timer: number; maxTimer: number; cleared: boolean; wasBoss: boolean; survivors: number; coreDamage: number; blocked: number };
-
 const W = 900;
 const H = 600;
 const BENCHMARK_RULESET: BenchmarkRuleset = PARALLEL_BENCHMARK_RULESET;
@@ -214,6 +210,19 @@ const PADDLE_SIDE_FORGIVENESS = 14;
 const PADDLE_SIDE_DEPTH = 18;
 const PADDLE_KEYBOARD_SPEED = 460;
 const MIN_AIM_VERTICAL_DISTANCE = 52;
+
+function paddleAimDirection(fromX: number, fromY: number, targetX: number, targetY: number) {
+  const deltaX = targetX - fromX;
+  const deltaY = Math.min(-MIN_AIM_VERTICAL_DISTANCE, targetY - fromY);
+  const distance = Math.max(1, Math.hypot(deltaX, deltaY));
+  const rawHorizontalRatio = deltaX / distance;
+  const horizontalRatio = Math.max(-MAX_PADDLE_REBOUND_RATIO, Math.min(MAX_PADDLE_REBOUND_RATIO, rawHorizontalRatio));
+  return {
+    horizontalRatio,
+    verticalRatio: -Math.sqrt(Math.max(0, 1 - horizontalRatio * horizontalRatio)),
+    limited: Math.abs(rawHorizontalRatio) > MAX_PADDLE_REBOUND_RATIO,
+  };
+}
 const RING_EXPLOSION_ASSET = "/assets/vfx/ring-explosion.png";
 const RING_EXPLOSION_COLUMNS = 10;
 const RING_EXPLOSION_FRAME_SIZE = 100;
@@ -764,7 +773,6 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     botMetrics: { maxBalls: 1, ballLosses: 0, missileActivations: 0, safetySaves: 0, gravityRescues: 0 },
     botWaveSamples: [],
     botSampleKey: "",
-    waveResolution: null,
   };
 }
 
@@ -872,11 +880,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
   const [ghosts, setGhosts] = useState<GhostRecord[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [mode, setMode] = useState<"lobby" | "initialskills" | "playing" | "settlement" | "levelup" | "bossreward" | "result">("lobby");
+  const [mode, setMode] = useState<"lobby" | "initialskills" | "playing" | "levelup" | "bossreward" | "result">("lobby");
   const [hud, setHud] = useState({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, barriers: 0, overdriveLevel: 0, overdriveMultiplier: 1, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0 });
   const [choices, setChoices] = useState<UpgradeChoice[]>([]);
   const [initialSelectedIds, setInitialSelectedIds] = useState<UpgradeId[]>([]);
-  const [settlement, setSettlement] = useState<WaveSettlement | null>(null);
   const [rerollsLeft, setRerollsLeft] = useState(1);
   const [result, setResult] = useState<GameState | null>(null);
   const [savedMessage, setSavedMessage] = useState("");
@@ -1370,21 +1377,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     lastRef.current = performance.now();
   }, [applyUpgrade, initialSelectedIds]);
 
-  const claimWaveReward = useCallback(() => {
-    if (!settlement) return;
-    if (settlement.finalWave) {
-      setSettlement(null);
-      finishRun();
-      return;
-    }
-    setSettlement(null);
-    if (settlement.wasBoss && settlement.cleared) {
-      setMode("bossreward");
-      return;
-    }
-    levelUp();
-  }, [finishRun, levelUp, settlement]);
-
   const updateGame = useCallback((dt: number) => {
     const game = gameRef.current;
     if (!game) return;
@@ -1403,7 +1395,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.botMetrics ??= { maxBalls: 1, ballLosses: 0, missileActivations: 0, safetySaves: 0, gravityRescues: 0 };
     game.botWaveSamples ??= [];
     game.botSampleKey ??= "";
-    game.waveResolution ??= null;
     game.bossTimeRemaining ??= 0;
     game.bossSkillTimer ??= 0;
     game.bossAttackPattern ??= 0;
@@ -2193,12 +2184,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           if (contactX + ball.radius + PADDLE_SIDE_FORGIVENESS < paddleContactX - paddle.width / 2 || contactX - ball.radius - PADDLE_SIDE_FORGIVENESS > paddleContactX + paddle.width / 2) continue;
           const hit = Math.max(-1, Math.min(1, (contactX - paddleContactX) / (paddle.width / 2)));
           const reboundSpeed = Math.max(MIN_PADDLE_REBOUND_SPEED, Math.min(MAX_PADDLE_REBOUND_SPEED, Math.hypot(ball.vx, ball.vy)));
-          const aimDeltaX = pointerXRef.current - contactX;
-          const aimDeltaY = Math.min(-MIN_AIM_VERTICAL_DISTANCE, pointerYRef.current - paddle.y);
-          const aimLength = Math.max(1, Math.hypot(aimDeltaX, aimDeltaY));
-          const aimedHorizontalRatio = aimDeltaX / aimLength;
+          const aim = paddleAimDirection(contactX, paddle.y, pointerXRef.current, pointerYRef.current);
           const horizontalRatio = paddle.id === "player"
-            ? Math.max(-MAX_PADDLE_REBOUND_RATIO, Math.min(MAX_PADDLE_REBOUND_RATIO, aimedHorizontalRatio))
+            ? aim.horizontalRatio
             : Math.max(-MAX_PADDLE_REBOUND_RATIO, Math.min(MAX_PADDLE_REBOUND_RATIO, hit * 0.74));
           ball.vx = horizontalRatio * reboundSpeed;
           ball.vy = -Math.sqrt(Math.max(1, reboundSpeed * reboundSpeed - ball.vx * ball.vx));
@@ -2927,7 +2915,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.bossSkillTimer = game.bossActive ? 5 : 0;
       game.bossAttackPattern = 0;
       game.bossMultiballsRemaining = game.bossActive ? BOSS_MULTIBALL_BUDGET : 0;
-      game.waveResolution = null;
       clearWaveScopedSkillState();
       resetBallsForWave();
       if (game.autoGuard) game.paddleBarriers.player = Math.max(1, game.paddleBarriers.player ?? 0);
@@ -2938,32 +2925,20 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
     };
 
-    const completeWave = (cleared: boolean, coreDamage = 0, blocked = 0, survivors = 0, wasBossOverride?: boolean) => {
+    const completeWave = (wasBoss: boolean) => {
       const completedWave = game.wave;
-      const wasBoss = wasBossOverride ?? game.bossActive;
-      const completedWaveName = waveDefinition(completedWave).name;
-      const completedWaveElapsed = game.rowTimer;
-      const bonus = cleared ? 1200 + completedWave * 180 : 0;
+      const bonus = 1200 + completedWave * 180;
       game.score += bonus;
       game.bossActive = false;
       clearWaveScopedSkillState();
-      if (cleared) {
-        game.flashes.push({ text: `WAVE ${completedWave} CLEAR // +${bonus.toLocaleString()}`, x: W / 2, y: H / 2, life: 1.5, color: "#ffcf4a" });
-      }
+      game.flashes.push({ text: `WAVE ${completedWave} CLEAR // +${bonus.toLocaleString()}`, x: W / 2, y: H / 2, life: 1.5, color: "#ffcf4a" });
       if (completedWave >= MAX_WAVE) {
-        game.flashes.push({ text: cleared ? "FINAL CORE DESTROYED" : "FINAL WAVE SURVIVED", x: W / 2, y: H / 2 + 38, life: 2, color: "#72f1b8" });
-        if (botActiveRef.current) {
-          finishRun();
-          return;
-        }
-        runningRef.current = false;
-        setSettlement({ wave: completedWave, waveName: completedWaveName, cleared, wasBoss, survivors, coreDamage, blocked, coreHp: game.coreHp, elapsed: completedWaveElapsed, finalWave: true });
-        setHud(hudFromGame(game));
-        setMode("settlement");
+        game.flashes.push({ text: "FINAL CORE DESTROYED", x: W / 2, y: H / 2 + 38, life: 2, color: "#72f1b8" });
+        finishRun();
         return;
       }
       startWave(completedWave + 1);
-      if (wasBoss && cleared) {
+      if (wasBoss) {
         audioRef.current?.play("boss-clear", game.bossStage);
         impactFeedback(11, "#ffcf4a", 0.48, 0.24);
         if (botActiveRef.current) {
@@ -2971,43 +2946,18 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           setHud(hudFromGame(game));
           return;
         }
+        runningRef.current = false;
+        setHud(hudFromGame(game));
+        setMode("bossreward");
+        return;
       }
       if (botActiveRef.current) {
         levelUp();
         return;
       }
-      runningRef.current = false;
-      levelUpRef.current = false;
-      setSettlement({ wave: completedWave, waveName: completedWaveName, cleared, wasBoss, survivors, coreDamage, blocked, coreHp: game.coreHp, elapsed: completedWaveElapsed, finalWave: false });
       setHud(hudFromGame(game));
-      setMode("settlement");
+      levelUp();
     };
-
-    if (game.waveResolution) {
-      game.waveResolution.timer -= dt;
-      if (game.waveResolution.timer > 0) return;
-      const resolution = game.waveResolution;
-      game.waveResolution = null;
-      const barrier = game.paddleBarriers.player ?? 0;
-      game.paddleBarriers.player = Math.max(0, barrier - resolution.blocked);
-      if (resolution.coreDamage > 0) {
-        game.coreHp = Math.max(0, game.coreHp - resolution.coreDamage);
-        audioRef.current?.play("core-damage", resolution.coreDamage);
-        impactFeedback(11 + resolution.coreDamage, "#ff3f6c", 0.5, 0.28);
-        game.flashes.push({ text: `CORE DAMAGE // -${resolution.coreDamage}`, x: W / 2, y: PLAYER_LINE_Y - 42, life: 1.2, color: "#ff3f6c" });
-      } else {
-        game.flashes.push({ text: "CORE SAFE // DAMAGE 0", x: W / 2, y: PLAYER_LINE_Y - 42, life: 1.1, color: "#72f1b8" });
-      }
-      setHud(hudFromGame(game));
-      if (game.coreHp <= 0) {
-        game.failed = true;
-        game.failureReason = "core";
-        finishRun();
-        return;
-      }
-      completeWave(resolution.cleared, resolution.coreDamage, resolution.blocked, resolution.survivors, resolution.wasBoss);
-      return;
-    }
 
     const waveCleared = game.bossActive
       ? !game.bricks.some((brick) => brick.alive && (brick.kind === "boss-core" || brick.kind === "boss-armor"))
@@ -3016,9 +2966,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const wasBoss = game.bossActive;
       game.bossActive = false;
       game.items = [];
-      game.waveResolution = { timer: 0.9, maxTimer: 0.9, cleared: true, wasBoss, survivors: 0, coreDamage: 0, blocked: 0 };
       emitEffect("ring", W / 2, PLAYER_LINE_Y, "#72f1b8", 220, W / 2, PLAYER_LINE_Y, 0.85);
-      game.flashes.push({ text: "BLOCK SETTLEMENT // THREAT 0", x: W / 2, y: H / 2, life: 1.1, color: "#72f1b8" });
+      completeWave(wasBoss);
       return;
     }
 
@@ -3553,32 +3502,51 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     drawSkillPanel(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, game.upgrades, playerChargeVisual?.color ?? PLAYER_BALL_COLOR);
     drawPaddleChargeAura(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, playerChargeVisual);
     if (!botActiveRef.current) {
-      const aimDeltaX = pointerXRef.current - game.paddleX;
-      const aimDeltaY = Math.min(-MIN_AIM_VERTICAL_DISTANCE, pointerYRef.current - PLAYER_PADDLE_Y);
-      const aimDistance = Math.max(1, Math.hypot(aimDeltaX, aimDeltaY));
-      const aimLength = Math.min(230, aimDistance);
-      const aimEndX = game.paddleX + aimDeltaX / aimDistance * aimLength;
-      const aimEndY = PLAYER_PADDLE_Y + aimDeltaY / aimDistance * aimLength;
+      const aim = paddleAimDirection(game.paddleX, PLAYER_PADDLE_Y, pointerXRef.current, pointerYRef.current);
+      const targetY = Math.max(BRICK_ROW_Y, Math.min(PLAYER_PADDLE_Y - MIN_AIM_VERTICAL_DISTANCE, pointerYRef.current));
+      const verticalTravel = PLAYER_PADDLE_Y - targetY;
+      const rayEnd = (horizontalRatio: number, verticalRatio: number) => {
+        const verticalTime = verticalTravel / Math.max(0.001, -verticalRatio);
+        const sideTime = horizontalRatio > 0
+          ? (W - 12 - game.paddleX) / horizontalRatio
+          : horizontalRatio < 0 ? (12 - game.paddleX) / horizontalRatio : Number.POSITIVE_INFINITY;
+        const travel = Math.max(0, Math.min(verticalTime, sideTime));
+        return { x: game.paddleX + horizontalRatio * travel, y: PLAYER_PADDLE_Y + verticalRatio * travel };
+      };
+      const aimEnd = rayEnd(aim.horizontalRatio, aim.verticalRatio);
+      const edgeVerticalRatio = -Math.sqrt(1 - MAX_PADDLE_REBOUND_RATIO * MAX_PADDLE_REBOUND_RATIO);
+      const leftLimit = rayEnd(-MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio);
+      const rightLimit = rayEnd(MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio);
       ctx.save();
-      ctx.strokeStyle = "rgba(101,220,255,.72)";
-      ctx.fillStyle = "#65dcff";
-      ctx.shadowColor = "#65dcff";
+      ctx.strokeStyle = "rgba(101,220,255,.18)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 8]);
+      ctx.beginPath();
+      ctx.moveTo(game.paddleX, PLAYER_PADDLE_Y - 6);
+      ctx.lineTo(leftLimit.x, leftLimit.y);
+      ctx.moveTo(game.paddleX, PLAYER_PADDLE_Y - 6);
+      ctx.lineTo(rightLimit.x, rightLimit.y);
+      ctx.stroke();
+      const aimColor = aim.limited ? "#ffcf4a" : "#65dcff";
+      ctx.strokeStyle = aimColor;
+      ctx.fillStyle = aimColor;
+      ctx.shadowColor = aimColor;
       ctx.shadowBlur = 10;
       ctx.lineWidth = 2;
       ctx.setLineDash([8, 7]);
       ctx.beginPath();
       ctx.moveTo(game.paddleX, PLAYER_PADDLE_Y - 6);
-      ctx.lineTo(aimEndX, aimEndY);
+      ctx.lineTo(aimEnd.x, aimEnd.y);
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.beginPath();
-      ctx.arc(aimEndX, aimEndY, 5, 0, Math.PI * 2);
+      ctx.arc(aimEnd.x, aimEnd.y, 5, 0, Math.PI * 2);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(aimEndX - 9, aimEndY);
-      ctx.lineTo(aimEndX + 9, aimEndY);
-      ctx.moveTo(aimEndX, aimEndY - 9);
-      ctx.lineTo(aimEndX, aimEndY + 9);
+      ctx.moveTo(aimEnd.x - 9, aimEnd.y);
+      ctx.lineTo(aimEnd.x + 9, aimEnd.y);
+      ctx.moveTo(aimEnd.x, aimEnd.y - 9);
+      ctx.lineTo(aimEnd.x, aimEnd.y + 9);
       ctx.stroke();
       ctx.restore();
     }
@@ -4353,30 +4321,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     });
     ctx.globalAlpha = 1;
 
-    if (game.waveResolution) {
-      const resolutionProgress = 1 - Math.max(0, game.waveResolution.timer / game.waveResolution.maxTimer);
-      ctx.save();
-      ctx.fillStyle = "rgba(3,6,14,.58)";
-      ctx.fillRect(0, 0, W, H);
-      ctx.strokeStyle = game.waveResolution.cleared ? "#72f1b8" : "#ff6b87";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(W / 2 - 220, H / 2 - 68, 440, 136);
-      ctx.fillStyle = "rgba(6,11,24,.94)";
-      ctx.fillRect(W / 2 - 218, H / 2 - 66, 436, 132);
-      ctx.fillStyle = game.waveResolution.cleared ? "#72f1b8" : "#ff8da1";
-      ctx.font = "900 12px monospace";
-      ctx.textAlign = "center";
-      ctx.fillText("BLOCK SETTLEMENT", W / 2, H / 2 - 34);
-      ctx.fillStyle = "#ecf2ff";
-      ctx.font = "900 26px monospace";
-      ctx.fillText(game.waveResolution.cleared ? "CORE DAMAGE 0" : `${game.waveResolution.survivors} BRICKS → CORE -${game.waveResolution.coreDamage}`, W / 2, H / 2 + 4);
-      ctx.fillStyle = "rgba(157,180,225,.18)";
-      ctx.fillRect(W / 2 - 160, H / 2 + 30, 320, 7);
-      ctx.fillStyle = game.waveResolution.cleared ? "#72f1b8" : "#ff6b87";
-      ctx.fillRect(W / 2 - 160, H / 2 + 30, 320 * resolutionProgress, 7);
-      ctx.restore();
-    }
-
     if (game.combo >= 3) {
       ctx.textAlign = "right";
       ctx.font = "900 28px monospace";
@@ -4465,7 +4409,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     keyboardRef.current.left = false;
     keyboardRef.current.right = false;
     lastRef.current = performance.now();
-    setSettlement(null);
     setInitialSelectedIds([]);
     setSavedMessage("");
     setHud(hudFromGame(game));
@@ -4820,15 +4763,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               onPointerMove={(e) => onPointerMove(e.clientX, e.clientY)}
               onPointerDown={(e) => onPointerMove(e.clientX, e.clientY)}
             />
-            <div className="ingame-hud" aria-label="인게임 상태 정보">
-              <div><span>TIME</span><strong>{hud.time.toFixed(1)}</strong></div>
-              <div><span>SCORE</span><strong>{formatScore(hud.score)}</strong></div>
-              <div><span>COMBO</span><strong>{hud.combo}</strong></div>
-              <div><span>BALL</span><strong>{hud.balls}</strong></div>
-              <div className={hud.coreHp <= 3 ? "core-cell core-critical" : "core-cell"}><span>CORE</span><strong>{hud.coreHp}/{hud.maxCoreHp}</strong>{hud.barriers > 0 && <small>SHIELD ×{hud.barriers}</small>}</div>
-              <div className="wave-cell"><span>WAVE {hud.wave}/{MAX_WAVE}</span><strong>{hud.waveName}</strong><small>{hud.aliveBricks} LEFT</small></div>
-              <div className={hud.overdriveLevel > 0 ? "overdrive-cell active" : "overdrive-cell"}><span>SPEED</span><strong>{Math.round(hud.overdriveMultiplier * 100)}%</strong><small>{hud.overdriveLevel < MAX_OVERDRIVE_LEVEL ? `+1% / SEC · MAX 150% · ${Math.max(0, MAX_OVERDRIVE_LEVEL - hud.nextRow).toFixed(0)}s` : "MAX OVERDRIVE · 150%"}</small></div>
-            </div>
+            <div className="hud-badge hud-time" aria-label={`플레이 시간 ${hud.time.toFixed(1)}초`}><i aria-hidden="true">◷</i><span><small>TIME</small><strong>{hud.time.toFixed(1)}s</strong></span></div>
+            <div className="hud-badge hud-wave" aria-label={`웨이브 ${hud.wave}/${MAX_WAVE}, ${hud.waveName}, 블록 ${hud.aliveBricks}개 남음`}><i aria-hidden="true">⚑</i><span><small>WAVE {hud.wave}/{MAX_WAVE}</small><strong>{hud.waveName}</strong><em>{hud.aliveBricks} LEFT</em></span></div>
+            <div className="hud-badge hud-score" aria-label={`점수 ${formatScore(hud.score)}`}><i aria-hidden="true">✦</i><span><small>SCORE</small><strong>{formatScore(hud.score)}</strong></span></div>
+            <div className={hud.coreHp <= 3 ? "hud-badge hud-core core-critical" : "hud-badge hud-core"} aria-label={`코어 체력 ${hud.coreHp}/${hud.maxCoreHp}`}><i aria-hidden="true">◆</i><span><small>CORE</small><strong>{hud.coreHp}/{hud.maxCoreHp}</strong>{hud.barriers > 0 && <em>SHIELD ×{hud.barriers}</em>}</span></div>
+            <div className={hud.overdriveLevel > 0 ? "hud-badge hud-speed active" : "hud-badge hud-speed"} aria-label={`공 속도 ${Math.round(hud.overdriveMultiplier * 100)}퍼센트`}><i aria-hidden="true">»</i><span><small>SPEED</small><strong>{Math.round(hud.overdriveMultiplier * 100)}%</strong><em>{hud.overdriveLevel < MAX_OVERDRIVE_LEVEL ? "+1%/s" : "MAX"}</em></span></div>
             <div className="drop-legend" aria-label="아이템 블록 표시 안내">
               {ITEM_KINDS.map((kind) => <span key={kind} style={{ "--drop-color": ITEM_DATA[kind].color } as React.CSSProperties}><b>{ITEM_DATA[kind].symbol}</b>{ITEM_DATA[kind].label}</span>)}
             </div>
@@ -4866,20 +4805,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                     );
                   })}
                 </div>
-              </div>
-            )}
-
-            {mode === "settlement" && settlement && (
-              <div className="overlay level-overlay settlement-overlay">
-                <p className="overlay-kicker">WAVE {settlement.wave} SETTLEMENT // {settlement.waveName}</p>
-                <h2>웨이브 클리어</h2>
-                <div className="result-stats settlement-stats">
-                  <div><span>CLEAR TIME</span><strong>{settlement.elapsed.toFixed(1)}s</strong></div>
-                  <div><span>BALLS NEXT WAVE</span><strong>1</strong></div>
-                  <div><span>CORE</span><strong>{settlement.coreHp}/{gameRef.current?.maxCoreHp ?? MAX_CORE_HP}</strong></div>
-                </div>
-                <p className="settlement-copy">모든 파괴 가능 블록을 제거했습니다. 다음 웨이브도 기본 공 1개로 시작합니다.</p>
-                <button className="primary-button" onClick={claimWaveReward}>{settlement.finalWave ? "결과 확인" : settlement.wasBoss && settlement.cleared ? "궁극기 보상 받기" : "스킬 보상 받기"} <span>→</span></button>
               </div>
             )}
 
