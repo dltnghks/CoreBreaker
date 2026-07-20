@@ -50,3 +50,11 @@ button{font:inherit}.app-shell{min-height:100vh;padding:0 28px 30px}
 @media(max-width:700px){.upgrade-card{min-height:230px}.upgrade-tooltip{padding:14px}.upgrade-tooltip p{font-size:11px}}
 .bot-controls{grid-template-columns:repeat(3,1fr)}
 @keyframes coreWarning{from{opacity:.6}to{opacity:1}}
+
+/* Core-first combat HUD */
+.hud-core{left:50%;min-width:250px;transform:translateX(-50%);border-color:rgba(114,241,184,.4);background:rgba(4,12,18,.9)}
+.hud-core>span{flex:1}.hud-core.core-critical{border-color:rgba(255,107,135,.55)}
+.core-meter{position:absolute;left:44px;right:8px;bottom:3px;height:3px;overflow:hidden;background:rgba(157,180,225,.13)}
+.core-meter span{display:block;height:100%;width:var(--core-ratio);background:#72f1b8;box-shadow:0 0 12px #72f1b8;transition:width .22s}
+.core-critical .core-meter span{background:#ff6b87;box-shadow:0 0 14px #ff6b87}
+@media(max-width:700px){.hud-core{left:50%;min-width:150px}.core-meter{left:37px}}

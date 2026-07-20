@@ -4918,13 +4918,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
       <section className={benchmarkMode ? "workspace" : "workspace solo-workspace"}>
         <div className="game-column">
-          <div className="brick-key-strip" aria-label="특수 블록 기능 안내">
+          {(mode === "lobby" || mode === "initialskills") && <div className="brick-key-strip" aria-label="특수 블록 기능 안내">
             <strong>BLOCK KEY</strong>
             {BRICK_TRAITS.map((trait) => {
               const data = BRICK_TRAIT_DATA[trait];
               return <span key={trait} style={{ "--trait-color": data.color } as React.CSSProperties} title={`${data.label}: ${data.description}`}><b>{data.glyph}</b><em>{data.label}</em><small>{data.description}</small></span>;
             })}
-          </div>
+          </div>}
 
           <div className="game-frame">
             <canvas
@@ -4938,7 +4938,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             <div className="hud-badge hud-time" aria-label={`플레이 시간 ${hud.time.toFixed(1)}초`}><i aria-hidden="true">◷</i><span><small>TIME</small><strong>{hud.time.toFixed(1)}s</strong></span></div>
             <div className="hud-badge hud-wave" aria-label={`웨이브 ${hud.wave}/${MAX_WAVE}, ${hud.waveName}, 블록 ${hud.aliveBricks}개 남음`}><i aria-hidden="true">⚑</i><span><small>WAVE {hud.wave}/{MAX_WAVE}</small><strong>{hud.waveName}</strong><em>{hud.aliveBricks} LEFT</em></span></div>
             <div className="hud-badge hud-score" aria-label={`점수 ${formatScore(hud.score)}`}><i aria-hidden="true">✦</i><span><small>SCORE</small><strong>{formatScore(hud.score)}</strong></span></div>
-            <div className={hud.coreHp <= 3 ? "hud-badge hud-core core-critical" : "hud-badge hud-core"} aria-label={`코어 체력 ${hud.coreHp}/${hud.maxCoreHp}`}><i aria-hidden="true">◆</i><span><small>CORE</small><strong>{hud.coreHp}/{hud.maxCoreHp}</strong>{hud.barriers > 0 && <em>SHIELD ×{hud.barriers}</em>}</span></div>
+            <div className={hud.coreHp <= 3 ? "hud-badge hud-core core-critical" : "hud-badge hud-core"} aria-label={`코어 체력 ${hud.coreHp}/${hud.maxCoreHp}`}><i aria-hidden="true">◆</i><span><small>CORE INTEGRITY</small><strong>{hud.coreHp}/{hud.maxCoreHp}</strong>{hud.barriers > 0 && <em>SHIELD ×{hud.barriers}</em>}</span><b className="core-meter" aria-hidden="true"><span style={{ "--core-ratio": `${Math.max(0, Math.min(100, hud.coreHp / Math.max(1, hud.maxCoreHp) * 100))}%` } as React.CSSProperties}></span></b></div>
             <div className={hud.overdriveLevel > 0 ? "hud-badge hud-speed active" : "hud-badge hud-speed"} aria-label={`공 속도 ${Math.round(hud.overdriveMultiplier * 100)}퍼센트`}><i aria-hidden="true">»</i><span><small>SPEED</small><strong>{Math.round(hud.overdriveMultiplier * 100)}%</strong><em>{hud.overdriveLevel < MAX_OVERDRIVE_LEVEL ? "+1%/s" : "MAX"}</em></span></div>
             <div className="drop-legend" aria-label="아이템 블록 표시 안내">
               {ITEM_KINDS.map((kind) => <span key={kind} style={{ "--drop-color": ITEM_DATA[kind].color } as React.CSSProperties}><b>{ITEM_DATA[kind].symbol}</b>{ITEM_DATA[kind].label}</span>)}

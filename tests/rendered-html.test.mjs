@@ -358,6 +358,8 @@ test("propagates paddle debuffs and reports barriers in the in-game HUD", async 
   assert.match(source, /emitEffect\("blast"/);
   assert.match(source, /barriers: game\.paddleBarriers\.player/);
   assert.match(source, /hud-badge hud-core/);
+  assert.match(source, /className="core-meter"/);
+  assert.match(source, /mode === "lobby" \|\| mode === "initialskills"/);
   assert.match(source, /SHIELD ×\{hud\.barriers\}/);
   assert.doesNotMatch(source, /barrierSummary|CORE LINE/);
   assert.match(source, /EXP ×/);
