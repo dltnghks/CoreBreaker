@@ -248,7 +248,7 @@ export const DEFAULT_SKILLS: SkillConfig[] = [
   skill("warrior-shockwave", "충격파", "warrior", "블록 타격 시 상시 적용", "주변 즉발 피해", "쿨타임이 준비된 타격 지점에서 주변 블록에 1/1/2 피해를 줍니다.", [1, 1, 2], "DMG"),
   skill("warrior-execute", "처형", "warrior", "블록 타격 시 상시 적용", "저체력 블록 즉시 파괴", "현재 체력이 25/32/40% 이하인 일반 블록을 즉시 파괴합니다.", [25, 32, 40], "%"),
   skill("warrior-crush", "분쇄", "warrior", "블록 타격 시 상시 적용", "가드 파괴·특수 블록 추가 피해", "가드를 제거하고 특수 블록에 +2/+3/+4 피해를 추가합니다.", [2, 3, 4], "DMG"),
-  skill("warrior-guard", "철벽", "warrior", "블록 타격 시 자동 발동", "CORE LINE 방어막 충전", "블록을 타격하면 6/5/4초마다 CORE LINE 방어막을 얻습니다.", [6, 5, 4], "초", "down"),
+  skill("warrior-guard", "철벽", "warrior", "블록 타격 시 자동 발동", "CORE 보호막 충전", "블록을 타격하면 6/5/4초마다 CORE 피해를 1회 막는 보호막을 얻습니다.", [6, 5, 4], "초", "down"),
   skill("warrior-earthquake", "대지 분쇄", "warrior", "블록 타격 시 상시 적용", "쿨타임 타격에 여진 발생", "쿨타임이 준비된 직접 타격에서 주변 블록에 여진 피해를 줍니다.", [1, 1, 2], "DMG", "up", true),
   skill("warrior-berserker", "광전사", "warrior", "획득 즉시 상시 적용", "공 공격력·속도·충돌 범위 폭증", "모든 공이 공격력 +3/+4/+5와 25% 추가 속도를 얻습니다.", [3, 4, 5], "DMG", "up", true),
 

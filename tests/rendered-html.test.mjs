@@ -30,10 +30,15 @@ test("server-renders the Core Breaker playtest", async () => {
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|react-loading-skeleton/);
 });
 
-test("steers paddle rebounds with pointer movement and removes keyboard controls", async () => {
+test("moves the paddle with A and D while the pointer aims rebounds", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /const playerPaddleVelocity = dt > 0 \? \(game\.paddleX - previousPaddleX\) \/ dt : 0/);
-  assert.match(source, /paddle\.velocity \* PADDLE_ENGLISH_FACTOR/);
+  assert.match(source, /PADDLE_KEYBOARD_SPEED = 460/);
+  assert.match(source, /window\.addEventListener\("keydown", onKeyDown\)/);
+  assert.match(source, /key !== "a" && key !== "d"/);
+  assert.match(source, /Number\(keyboardRef\.current\.right\) - Number\(keyboardRef\.current\.left\)/);
+  assert.match(source, /pointerYRef/);
+  assert.match(source, /const aimedHorizontalRatio = aimDeltaX \/ aimLength/);
+  assert.match(source, /paddle\.id === "player"/);
   assert.match(source, /const rawContactTime = verticalTravel > 0/);
   assert.match(source, /const alreadyTouchingTop = previousBallY <= paddle\.y \+ PADDLE_COLLISION_SLOP/);
   assert.match(source, /const sideDepthContact =/);
@@ -41,8 +46,8 @@ test("steers paddle rebounds with pointer movement and removes keyboard controls
   assert.match(source, /const paddleContactX = paddle\.previousX \+ \(paddle\.x - paddle\.previousX\) \* contactTime/);
   assert.match(source, /const reboundSpeed = .*Math\.hypot\(ball\.vx, ball\.vy\)/);
   assert.match(source, /ball\.vy = -Math\.sqrt/);
-  assert.match(source, /MOVE \/ POINTER · TOUCH/);
-  assert.doesNotMatch(source, /ArrowLeft|ArrowRight|addEventListener\("keydown"/);
+  assert.match(source, /MOVE <kbd>A<\/kbd><kbd>D<\/kbd> · AIM \/ MOUSE/);
+  assert.doesNotMatch(source, /PADDLE_ENGLISH_FACTOR|paddle\.velocity/);
 });
 
 test("ramps ball speed by wave elapsed time and resolves circular brick collisions", async () => {
@@ -333,15 +338,17 @@ test("uses clear-driven waves without a time limit and keeps skill-specific comb
   assert.match(source, /drawMagnetLinks/);
 });
 
-test("propagates paddle debuffs through enchantment damage and renders line barriers", async () => {
+test("propagates paddle debuffs and reports barriers in the in-game HUD", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /blastVulnerability/);
   assert.match(source, /applyDebuffs\(near, sourcePaddle\)/);
   assert.match(source, /applyDebuffs\(linked, sourcePaddle\)/);
   assert.match(source, /applyDebuffs\(brick, sourcePaddle\)/);
   assert.match(source, /emitEffect\("blast"/);
-  assert.match(source, /barrierSummary/);
-  assert.match(source, /CORE LINE/);
+  assert.match(source, /barriers: game\.paddleBarriers\.player/);
+  assert.match(source, /className="ingame-hud"/);
+  assert.match(source, /SHIELD ×\{hud\.barriers\}/);
+  assert.doesNotMatch(source, /barrierSummary|CORE LINE/);
   assert.match(source, /EXP ×/);
 });
 
@@ -382,7 +389,7 @@ test("keeps ball bodies unified and distinguishes power and skills with effects"
   assert.match(source, /const SKILL_ICONS/);
   assert.match(source, /const drawSkillPanel/);
   assert.match(source, /ATK/);
-  assert.match(source, /BARRIER \$\{barrierSummary\}/);
+  assert.match(source, /SHIELD ×\{hud\.barriers\}/);
 });
 
 test.skip("adds legacy paddle-owned multiball survival skills", async () => {

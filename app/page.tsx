@@ -212,7 +212,8 @@ const MAX_PADDLE_REBOUND_RATIO = 0.84;
 const PADDLE_COLLISION_SLOP = 3;
 const PADDLE_SIDE_FORGIVENESS = 14;
 const PADDLE_SIDE_DEPTH = 18;
-const PADDLE_ENGLISH_FACTOR = 0.32;
+const PADDLE_KEYBOARD_SPEED = 460;
+const MIN_AIM_VERTICAL_DISTANCE = 52;
 const RING_EXPLOSION_ASSET = "/assets/vfx/ring-explosion.png";
 const RING_EXPLOSION_COLUMNS = 10;
 const RING_EXPLOSION_FRAME_SIZE = 100;
@@ -227,7 +228,6 @@ const RADIAL_LIGHTNING_FRAMES = 8;
 const MAGE_SPELL_ASSETS = ["/assets/vfx/mage-fireball.png", "/assets/vfx/mage-sparks.png"] as const;
 const MAGE_SPELL_FRAME_SIZE = 16;
 const MAGE_SPELL_FRAMES = 6;
-const MAX_PADDLE_ENGLISH = 220;
 const MIN_VERTICAL_SPEED_RATIO = 0.32;
 const MAX_ACTIVE_PARTICLES = 500;
 const MAX_ACTIVE_EFFECTS = 240;
@@ -776,7 +776,7 @@ function hudFromGame(game: GameState) {
   return {
     score: game.score, time: game.elapsed, level: game.level,
     combo: game.combo, bricks: game.bricksBroken, balls: game.balls.filter((ball) => ball.owner === "player").length,
-    wave: game.wave, nextRow: Math.max(0, game.rowTimer), coreHp: game.coreHp, maxCoreHp: game.maxCoreHp,
+    wave: game.wave, nextRow: Math.max(0, game.rowTimer), coreHp: game.coreHp, maxCoreHp: game.maxCoreHp, barriers: game.paddleBarriers.player ?? 0,
     overdriveLevel: game.overdriveLevel, overdriveMultiplier: overdriveMultiplier(game.overdriveLevel),
     bossActive: game.bossActive, bossPending: game.bossPending, nextBossWave: game.nextBossWave, bossTimeRemaining: Math.max(0, game.bossTimeRemaining),
     waveName: waveDefinition(game.wave).name, aliveBricks: game.bricks.filter((brick) => brick.alive).length,
@@ -844,6 +844,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const gameRef = useRef<GameState | null>(null);
   const activeGhostsRef = useRef<GhostRecord[]>([]);
   const pointerXRef = useRef(W / 2);
+  const pointerYRef = useRef(H / 3);
+  const keyboardRef = useRef({ left: false, right: false });
   const runningRef = useRef(false);
   const levelUpRef = useRef(false);
   const upgradeCatalogRef = useRef<Upgrade[]>(DEFAULT_UPGRADES);
@@ -871,7 +873,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const [ghosts, setGhosts] = useState<GhostRecord[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [mode, setMode] = useState<"lobby" | "initialskills" | "playing" | "settlement" | "levelup" | "bossreward" | "result">("lobby");
-  const [hud, setHud] = useState({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, overdriveLevel: 0, overdriveMultiplier: 1, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0 });
+  const [hud, setHud] = useState({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, barriers: 0, overdriveLevel: 0, overdriveMultiplier: 1, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0 });
   const [choices, setChoices] = useState<UpgradeChoice[]>([]);
   const [initialSelectedIds, setInitialSelectedIds] = useState<UpgradeId[]>([]);
   const [settlement, setSettlement] = useState<WaveSettlement | null>(null);
@@ -880,6 +882,29 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const [savedMessage, setSavedMessage] = useState("");
   const [upgradeCatalog, setUpgradeCatalog] = useState<Upgrade[]>(DEFAULT_UPGRADES);
   const [soundEnabled, setSoundEnabled] = useState(true);
+
+  useEffect(() => {
+    const setMovementKey = (event: KeyboardEvent, pressed: boolean) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
+      const key = event.key.toLowerCase();
+      if (key !== "a" && key !== "d") return;
+      if (key === "a") keyboardRef.current.left = pressed;
+      if (key === "d") keyboardRef.current.right = pressed;
+      event.preventDefault();
+    };
+    const onKeyDown = (event: KeyboardEvent) => setMovementKey(event, true);
+    const onKeyUp = (event: KeyboardEvent) => setMovementKey(event, false);
+    const clearMovement = () => { keyboardRef.current.left = false; keyboardRef.current.right = false; };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", clearMovement);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", clearMovement);
+    };
+  }, []);
   const [botPolicy, setBotPolicy] = useState<BotPolicy>("balanced");
   const [botSpeed, setBotSpeed] = useState<BotSpeed>(1);
   const [benchmarkRunMode, setBenchmarkRunMode] = useState<BenchmarkRunMode>("parallel");
@@ -1455,6 +1480,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const aimCandidates = game.bricks.filter((brick) => brick.alive && isDamageableBrick(brick)).sort((a, b) => b.y - a.y).slice(0, 6);
         const aimTarget = aimCandidates[Math.floor(game.elapsed / 2.5) % Math.max(1, aimCandidates.length)];
         const targetX = aimTarget ? aimTarget.x + aimTarget.w / 2 : W / 2;
+        pointerYRef.current = aimTarget ? aimTarget.y + aimTarget.h / 2 : BRICK_ROW_Y;
         const targetBias = Math.max(-0.5, Math.min(0.5, (targetX - predictedX) / (W * 0.42)));
         const sweepBias = Math.sin(game.elapsed * 1.35 + falling.x * 0.018) * 0.42;
         let desiredHit = Math.max(-0.72, Math.min(0.72, targetBias + sweepBias));
@@ -1467,9 +1493,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
     }
     const previousPaddleX = game.paddleX;
-    game.paddleX += (pointerXRef.current - game.paddleX) * Math.min(1, dt * 14);
+    if (botActiveRef.current) {
+      game.paddleX += (pointerXRef.current - game.paddleX) * Math.min(1, dt * 14);
+    } else {
+      const movement = Number(keyboardRef.current.right) - Number(keyboardRef.current.left);
+      game.paddleX += movement * PADDLE_KEYBOARD_SPEED * dt;
+    }
     game.paddleX = Math.max(game.paddleWidth / 2, Math.min(W - game.paddleWidth / 2, game.paddleX));
-    const playerPaddleVelocity = dt > 0 ? (game.paddleX - previousPaddleX) / dt : 0;
 
     const trackIndex = Math.floor(game.elapsed * 10);
     if (game.paddleTrack.length <= trackIndex) game.paddleTrack.push(game.paddleX / W);
@@ -1539,9 +1569,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
     const paddleY = PLAYER_PADDLE_Y;
     const paddles = [
-      { id: "player", x: game.paddleX, previousX: previousPaddleX, y: paddleY, width: effectivePaddleWidth(game.paddleWidth, game.upgrades), upgrades: game.upgrades, name: "PLAYER", velocity: playerPaddleVelocity },
+      { id: "player", x: game.paddleX, previousX: previousPaddleX, y: paddleY, width: effectivePaddleWidth(game.paddleWidth, game.upgrades), upgrades: game.upgrades, name: "PLAYER" },
       ...activeGhostsRef.current.map((ghost, index) => ({
-        id: `ghost-${index}`, x: game.ghostPaddles[index], previousX: game.ghostPaddles[index], y: ghostPaddleY(), width: effectivePaddleWidth(ghostPaddleWidth(ghost), ghost.upgrades), upgrades: ghost.upgrades, name: ghost.name, velocity: 0,
+        id: `ghost-${index}`, x: game.ghostPaddles[index], previousX: game.ghostPaddles[index], y: ghostPaddleY(), width: effectivePaddleWidth(ghostPaddleWidth(ghost), ghost.upgrades), upgrades: ghost.upgrades, name: ghost.name,
       })),
     ];
     const paddleFor = (id: string) => paddles.find((paddle) => paddle.id === id) ?? paddles[0];
@@ -2162,9 +2192,14 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           const paddleContactX = paddle.previousX + (paddle.x - paddle.previousX) * contactTime;
           if (contactX + ball.radius + PADDLE_SIDE_FORGIVENESS < paddleContactX - paddle.width / 2 || contactX - ball.radius - PADDLE_SIDE_FORGIVENESS > paddleContactX + paddle.width / 2) continue;
           const hit = Math.max(-1, Math.min(1, (contactX - paddleContactX) / (paddle.width / 2)));
-          const paddleEnglish = Math.max(-MAX_PADDLE_ENGLISH, Math.min(MAX_PADDLE_ENGLISH, paddle.velocity * PADDLE_ENGLISH_FACTOR));
           const reboundSpeed = Math.max(MIN_PADDLE_REBOUND_SPEED, Math.min(MAX_PADDLE_REBOUND_SPEED, Math.hypot(ball.vx, ball.vy)));
-          const horizontalRatio = Math.max(-MAX_PADDLE_REBOUND_RATIO, Math.min(MAX_PADDLE_REBOUND_RATIO, hit * 0.74 + paddleEnglish / reboundSpeed));
+          const aimDeltaX = pointerXRef.current - contactX;
+          const aimDeltaY = Math.min(-MIN_AIM_VERTICAL_DISTANCE, pointerYRef.current - paddle.y);
+          const aimLength = Math.max(1, Math.hypot(aimDeltaX, aimDeltaY));
+          const aimedHorizontalRatio = aimDeltaX / aimLength;
+          const horizontalRatio = paddle.id === "player"
+            ? Math.max(-MAX_PADDLE_REBOUND_RATIO, Math.min(MAX_PADDLE_REBOUND_RATIO, aimedHorizontalRatio))
+            : Math.max(-MAX_PADDLE_REBOUND_RATIO, Math.min(MAX_PADDLE_REBOUND_RATIO, hit * 0.74));
           ball.vx = horizontalRatio * reboundSpeed;
           ball.vy = -Math.sqrt(Math.max(1, reboundSpeed * reboundSpeed - ball.vx * ball.vx));
           ensureMinimumVerticalAngle(ball, -1);
@@ -3287,29 +3322,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
     });
 
-    const barrierEntries = [
-      { label: "P", count: game.paddleBarriers.player ?? 0 },
-      ...activeGhostsRef.current.map((_, index) => ({ label: `G${index + 1}`, count: game.paddleBarriers[`ghost-${index}`] ?? 0 })),
-    ].filter((entry) => entry.count > 0);
-    const barrierSummary = barrierEntries.map((entry) => `${entry.label}×${entry.count}`).join(" ");
-    const lineColor = barrierEntries.length > 0 ? BARRIER_COLOR : game.coreHp <= 3 ? "#ff6b87" : "rgba(255,107,135,.62)";
-    ctx.strokeStyle = lineColor;
-    ctx.shadowColor = lineColor;
-    ctx.shadowBlur = barrierEntries.length > 0 ? 20 : 0;
-    ctx.lineWidth = barrierEntries.length > 0 ? 5 : 1;
-    ctx.setLineDash(barrierEntries.length > 0 ? [] : [7, 8]);
-    ctx.beginPath();
-    ctx.moveTo(22, PLAYER_LINE_Y);
-    ctx.lineTo(W - 22, PLAYER_LINE_Y);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([]);
-    ctx.fillStyle = lineColor;
-    ctx.font = "900 11px monospace";
-    ctx.textAlign = "left";
-    ctx.fillText(`CORE LINE // HP ${game.coreHp}/${game.maxCoreHp}${barrierSummary ? ` // BARRIER ${barrierSummary}` : ""} // W${game.wave}`, 24, PLAYER_LINE_Y - 8);
-
     game.gravityWells.forEach((well) => {
       const pulse = 0.78 + Math.sin(game.elapsed * 8) * 0.12;
       ctx.save();
@@ -3540,6 +3552,36 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     drawCounterRail(W / 2, H - 6, "player", game.upgrades);
     drawSkillPanel(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, game.upgrades, playerChargeVisual?.color ?? PLAYER_BALL_COLOR);
     drawPaddleChargeAura(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, playerChargeVisual);
+    if (!botActiveRef.current) {
+      const aimDeltaX = pointerXRef.current - game.paddleX;
+      const aimDeltaY = Math.min(-MIN_AIM_VERTICAL_DISTANCE, pointerYRef.current - PLAYER_PADDLE_Y);
+      const aimDistance = Math.max(1, Math.hypot(aimDeltaX, aimDeltaY));
+      const aimLength = Math.min(230, aimDistance);
+      const aimEndX = game.paddleX + aimDeltaX / aimDistance * aimLength;
+      const aimEndY = PLAYER_PADDLE_Y + aimDeltaY / aimDistance * aimLength;
+      ctx.save();
+      ctx.strokeStyle = "rgba(101,220,255,.72)";
+      ctx.fillStyle = "#65dcff";
+      ctx.shadowColor = "#65dcff";
+      ctx.shadowBlur = 10;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 7]);
+      ctx.beginPath();
+      ctx.moveTo(game.paddleX, PLAYER_PADDLE_Y - 6);
+      ctx.lineTo(aimEndX, aimEndY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(aimEndX, aimEndY, 5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(aimEndX - 9, aimEndY);
+      ctx.lineTo(aimEndX + 9, aimEndY);
+      ctx.moveTo(aimEndX, aimEndY - 9);
+      ctx.lineTo(aimEndX, aimEndY + 9);
+      ctx.stroke();
+      ctx.restore();
+    }
     game.balls.filter((ball) => ball.owner === "player").forEach((ball) => {
       const drawColor = ballBodyColor(ball);
       const isExtraBall = ball.waveBonus || ball.temporaryTime > 0 || ball.visualSkill !== null;
@@ -4419,6 +4461,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     }
     gameRef.current = game;
     pointerXRef.current = W / 2;
+    pointerYRef.current = H / 3;
+    keyboardRef.current.left = false;
+    keyboardRef.current.right = false;
     lastRef.current = performance.now();
     setSettlement(null);
     setInitialSelectedIds([]);
@@ -4670,11 +4715,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     if (benchmarkMode) void clearBenchmarkResults(BENCHMARK_RULESET).catch((error) => console.error("[benchmark-store] clear failed", error));
   };
 
-  const onPointerMove = (clientX: number) => {
+  const onPointerMove = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     pointerXRef.current = Math.max(0, Math.min(W, ((clientX - rect.left) / rect.width) * W));
+    pointerYRef.current = Math.max(0, Math.min(H, ((clientY - rect.top) / rect.height) * H));
   };
 
   const ultimateCatalog = ULTIMATE_SKILLS.map((fallback) => {
@@ -4757,19 +4803,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
       <section className={benchmarkMode ? "workspace" : "workspace solo-workspace"}>
         <div className="game-column">
-          <div className="hud-strip">
-            <div><span>SURVIVAL</span><strong>{hud.time.toFixed(1)}</strong></div>
-            <div><span>SCORE</span><strong>{formatScore(hud.score)}</strong></div>
-            <div><span>COMBO</span><strong>{hud.combo}</strong></div>
-            <div><span>BALLS</span><strong>{hud.balls}</strong></div>
-            <div className={hud.coreHp <= 3 ? "core-cell core-critical" : "core-cell"}><span>CORE</span><strong>{hud.coreHp}/{hud.maxCoreHp}</strong></div>
-            <div className="xp-cell"><span>WAVE PATTERN</span><strong>{hud.waveName}</strong><small>{hud.aliveBricks} BRICKS LEFT</small></div>
-            <div className={hud.overdriveLevel > 0 ? "overdrive-cell active" : "overdrive-cell"}>
-              <span>WAVE {hud.wave}/{MAX_WAVE} · {hud.nextRow.toFixed(1)}s</span>
-              <strong>BALL {Math.round(hud.overdriveMultiplier * 100)}%</strong>
-              <small>{hud.overdriveLevel < MAX_OVERDRIVE_LEVEL ? `+1% / SEC · MAX 150% IN ${Math.max(0, MAX_OVERDRIVE_LEVEL - hud.nextRow).toFixed(0)}s` : "MAX OVERDRIVE · 150%"}</small>
-            </div>
-          </div>
           <div className="brick-key-strip" aria-label="특수 블록 기능 안내">
             <strong>BLOCK KEY</strong>
             {BRICK_TRAITS.map((trait) => {
@@ -4784,9 +4817,18 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               width={W}
               height={H}
               aria-label="Core Breaker 게임 화면"
-              onPointerMove={(e) => onPointerMove(e.clientX)}
-              onPointerDown={(e) => onPointerMove(e.clientX)}
+              onPointerMove={(e) => onPointerMove(e.clientX, e.clientY)}
+              onPointerDown={(e) => onPointerMove(e.clientX, e.clientY)}
             />
+            <div className="ingame-hud" aria-label="인게임 상태 정보">
+              <div><span>TIME</span><strong>{hud.time.toFixed(1)}</strong></div>
+              <div><span>SCORE</span><strong>{formatScore(hud.score)}</strong></div>
+              <div><span>COMBO</span><strong>{hud.combo}</strong></div>
+              <div><span>BALL</span><strong>{hud.balls}</strong></div>
+              <div className={hud.coreHp <= 3 ? "core-cell core-critical" : "core-cell"}><span>CORE</span><strong>{hud.coreHp}/{hud.maxCoreHp}</strong>{hud.barriers > 0 && <small>SHIELD ×{hud.barriers}</small>}</div>
+              <div className="wave-cell"><span>WAVE {hud.wave}/{MAX_WAVE}</span><strong>{hud.waveName}</strong><small>{hud.aliveBricks} LEFT</small></div>
+              <div className={hud.overdriveLevel > 0 ? "overdrive-cell active" : "overdrive-cell"}><span>SPEED</span><strong>{Math.round(hud.overdriveMultiplier * 100)}%</strong><small>{hud.overdriveLevel < MAX_OVERDRIVE_LEVEL ? `+1% / SEC · MAX 150% · ${Math.max(0, MAX_OVERDRIVE_LEVEL - hud.nextRow).toFixed(0)}s` : "MAX OVERDRIVE · 150%"}</small></div>
+            </div>
             <div className="drop-legend" aria-label="아이템 블록 표시 안내">
               {ITEM_KINDS.map((kind) => <span key={kind} style={{ "--drop-color": ITEM_DATA[kind].color } as React.CSSProperties}><b>{ITEM_DATA[kind].symbol}</b>{ITEM_DATA[kind].label}</span>)}
             </div>
@@ -4800,7 +4842,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                 <h2>{benchmarkMode ? benchmarkRunMode === "watch" ? <>실제 플레이를<br />관찰합니다.</> : <>실제 게임 규칙을<br />병렬 테스트합니다.</> : <>패턴을 돌파하고<br />코어를 지키세요.</>}</h2>
                 <p>{benchmarkMode ? benchmarkRunMode === "watch" ? "봇이 실제 캔버스에서 패들을 조작합니다. 블록 타격마다 적용되는 스킬 효과와 공 손실을 화면으로 확인하세요." : "웨이브 패턴, 블록 체력, 보스와 Skill LAB 수치를 헤드리스 Worker가 동시에 시뮬레이션합니다." : "웨이브마다 공 1개로 고정 패턴을 모두 파괴하세요. 공을 놓치면 CORE 1을 잃고 새 공으로 즉시 이어집니다."}</p>
                 {!benchmarkMode && <button className="primary-button" onClick={() => startRun(false)}>20 웨이브 시작 <span>→</span></button>}
-                <small>{benchmarkMode ? benchmarkRunMode === "watch" ? "오른쪽에서 관찰 배속과 봇 정책을 선택하세요." : "오른쪽에서 반복 횟수와 봇 정책을 선택하세요." : "마우스 또는 터치로 패들을 움직이세요."}</small>
+                <small>{benchmarkMode ? benchmarkRunMode === "watch" ? "오른쪽에서 관찰 배속과 봇 정책을 선택하세요." : "오른쪽에서 반복 횟수와 봇 정책을 선택하세요." : "A/D로 패들을 움직이고 마우스로 반사 방향을 조준하세요."}</small>
               </div>
             )}
 
@@ -4922,7 +4964,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               {(gameRef.current ? upgradeCounts(gameRef.current.upgrades) : []).map((u) => <span key={u.id} style={{ borderColor: u.color, color: u.color }}>{u.tag} <b>×{u.count}</b></span>)}
               {(!gameRef.current || gameRef.current.upgrades.length === 0) && <em>웨이브 보상을 선택하면 조합이 여기에 기록됩니다.</em>}
             </div>
-            <div className="controls">MOVE / POINTER · TOUCH</div>
+            <div className="controls">MOVE <kbd>A</kbd><kbd>D</kbd> · AIM / MOUSE</div>
           </div>
         </div>
 
