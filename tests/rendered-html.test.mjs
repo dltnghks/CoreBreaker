@@ -63,7 +63,8 @@ test("moves the paddle with A and D while the pointer aims rebounds", async () =
   assert.match(source, /PADDLE_SIDE_FORGIVENESS/);
   assert.match(source, /const paddleContactX = paddle\.previousX \+ \(paddle\.x - paddle\.previousX\) \* contactTime/);
   assert.match(source, /const reboundSpeed = .*Math\.hypot\(ball\.vx, ball\.vy\)/);
-  assert.match(source, /launchBallToward\(ball, pointerXRef\.current, pointerYRef\.current, speed\)/);
+  assert.match(source, /parkBallsAbovePaddle\(game, targetX, targetY\)/);
+  assert.match(source, /prepareWave\(game, nextWave, balanceConfigRef\.current, pointerXRef\.current, pointerYRef\.current\)/);
   assert.match(source, /MOVE <kbd>A<\/kbd><kbd>D<\/kbd> · AIM \/ MOUSE/);
   assert.doesNotMatch(source, /PADDLE_ENGLISH_FACTOR|paddle\.velocity/);
 });
@@ -329,21 +330,31 @@ test("renders beam links and clears wave-scoped skill state", async () => {
   assert.match(source, /delete ball\.skillCharges\["archer-pierce"\]/);
   assert.match(source, /function clearBallEnchantments/);
   assert.match(source, /clearBallEnchantments\(ball, game\.upgrades\)/);
-  assert.match(source, /const clearWaveScopedSkillState/);
+  assert.match(source, /function clearWaveScopedSkillState/);
   assert.match(source, /game\.balls\.forEach\(\(ball\) => clearBallEnchantments\(ball, game\.upgrades\)\)/);
   assert.match(source, /if \(!Array\.isArray\(upgrades\)\) return 0/);
   assert.match(source, /game\.paddleCounters\[id\] = newPaddleCounter\(\)/);
-  assert.match(source, /game\.bossActive = false;\s+clearWaveScopedSkillState\(\)/);
+  assert.match(source, /game\.bossActive = false;\s+clearWaveScopedSkillState\(game\)/);
 });
 
-test("selects two starting skills and opens rewards immediately after wave clear", async () => {
+test("selects rewards before preparing the next wave and uses one animated transition path", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(source, /"initialskills"/);
   assert.match(source, /STARTING SKILL/);
   assert.match(source, /selected\.length < 2/);
-  assert.match(source, /startWave\(completedWave \+ 1\)/);
+  assert.match(source, /game\.pendingWave = completedWave \+ 1/);
+  assert.doesNotMatch(source, /startWave\(completedWave \+ 1\)/);
+  assert.match(source, /const enterPendingWave = useCallback/);
+  assert.match(source, /prepareWave\(game, nextWave/);
+  assert.match(source, /setMode\("transition"\)/);
+  assert.match(source, /className="wave-transition-overlay"/);
+  assert.match(styles, /@keyframes wave-scene-fade/);
   assert.match(source, /setMode\("bossreward"\)/);
-  assert.doesNotMatch(source, /settlement|claimWaveReward/);
+  assert.match(source, /if \(botActiveRef\.current\) \{\s+startNextWave\(\)/);
+  assert.match(source, /if \(resume\) \{\s+enterPendingWave\(game\)/);
+  assert.match(source, /const skipUpgradeChoice = useCallback[\s\S]*if \(game\) enterPendingWave\(game\)/);
+  assert.match(source, /const applyBossReward = useCallback[\s\S]*enterPendingWave\(game\)/);
 });
 
 test("respawns a ball at the cost of one core health", async () => {
@@ -454,15 +465,14 @@ test.skip("uses legacy percentage fracture, upper gravity wells, and homing pier
 
 test("resets every wave to exactly one base ball above the paddle", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /const ballCount = game\.balls\.length/);
-  assert.match(source, /game\.balls\.forEach\(\(ball, index\) =>/);
   assert.match(source, /ball\.y = PLAYER_PADDLE_Y - ball\.radius - 3/);
   assert.match(source, /ball\.vy = -Math\.sqrt/);
-  assert.match(source, /const resetBallsForWave =/);
+  assert.match(source, /function prepareWave/);
   assert.match(source, /game\.balls = \[makePlayerBall\(game\.upgrades, game\.paddleX\)\]/);
   assert.match(source, /function parkBallsAbovePaddle\(game: GameState, targetX = W \/ 2, targetY = H \/ 3\)/);
-  assert.match(source, /if \(resume\) \{\s+parkBallsAbovePaddle\(game, pointerXRef\.current, pointerYRef\.current\)/);
-  assert.match(source, /if \(game\) parkBallsAbovePaddle\(game, pointerXRef\.current, pointerYRef\.current\)/);
+  assert.match(source, /parkBallsAbovePaddle\(game, targetX, targetY\)/);
+  assert.match(source, /if \(resume\) \{\s+enterPendingWave\(game\)/);
+  assert.match(source, /if \(game\) enterPendingWave\(game\)/);
   assert.doesNotMatch(source, /while \(game\.balls\.length < game\.wave\)/);
 });
 

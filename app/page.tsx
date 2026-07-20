@@ -171,6 +171,7 @@ type GameState = {
   screenFlashTime: number;
   screenFlashDuration: number;
   wave: number;
+  pendingWave: number | null;
   failed: boolean;
   failureReason: "ball" | "core" | null;
   botMetrics: BotMetrics;
@@ -807,12 +808,52 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     screenFlashTime: 0,
     screenFlashDuration: 0,
     wave: 1,
+    pendingWave: null,
     failed: false,
     failureReason: null,
     botMetrics: { maxBalls: 1, ballLosses: 0, missileActivations: 0, safetySaves: 0, gravityRescues: 0 },
     botWaveSamples: [],
     botSampleKey: "",
   };
+}
+
+function clearWaveScopedSkillState(game: GameState) {
+  game.balls.forEach((ball) => clearBallEnchantments(ball, game.upgrades));
+  Object.keys(game.paddleCounters).forEach((id) => { game.paddleCounters[id] = newPaddleCounter(); });
+  game.paddleCounters.player ??= newPaddleCounter();
+}
+
+function prepareWave(game: GameState, waveNumber: number, balance: BalanceConfig, targetX: number, targetY: number) {
+  const definition = waveDefinition(waveNumber);
+  game.wave = waveNumber;
+  game.level = waveNumber;
+  game.pendingWave = null;
+  game.bossActive = definition.boss !== null;
+  game.bossPending = false;
+  game.bossStage = definition.boss === "final" ? 2 : definition.boss === "mid" ? 1 : game.bossStage;
+  game.nextBossWave = waveNumber < 10 ? 10 : 20;
+  game.bricks = makeWaveBricks(waveNumber, balance);
+  game.items = [];
+  game.safetyBlocks = [];
+  game.gravityWells = [];
+  game.effects = [];
+  game.particles = [];
+  game.flashes = [];
+  game.ultimateAuras = {};
+  game.rowInterval = 0;
+  game.rowTimer = 0;
+  game.overdriveLevel = 0;
+  game.bossTimeRemaining = 0;
+  game.bossSkillTimer = game.bossActive ? 5 : 0;
+  game.bossAttackPattern = 0;
+  game.bossMultiballsRemaining = game.bossActive ? BOSS_MULTIBALL_BUDGET : 0;
+  game.paddleX = W / 2;
+  game.balls = [makePlayerBall(game.upgrades, game.paddleX)];
+  clearWaveScopedSkillState(game);
+  parkBallsAbovePaddle(game, targetX, targetY);
+  if (game.autoGuard) game.paddleBarriers.player = Math.max(1, game.paddleBarriers.player ?? 0);
+  game.flashes.push({ text: `WAVE ${waveNumber} // ${definition.name}`, x: W / 2, y: H / 2, life: 1.8, color: game.bossActive ? "#ff6b87" : "#ffcf4a" });
+  return game.bossActive;
 }
 
 function formatScore(value: number) {
@@ -916,10 +957,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const botSkillBenchActiveRef = useRef(false);
   const botSkillBenchVariantRef = useRef<SkillBenchVariant | null>(null);
   const benchmarkConfigRef = useRef<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
+  const transitionTimersRef = useRef<number[]>([]);
 
   const [ghosts, setGhosts] = useState<GhostRecord[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [mode, setMode] = useState<"lobby" | "initialskills" | "playing" | "levelup" | "bossreward" | "result">("lobby");
+  const [mode, setMode] = useState<"lobby" | "initialskills" | "playing" | "levelup" | "bossreward" | "transition" | "result">("lobby");
+  const [transitionWave, setTransitionWave] = useState<number | null>(null);
   const [hud, setHud] = useState({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, barriers: 0, overdriveLevel: 0, overdriveMultiplier: 1, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0 });
   const [choices, setChoices] = useState<UpgradeChoice[]>([]);
   const [initialSelectedIds, setInitialSelectedIds] = useState<UpgradeId[]>([]);
@@ -971,6 +1014,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const [benchmarkConfig, setBenchmarkConfig] = useState<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
 
   useEffect(() => () => {
+    transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    transitionTimersRef.current = [];
     parallelFlushRef.current();
     parallelSessionRef.current += 1;
     parallelWorkersRef.current.forEach((worker) => worker.terminate());
@@ -1212,6 +1257,53 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       : current.length < MAX_ACTIVE_GHOSTS ? [...current, id] : current);
   };
 
+  const enterPendingWave = useCallback((game: GameState) => {
+    const nextWave = game.pendingWave;
+    if (nextWave === null) {
+      parkBallsAbovePaddle(game, pointerXRef.current, pointerYRef.current);
+      levelUpRef.current = false;
+      runningRef.current = true;
+      setMode("playing");
+      lastRef.current = performance.now();
+      return;
+    }
+
+    const startNextWave = () => {
+      const bossActive = prepareWave(game, nextWave, balanceConfigRef.current, pointerXRef.current, pointerYRef.current);
+      if (bossActive) {
+        audioRef.current?.play("boss", game.bossStage);
+        setImpactFeedback(game, 9, "#ff6b87", 0.42, 0.22);
+      }
+      setHud(hudFromGame(game));
+    };
+
+    transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    transitionTimersRef.current = [];
+    levelUpRef.current = false;
+
+    if (botActiveRef.current) {
+      startNextWave();
+      runningRef.current = true;
+      setMode("playing");
+      lastRef.current = performance.now();
+      return;
+    }
+
+    runningRef.current = false;
+    setTransitionWave(nextWave);
+    setMode("transition");
+    transitionTimersRef.current = [
+      window.setTimeout(startNextWave, 360),
+      window.setTimeout(() => {
+        setTransitionWave(null);
+        setMode("playing");
+        runningRef.current = true;
+        lastRef.current = performance.now();
+        transitionTimersRef.current = [];
+      }, 900),
+    ];
+  }, []);
+
   const applyUpgrade = useCallback((upgrade: Upgrade, ballCost: 0 | 1 | 2 = 0, resume = true, source: Exclude<SkillSelectionSource, "boss"> = "wave") => {
     const game = gameRef.current;
     if (!game) return;
@@ -1260,13 +1352,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     setImpactFeedback(game, 4 + nextLevel * 0.5, upgrade.color, 0.2, 0.1);
     setHud(hudFromGame(game));
     if (resume) {
-      parkBallsAbovePaddle(game, pointerXRef.current, pointerYRef.current);
-      levelUpRef.current = false;
-      runningRef.current = true;
-      setMode("playing");
-      lastRef.current = performance.now();
+      enterPendingWave(game);
     }
-  }, []);
+  }, [enterPendingWave]);
 
   const applyBossReward = useCallback((rewardId: BossRewardId) => {
     const game = gameRef.current;
@@ -1284,11 +1372,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.flashes.push({ text: "ULTIMATE ACQUIRED", x: W / 2, y: H / 2 + 42, life: 1.8, color: reward.color });
     setImpactFeedback(game, 9, reward.color, 0.38, 0.2);
     audioRef.current?.play("ultimate", 1.6);
-    parkBallsAbovePaddle(game, pointerXRef.current, pointerYRef.current);
-    runningRef.current = true;
-    setMode("playing");
-    lastRef.current = performance.now();
-  }, []);
+    enterPendingWave(game);
+  }, [enterPendingWave]);
 
   const finishRun = useCallback(() => {
     runningRef.current = false;
@@ -1361,7 +1446,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const levelUp = useCallback(() => {
     const game = gameRef.current;
     if (!game || levelUpRef.current) return;
-    if (botSkillBenchActiveRef.current && skillBenchConfigRef.current.environment !== "ecosystem") return;
+    if (botSkillBenchActiveRef.current && skillBenchConfigRef.current.environment !== "ecosystem") {
+      enterPendingWave(game);
+      return;
+    }
     const ballEconomyUnlocked = game.bossRewards.length > 0;
     const benchSkillId = botSkillBenchVariantRef.current?.skillId;
     const benchExcluded: UpgradeId[] = botSkillBenchActiveRef.current && benchSkillId && benchSkillId !== "original" ? [benchSkillId] : [];
@@ -1369,6 +1457,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     if (upgrades.length === 0) {
       game.score += 1000;
       game.flashes.push({ text: "MAX BUILD // +1,000", x: W / 2, y: H / 2, life: 1.2, color: "#fff27a" });
+      enterPendingWave(game);
       return;
     }
     const nextChoices = priceUpgradeChoices(upgrades, ballEconomyUnlocked);
@@ -1386,7 +1475,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     setChoices(nextChoices);
     setRerollsLeft(1);
     setMode("levelup");
-  }, [applyUpgrade, benchmarkMode]);
+  }, [applyUpgrade, benchmarkMode, enterPendingWave]);
 
   const rerollUpgradeChoices = useCallback(() => {
     const game = gameRef.current;
@@ -1402,12 +1491,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
   const skipUpgradeChoice = useCallback(() => {
     const game = gameRef.current;
-    if (game) parkBallsAbovePaddle(game, pointerXRef.current, pointerYRef.current);
-    levelUpRef.current = false;
-    runningRef.current = true;
-    setMode("playing");
-    lastRef.current = performance.now();
-  }, []);
+    if (game) enterPendingWave(game);
+  }, [enterPendingWave]);
 
   const selectInitialSkill = useCallback((upgrade: Upgrade) => {
     const game = gameRef.current;
@@ -1433,6 +1518,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     if (!game) return;
     game.paddleCounters ??= {};
     game.ultimateAuras ??= {};
+    game.pendingWave ??= null;
     game.skillHistory ??= [];
     game.skillMetrics ??= {};
     game.effects ??= [];
@@ -2947,76 +3033,21 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
     }
 
-    const resetBallsForWave = () => {
-      game.balls = [makePlayerBall(game.upgrades, game.paddleX)];
-      const ballCount = game.balls.length;
-      const paddleWidth = effectivePaddleWidth(game.paddleWidth, game.upgrades, dangerActive);
-      const spread = Math.min(paddleWidth * 0.78, Math.max(0, (ballCount - 1) * 12));
-      game.balls.forEach((ball, index) => {
-        clearBallEnchantments(ball, game.upgrades);
-        const position = ballCount <= 1 ? 0.5 : index / (ballCount - 1);
-        const speed = Math.max(300, Math.hypot(ball.vx, ball.vy));
-        ball.x = game.paddleX - spread / 2 + spread * position;
-        ball.y = PLAYER_PADDLE_Y - ball.radius - 3;
-        launchBallToward(ball, pointerXRef.current, pointerYRef.current, speed);
-      });
-    };
-    const clearWaveScopedSkillState = () => {
-      game.balls.forEach((ball) => clearBallEnchantments(ball, game.upgrades));
-      Object.keys(game.paddleCounters).forEach((id) => { game.paddleCounters[id] = newPaddleCounter(); });
-      game.paddleCounters.player ??= newPaddleCounter();
-    };
-
-    const startWave = (waveNumber: number) => {
-      const definition = waveDefinition(waveNumber);
-      const bossEnabled = true;
-      game.wave = waveNumber;
-      game.level = waveNumber;
-      game.bossActive = definition.boss !== null && bossEnabled;
-      game.bossPending = false;
-      game.bossStage = definition.boss === "final" ? 2 : definition.boss === "mid" ? 1 : game.bossStage;
-      game.nextBossWave = waveNumber < 10 ? 10 : 20;
-      game.bricks = definition.boss && !bossEnabled
-        ? makeBrickRow(0, waveNumber, 0, balanceConfigRef.current)
-        : makeWaveBricks(waveNumber, balanceConfigRef.current);
-      game.items = [];
-      game.safetyBlocks = [];
-      game.gravityWells = [];
-      game.effects = [];
-      game.particles = [];
-      game.flashes = [];
-      game.ultimateAuras = {};
-      game.rowInterval = 0;
-      game.rowTimer = 0;
-      game.overdriveLevel = 0;
-      game.bossTimeRemaining = 0;
-      game.bossSkillTimer = game.bossActive ? 5 : 0;
-      game.bossAttackPattern = 0;
-      game.bossMultiballsRemaining = game.bossActive ? BOSS_MULTIBALL_BUDGET : 0;
-      clearWaveScopedSkillState();
-      game.paddleX = W / 2;
-      resetBallsForWave();
-      if (game.autoGuard) game.paddleBarriers.player = Math.max(1, game.paddleBarriers.player ?? 0);
-      game.flashes.push({ text: `WAVE ${waveNumber} // ${definition.name}`, x: W / 2, y: H / 2, life: 1.8, color: game.bossActive ? "#ff6b87" : "#ffcf4a" });
-      if (game.bossActive) {
-        audioRef.current?.play("boss", game.bossStage);
-        impactFeedback(9, "#ff6b87", 0.42, 0.22);
-      }
-    };
-
     const completeWave = (wasBoss: boolean) => {
       const completedWave = game.wave;
       const bonus = 1200 + completedWave * 180;
       game.score += bonus;
       game.bossActive = false;
-      clearWaveScopedSkillState();
+      clearWaveScopedSkillState(game);
       game.flashes.push({ text: `WAVE ${completedWave} CLEAR // +${bonus.toLocaleString()}`, x: W / 2, y: H / 2, life: 1.5, color: "#ffcf4a" });
       if (completedWave >= MAX_WAVE) {
         game.flashes.push({ text: "FINAL CORE DESTROYED", x: W / 2, y: H / 2 + 38, life: 2, color: "#72f1b8" });
         finishRun();
         return;
       }
-      startWave(completedWave + 1);
+      game.pendingWave = completedWave + 1;
+      game.bricks = [];
+      game.items = [];
       if (wasBoss) {
         audioRef.current?.play("boss-clear", game.bossStage);
         impactFeedback(11, "#ffcf4a", 0.48, 0.24);
@@ -4719,6 +4750,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   }, [loop]);
 
   const startRun = (asBot = false) => {
+    transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    transitionTimersRef.current = [];
+    setTransitionWave(null);
     const audio = audioRef.current ?? new GameAudio();
     audioRef.current = audio;
     audio.setMuted(!soundEnabled);
@@ -4979,6 +5013,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   };
 
   const backToLobby = () => {
+    transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    transitionTimersRef.current = [];
+    setTransitionWave(null);
     runningRef.current = false;
     gameRef.current = null;
     setResult(null);
@@ -5230,6 +5267,16 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                       <em>LEGENDARY</em>
                     </button>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {mode === "transition" && transitionWave !== null && (
+              <div className="wave-transition-overlay" aria-live="polite" aria-label={`웨이브 ${transitionWave} 전환 중`}>
+                <div className="wave-transition-copy">
+                  <span>NEXT SECTOR</span>
+                  <strong>WAVE {transitionWave}</strong>
+                  <i aria-hidden="true" />
                 </div>
               </div>
             )}
