@@ -811,12 +811,20 @@ test("tracks independent per-ball skill cooldowns and applies common cooldown re
   const lab = await readFile(new URL("../app/skill-lab/page.tsx", import.meta.url), "utf8");
   assert.match(source, /skillCooldowns: Partial<Record<ClassSkillId, number>>/);
   assert.match(source, /ball\.skillCooldowns\[skillId\] = Math\.max\(0/);
-  assert.match(source, /ball\.skillCooldowns\[id\] = skillCooldownSeconds/);
+  assert.match(source, /const cooldown = skillCooldownSeconds/);
   assert.match(source, /skillValue\("common-cooldown"/);
   assert.match(config, /export const SKILL_COOLDOWNS/);
   assert.match(config, /passiveSkill\("common-cooldown", "재사용 가속"/);
   assert.match(lab, /공별 독립 쿨타임/);
   assert.match(lab, /updateCooldown/);
+});
+
+test("shows a skill-specific effect on the ball whenever its cooldown activates", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /activeSkillEffects: Partial<Record<ClassSkillId, number>>/);
+  assert.match(source, /ball\.activeSkillEffects\[id\] = Math\.min/);
+  assert.match(source, /delete ball\.activeSkillEffects\[skillId\]/);
+  assert.match(source, /Object\.entries\(ball\.activeSkillEffects\)/);
 });
 
 test("layers screen shake, flashes, impact visuals, and stronger synthesized sound", async () => {

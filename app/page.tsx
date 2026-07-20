@@ -72,6 +72,7 @@ type Ball = {
   gravityRescueCooldown: number;
   skillCharges: Partial<Record<ClassSkillId, number>>;
   skillCooldowns: Partial<Record<ClassSkillId, number>>;
+  activeSkillEffects: Partial<Record<ClassSkillId, number>>;
   visualSkill: ClassSkillId | null;
   temporaryTime: number;
   waveBonus: boolean;
@@ -450,6 +451,7 @@ function clearBallEnchantments(ball: Ball, upgrades: UpgradeId[] = []) {
   ball.gravityRescueCooldown = 0;
   ball.skillCharges = {};
   ball.skillCooldowns = {};
+  ball.activeSkillEffects = {};
   ball.visualSkill = null;
 }
 
@@ -618,7 +620,7 @@ function makeInitialBricks(ghostCount: number, balance: BalanceConfig): Brick[] 
 
 function makePlayerBall(upgrades: UpgradeId[], x = W / 2): Ball {
   const speed = 1 + upgrades.filter((u) => u === "speed").length * 0.12;
-  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8 + skillValue("common-ball-size", upgradeLevel(upgrades, "common-ball-size")), owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false };
+  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8 + skillValue("common-ball-size", upgradeLevel(upgrades, "common-ball-size")), owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, skillCharges: {}, skillCooldowns: {}, activeSkillEffects: {}, visualSkill: null, temporaryTime: 0, waveBonus: false };
   syncBallPayloadDisplay(ball, upgrades);
   return ball;
 }
@@ -1294,7 +1296,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.bossAttackPattern ??= 0;
     game.bossMultiballsRemaining ??= 0;
     game.bossPending ??= false;
-    game.balls.forEach((ball) => { ball.sourcePaddleId ??= "player"; ball.attackPower ??= 1; ball.missileTime ??= 0; ball.missileHitCooldown ??= 0; ball.skillCharges ??= {}; ball.skillCooldowns ??= {}; ball.visualSkill ??= null; ball.temporaryTime ??= 0; ball.waveBonus ??= false; });
+    game.balls.forEach((ball) => { ball.sourcePaddleId ??= "player"; ball.attackPower ??= 1; ball.missileTime ??= 0; ball.missileHitCooldown ??= 0; ball.skillCharges ??= {}; ball.skillCooldowns ??= {}; ball.activeSkillEffects ??= {}; ball.visualSkill ??= null; ball.temporaryTime ??= 0; ball.waveBonus ??= false; });
     game.shakeStrength ??= 0;
     game.shakeTime ??= 0;
     game.shakeDuration ??= 0;
@@ -1915,6 +1917,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             gravityRescueCooldown: 0,
             skillCharges: {},
             skillCooldowns: {},
+            activeSkillEffects: {},
             temporaryTime: 0,
             waveBonus: true,
           };
@@ -1945,6 +1948,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       Object.keys(ball.skillCooldowns).forEach((id) => {
         const skillId = id as ClassSkillId;
         ball.skillCooldowns[skillId] = Math.max(0, (ball.skillCooldowns[skillId] ?? 0) - dt);
+      });
+      ball.activeSkillEffects ??= {};
+      Object.keys(ball.activeSkillEffects).forEach((id) => {
+        const skillId = id as ClassSkillId;
+        const remaining = Math.max(0, (ball.activeSkillEffects[skillId] ?? 0) - dt);
+        if (remaining <= 0) delete ball.activeSkillEffects[skillId];
+        else ball.activeSkillEffects[skillId] = remaining;
       });
       const permanentOwner = paddleFor(ball.sourcePaddleId);
       const berserkerLevel = upgradeLevel(permanentOwner.upgrades, "warrior-berserker");
@@ -2066,6 +2076,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               payloads: { ...ball.payloads },
               skillCharges: {},
               skillCooldowns: {},
+              activeSkillEffects: {},
               visualSkill: skillId,
               x: ball.x + offset,
               vx: ball.vx * (offset < 0 ? -0.86 : 0.86),
@@ -2338,7 +2349,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         };
         const consumeBallSkill = (id: ClassSkillId, level: number) => {
           if (level <= 0) return;
-          ball.skillCooldowns[id] = skillCooldownSeconds(id, level, sourcePaddle.upgrades);
+          const cooldown = skillCooldownSeconds(id, level, sourcePaddle.upgrades);
+          ball.skillCooldowns[id] = cooldown;
+          ball.activeSkillEffects[id] = Math.min(1.2, Math.max(0.55, cooldown * 0.35));
           activatedImpactSkills.add(id);
           skillMetricFor(id).activations++;
         };
@@ -2427,6 +2440,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               payloads: { ...ball.payloads },
               skillCharges: { ...ball.skillCharges },
               skillCooldowns: { ...ball.skillCooldowns },
+              activeSkillEffects: { ...ball.activeSkillEffects },
               x: ball.x + offset,
               vx: ball.vx * (offset === 0 ? -0.88 : offset < 0 ? -0.82 : 0.82),
               vy: -Math.abs(ball.vy),
@@ -3398,7 +3412,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ctx.arc(ball.x, ball.y, visualRadius + 3 + ring * 3, 0, Math.PI * 2);
         ctx.stroke();
       }
-      const activeClassCharges = Object.entries(ball.skillCharges).filter(([, level]) => (level ?? 0) > 0) as Array<[ClassSkillId, number]>;
+      const activeClassCharges = Object.entries(ball.activeSkillEffects)
+        .filter(([, remaining]) => (remaining ?? 0) > 0)
+        .map(([id]) => [id as ClassSkillId, upgradeLevel(game.upgrades, id as ClassSkillId)] as [ClassSkillId, number]);
+      Object.entries(ball.skillCharges).forEach(([id, level]) => {
+        if ((level ?? 0) > 0 && !activeClassCharges.some(([activeId]) => activeId === id)) activeClassCharges.push([id as ClassSkillId, level ?? 1]);
+      });
       if (ball.visualSkill && !activeClassCharges.some(([id]) => id === ball.visualSkill)) activeClassCharges.push([ball.visualSkill, 1]);
       activeClassCharges.slice(0, 4).forEach(([id, level], index) => {
         const mageSpellVariant = id === "mage-fireball" ? 0 : id === "mage-lightning" ? 1 : -1;
