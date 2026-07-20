@@ -363,7 +363,7 @@ test("keeps ball bodies unified and distinguishes power and skills with effects"
   assert.match(source, /const orbitRadius =/);
   assert.match(source, /visualSkill: ClassSkillId \| null/);
   assert.match(source, /visualSkill: skillId/);
-  assert.match(source, /activeClassCharges\.push\(\[ball\.visualSkill, 1\]\)/);
+  assert.match(source, /\(ball\.skillCooldowns\[id\] \?\? 0\) <= 0/);
   assert.match(source, /const SKILL_ICONS/);
   assert.match(source, /const drawSkillPanel/);
   assert.match(source, /ATK/);
@@ -415,6 +415,7 @@ test("renders item multiballs gray and removes them after the wave", async () =>
   assert.match(source, /const WAVE_MULTIBALL_COLOR = "#9aa3b2"/);
   assert.match(source, /waveBonus: boolean/);
   assert.match(source, /waveBonus: true/);
+  assert.match(source, /ball\.temporaryTime > 0 \|\| ball\.visualSkill !== null \? WAVE_MULTIBALL_COLOR/);
   assert.match(source, /const drawColor = ballBodyColor\(ball\)/);
   assert.match(source, /lostBaseBall/);
 });
@@ -819,12 +820,11 @@ test("tracks independent per-ball skill cooldowns and applies common cooldown re
   assert.match(lab, /updateCooldown/);
 });
 
-test("shows a skill-specific effect on the ball whenever its cooldown activates", async () => {
+test("shows ball skill effects only while each per-ball cooldown is ready", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /activeSkillEffects: Partial<Record<ClassSkillId, number>>/);
-  assert.match(source, /ball\.activeSkillEffects\[id\] = Math\.min/);
-  assert.match(source, /delete ball\.activeSkillEffects\[skillId\]/);
-  assert.match(source, /Object\.entries\(ball\.activeSkillEffects\)/);
+  assert.match(source, /const activeClassCharges = \[\.\.\.new Set\(game\.upgrades\)\]/);
+  assert.match(source, /cooldown > 0 && \(ball\.skillCooldowns\[id\] \?\? 0\) <= 0/);
+  assert.doesNotMatch(source, /activeSkillEffects/);
 });
 
 test("layers screen shake, flashes, impact visuals, and stronger synthesized sound", async () => {
