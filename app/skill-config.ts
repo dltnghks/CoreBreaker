@@ -20,7 +20,8 @@ export type ClassSkillId =
   | "archer-arrow-rain" | "archer-infinite"
   | "mage-fireball" | "mage-lightning" | "mage-freeze" | "mage-black-hole" | "mage-mana-blast"
   | "mage-elemental-storm" | "mage-meteor"
-  | "common-magnet" | "common-luck" | "common-wide" | "common-xp" | "common-combo";
+  | "common-magnet" | "common-luck" | "common-wide" | "common-xp" | "common-combo"
+  | "common-ball-size" | "common-skill-range" | "common-chain" | "common-damage";
 
 export type LegacyUpgradeId =
   | "pierce" | "blast" | "glass" | "link" | "speed" | "wide" | "magnet" | "chain" | "fever"
@@ -86,6 +87,10 @@ export const SKILL_COLORS: Record<ClassSkillId, string> = {
   "common-wide": "#7dd3fc",
   "common-xp": "#8afff5",
   "common-combo": "#f0abfc",
+  "common-ball-size": "#fef08a",
+  "common-skill-range": "#c4b5fd",
+  "common-chain": "#86efac",
+  "common-damage": "#fb7185",
 };
 
 const SKILL_MECHANICS: Record<ClassSkillId, SkillMechanic> = {
@@ -115,6 +120,10 @@ const SKILL_MECHANICS: Record<ClassSkillId, SkillMechanic> = {
   "common-wide": "passive",
   "common-xp": "passive",
   "common-combo": "passive",
+  "common-ball-size": "passive",
+  "common-skill-range": "passive",
+  "common-chain": "passive",
+  "common-damage": "passive",
 };
 
 export const SKILL_EVOLUTIONS: Partial<Record<ClassSkillId, string>> = {
@@ -220,6 +229,10 @@ export const DEFAULT_SKILLS: SkillConfig[] = [
   passiveSkill("common-wide", "패들 확장", "패들 길이 증가", "플레이어 패들의 실제 충돌 범위와 표시 길이가 증가합니다.", [20, 35, 50], "px"),
   passiveSkill("common-xp", "코어 강화", "CORE 최대 체력 증가", "CORE 최대 체력과 현재 체력이 함께 증가합니다.", [1, 2, 3], "HP"),
   passiveSkill("common-combo", "콤보 안정화", "콤보 유지 시간 증가", "브릭을 파괴한 뒤 콤보가 끊기기까지의 시간이 증가합니다.", [0.6, 1.2, 2], "초"),
+  passiveSkill("common-ball-size", "공 거대화", "공 반경 증가", "공의 실제 충돌 반경과 화면에 표시되는 크기가 증가합니다.", [1, 2, 3], "px"),
+  passiveSkill("common-skill-range", "범위 증폭", "범위형 스킬 반경 증가", "충격파·화염구·블랙홀과 충돌 파동의 실제 적용 범위가 증가합니다.", [10, 20, 30], "%"),
+  passiveSkill("common-chain", "연계 증폭", "연쇄 대상 수 증가", "도탄 화살과 연쇄 번개가 한 번에 연결하는 블럭 수가 증가합니다.", [1, 2, 3], "회"),
+  passiveSkill("common-damage", "공격 강화", "공 직접 피해 증가", "모든 기본 공과 임시 공이 블럭에 직접 충돌할 때 주는 피해가 증가합니다.", [1, 2, 3], "DMG"),
 ];
 
 export const ULTIMATE_SKILL_IDS = new Set<ClassSkillId>(DEFAULT_SKILLS.filter((entry) => entry.ultimate).map((entry) => entry.id));

@@ -4,7 +4,7 @@ import { DEFAULT_BENCHMARK_CONFIG, type BenchmarkConfig } from "./benchmark-conf
 import { waveDefinition } from "./wave-config";
 
 export type HeadlessBotPolicy = "balanced" | "survival" | "random";
-export const PARALLEL_BENCHMARK_RULESET = "parallel-v5" as const;
+export const PARALLEL_BENCHMARK_RULESET = "parallel-v6" as const;
 const OVERDRIVE_THRESHOLDS = [30, 50, 70, 90] as const;
 const OVERDRIVE_STEP = 0.05;
 

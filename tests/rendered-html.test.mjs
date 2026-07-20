@@ -36,6 +36,8 @@ test("steers paddle rebounds with pointer movement and removes keyboard controls
   assert.match(source, /paddle\.velocity \* PADDLE_ENGLISH_FACTOR/);
   assert.match(source, /const rawContactTime = verticalTravel > 0/);
   assert.match(source, /const alreadyTouchingTop = previousBallY <= paddle\.y \+ PADDLE_COLLISION_SLOP/);
+  assert.match(source, /const sideDepthContact =/);
+  assert.match(source, /PADDLE_SIDE_FORGIVENESS/);
   assert.match(source, /const paddleContactX = paddle\.previousX \+ \(paddle\.x - paddle\.previousX\) \* contactTime/);
   assert.match(source, /const reboundSpeed = .*Math\.hypot\(ball\.vx, ball\.vy\)/);
   assert.match(source, /ball\.vy = -Math\.sqrt/);
@@ -274,7 +276,7 @@ test("renders beam links and clears wave-scoped skill state", async () => {
   assert.match(source, /const beamGradient = ctx\.createLinearGradient/);
   assert.match(source, /delete ball\.skillCharges\["archer-pierce"\]/);
   assert.match(source, /function clearBallEnchantments/);
-  assert.match(source, /clearBallEnchantments\(ball\)/);
+  assert.match(source, /clearBallEnchantments\(ball, game\.upgrades\)/);
   assert.match(source, /const clearWaveScopedSkillState/);
   assert.match(source, /game\.balls\.forEach\(clearBallEnchantments\)/);
   assert.match(source, /game\.paddleCounters\[id\] = newPaddleCounter\(\)/);
@@ -726,7 +728,7 @@ test("separates impact shockwave damage from fireball damage over time", async (
   assert.match(source, /near\.burnTime = Math\.max\(near\.burnTime, 2 \+ level\)/);
   assert.match(source, /recordSkillImpact\("mage-fireball"/);
   assert.match(source, /BURN \$\{Math\.max\(0, Math\.ceil\(brick\.burnTime\)\)\}s/);
-  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v5"/);
+  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v6"/);
   assert.match(benchmark, /skill\.id === "warrior-shockwave"/);
   assert.match(benchmark, /skill\.id === "mage-fireball"/);
 });
@@ -763,7 +765,7 @@ test("adds common utility skills to gameplay, Skill Lab, and skill benchmarks", 
   const config = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
   const lab = await readFile(new URL("../app/skill-lab/page.tsx", import.meta.url), "utf8");
   const bench = await readFile(new URL("../app/skill-lab/skill-bench.tsx", import.meta.url), "utf8");
-  ["common-magnet", "common-luck", "common-wide", "common-xp", "common-combo"].forEach((id) => assert.match(config, new RegExp(`"${id}"`)));
+  ["common-magnet", "common-luck", "common-wide", "common-xp", "common-combo", "common-ball-size", "common-skill-range", "common-chain", "common-damage"].forEach((id) => assert.match(config, new RegExp(`"${id}"`)));
   assert.match(config, /passiveSkill\("common-xp", "코어 강화", "CORE 최대 체력 증가"/);
   assert.match(source, /if \(upgrade\.id === "common-xp"\)/);
   assert.match(source, /game\.maxCoreHp \+= coreGain/);
@@ -771,6 +773,10 @@ test("adds common utility skills to gameplay, Skill Lab, and skill benchmarks", 
   assert.match(source, /skillValue\("common-luck"/);
   assert.match(source, /skillValue\("common-wide"/);
   assert.match(source, /skillValue\("common-combo"/);
+  assert.match(source, /commonSkillRangeMultiplier/);
+  assert.match(source, /commonChainBonus/);
+  assert.match(source, /8 \+ skillValue\("common-ball-size"/);
+  assert.match(source, /1 \+ commonDamage/);
   assert.match(lab, /common: "공용"/);
   assert.match(bench, /common: "공용"/);
 });
@@ -921,6 +927,8 @@ test("evolves every normal class skill at level three", async () => {
   assert.match(config, /export const SKILL_EVOLUTIONS/);
   ["warrior-smash", "warrior-shockwave", "warrior-execute", "warrior-crush", "warrior-guard", "archer-rapid", "archer-pierce", "archer-ricochet", "archer-focus", "archer-weakpoint", "mage-fireball", "mage-lightning", "mage-freeze", "mage-black-hole", "mage-mana-blast"].forEach((id) => assert.match(config, new RegExp(`"${id}"`)));
   assert.match(source, /LV3 EVOLUTION/);
+  assert.match(source, /currentLevel === 2 && config!\.evolution/);
+  assert.doesNotMatch(source, /config\.evolution && <p className="upgrade-evolution"/);
   assert.match(source, /const waveQueue: Brick\[\] = \[origin\]/);
   assert.match(source, /const evolvedChain = Math\.max\(ricochetLevel, lightningLevel\) >= 3/);
   assert.match(source, /upgradeLevel\(firePaddle\.upgrades, "mage-fireball"\) >= 3/);
@@ -928,6 +936,13 @@ test("evolves every normal class skill at level three", async () => {
   assert.match(source, /executeLevel >= 3 \? 0\.4 : 0\.25/);
   assert.match(source, /wellLife = level >= 3 \? 6 : 3\.5/);
   assert.match(lab, /LV3 진화 규칙/);
+});
+
+test("limits freeze visuals to marked bricks", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /emitSkillEffect\("mage-freeze", targetX, targetY/);
+  assert.doesNotMatch(source, /emitSkillEffect\("mage-freeze", W \/ 2, BRICK_ROW_Y/);
+  assert.match(source, /if \(brick\.frostVulnerability > 0\)/);
 });
 
 test("turns ultimates into build amplifiers", async () => {
