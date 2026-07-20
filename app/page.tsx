@@ -222,6 +222,7 @@ const MAGE_SPELL_ASSETS = ["/assets/vfx/mage-fireball.png", "/assets/vfx/mage-sp
 const MAGE_SPELL_FRAME_SIZE = 16;
 const MAGE_SPELL_FRAMES = 6;
 const MAX_PADDLE_ENGLISH = 220;
+const MIN_VERTICAL_SPEED_RATIO = 0.32;
 const PLAYER_BALL_COLOR = "#fff27a";
 const WAVE_MULTIBALL_COLOR = "#9aa3b2";
 const BARRIER_COLOR = "#58a6ff";
@@ -263,6 +264,16 @@ function circleRectangleCollision(ball: Pick<Ball, "x" | "y" | "radius">, brick:
   return { normalX: exit.normalX, normalY: exit.normalY, penetration: Math.max(0, penetration) };
 }
 
+function ensureMinimumVerticalAngle(ball: Pick<Ball, "vx" | "vy">, fallbackDirection = -1) {
+  const speed = Math.max(1, Math.hypot(ball.vx, ball.vy));
+  const minimumVerticalSpeed = speed * MIN_VERTICAL_SPEED_RATIO;
+  if (Math.abs(ball.vy) >= minimumVerticalSpeed) return;
+  const verticalDirection = Math.sign(ball.vy) || Math.sign(fallbackDirection) || -1;
+  const horizontalDirection = Math.sign(ball.vx) || 1;
+  ball.vy = verticalDirection * minimumVerticalSpeed;
+  ball.vx = horizontalDirection * Math.sqrt(Math.max(0, speed * speed - minimumVerticalSpeed * minimumVerticalSpeed));
+}
+
 function separateAndReflectBall(ball: Ball, collision: { normalX: number; normalY: number; penetration: number }) {
   ball.x += collision.normalX * (collision.penetration + 0.1);
   ball.y += collision.normalY * (collision.penetration + 0.1);
@@ -270,6 +281,7 @@ function separateAndReflectBall(ball: Ball, collision: { normalX: number; normal
   if (approachSpeed >= 0) return;
   ball.vx -= 2 * approachSpeed * collision.normalX;
   ball.vy -= 2 * approachSpeed * collision.normalY;
+  ensureMinimumVerticalAngle(ball, collision.normalY);
 }
 
 function seededRandom(seed: number) {
@@ -2029,9 +2041,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const previousBallY = ball.y;
       ball.x += ball.vx * dt;
       ball.y += ball.vy * dt;
-      if (ball.x < ball.radius) { ball.x = ball.radius; ball.vx = Math.abs(ball.vx); }
-      if (ball.x > W - ball.radius) { ball.x = W - ball.radius; ball.vx = -Math.abs(ball.vx); }
-      if (ball.y < ball.radius) { ball.y = ball.radius; ball.vy = Math.abs(ball.vy); }
+      if (ball.x < ball.radius) { ball.x = ball.radius; ball.vx = Math.abs(ball.vx); ensureMinimumVerticalAngle(ball); }
+      if (ball.x > W - ball.radius) { ball.x = W - ball.radius; ball.vx = -Math.abs(ball.vx); ensureMinimumVerticalAngle(ball); }
+      if (ball.y < ball.radius) { ball.y = ball.radius; ball.vy = Math.abs(ball.vy); ensureMinimumVerticalAngle(ball, 1); }
 
       if (ball.vy > 0) {
         for (const paddle of paddles) {
@@ -2058,6 +2070,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           const horizontalRatio = Math.max(-MAX_PADDLE_REBOUND_RATIO, Math.min(MAX_PADDLE_REBOUND_RATIO, hit * 0.74 + paddleEnglish / reboundSpeed));
           ball.vx = horizontalRatio * reboundSpeed;
           ball.vy = -Math.sqrt(Math.max(1, reboundSpeed * reboundSpeed - ball.vx * ball.vx));
+          ensureMinimumVerticalAngle(ball, -1);
           ball.x = contactX;
           ball.y = paddle.y - ball.radius - 0.1;
           ball.sourcePaddleId = paddle.id;
@@ -2300,6 +2313,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           const owner = paddleFor(safetyBlock.ownerPaddleId);
           ball.y = safetyBlock.y - ball.radius;
           ball.vy = -Math.max(250, Math.abs(ball.vy));
+          ensureMinimumVerticalAngle(ball, -1);
           ball.sourcePaddleId = owner.id;
           grantPaddlePayloads(ball, owner.upgrades);
           game.safetyBlocks = game.safetyBlocks.filter((block) => block !== safetyBlock);
@@ -2314,6 +2328,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         if (ball.missileTime > 0) {
           ball.y = H - 45;
           ball.vy = -Math.max(260, Math.abs(ball.vy));
+          ensureMinimumVerticalAngle(ball, -1);
           continue;
         }
         lostPlayerBalls.add(ball);
@@ -2330,6 +2345,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         if (brick.trait === "reflector" && brick.traitLockTime <= 0 && ball.vy < 0 && collision.normalY > 0) {
           ball.y = brick.y + brick.h + ball.radius;
           ball.vy = Math.abs(ball.vy);
+          ensureMinimumVerticalAngle(ball, 1);
           emitEffect("ring", ball.x, brick.y + brick.h, "#65dcff", 46, ball.x, brick.y + brick.h, 0.42);
           emitBurst(ball.x, brick.y + brick.h, "#65dcff", 9, 180);
           game.flashes.push({ text: "REFLECT // UNDERSIDE", x: brick.x + brick.w / 2, y: brick.y + brick.h + 18, life: 0.65, color: "#65dcff" });

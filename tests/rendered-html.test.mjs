@@ -61,6 +61,17 @@ test("ramps ball speed by wave elapsed time and resolves circular brick collisio
   assert.match(benchmark, /const overdriveRisk = overdriveLevelAt\(waveElapsed\) \* 0\.012/);
 });
 
+test("guarantees a minimum vertical angle after every reflection", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /const MIN_VERTICAL_SPEED_RATIO = 0\.32/);
+  assert.match(source, /function ensureMinimumVerticalAngle/);
+  assert.match(source, /const minimumVerticalSpeed = speed \* MIN_VERTICAL_SPEED_RATIO/);
+  assert.match(source, /Math\.sqrt\(Math\.max\(0, speed \* speed - minimumVerticalSpeed \* minimumVerticalSpeed\)\)/);
+  assert.match(source, /ensureMinimumVerticalAngle\(ball, collision\.normalY\)/);
+  assert.match(source, /ball\.vx = Math\.abs\(ball\.vx\); ensureMinimumVerticalAngle\(ball\)/);
+  assert.match(source, /ball\.vy = -Math\.sqrt[\s\S]{0,180}ensureMinimumVerticalAngle\(ball, -1\)/);
+});
+
 test.skip("server-renders the legacy Skill Lab", async () => {
   const response = await render("/skill-lab");
   assert.equal(response.status, 200);
