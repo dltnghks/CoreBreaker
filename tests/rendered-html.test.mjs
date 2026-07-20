@@ -783,6 +783,29 @@ test("adds common utility skills to gameplay, Skill Lab, and skill benchmarks", 
   assert.match(bench, /common: "공용"/);
 });
 
+test("uses neutral common colors and highlights explicit skill values", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const config = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
+  const globalCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const lab = await readFile(new URL("../app/skill-lab/page.tsx", import.meta.url), "utf8");
+  const labCss = await readFile(new URL("../app/skill-lab/skill-lab.module.css", import.meta.url), "utf8");
+  const commonColors = [...config.matchAll(/"common-[^"]+": "(#[0-9a-f]+)"/g)].map((match) => match[1]);
+  assert.equal(commonColors.length, 9);
+  assert.ok(commonColors.every((color) => color === "#9aa3b2"));
+  assert.match(source, /common: \{ tag: "COMMON", color: "#9aa3b2" \}/);
+  assert.match(lab, /common: "#9aa3b2"/);
+  assert.match(config, /"스킬의 적용 범위가 10\/20\/30% 증가합니다\."/);
+  assert.match(config, /"스킬의 연계 횟수가 1\/2\/3회 증가합니다\."/);
+  assert.match(config, /"공의 최종 반경이 9\/10\/11px로 증가합니다\."/);
+  assert.match(config, /"공의 기본 직접 피해가 2\/3\/4로 증가합니다\."/);
+  assert.doesNotMatch(config, /"[^"]*(?:LV만큼|LV\+1|2\+LV|레벨에 따라)[^"]*", \[/);
+  assert.match(source, /function SkillDescriptionText/);
+  assert.match(source, /className=.*skill-value-accent/);
+  assert.match(globalCss, /\.skill-value-accent/);
+  assert.match(lab, /styles\.valueAccent/);
+  assert.match(labCss, /\.valueAccent/);
+});
+
 test("layers screen shake, flashes, impact visuals, and stronger synthesized sound", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const audio = await readFile(new URL("../app/game-audio.ts", import.meta.url), "utf8");

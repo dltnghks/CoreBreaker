@@ -322,7 +322,7 @@ const CLASS_META: Record<SkillCategory, { tag: string; color: string }> = {
   warrior: { tag: "WARRIOR", color: "#ff6b57" },
   archer: { tag: "ARCHER", color: "#72f1b8" },
   mage: { tag: "MAGE", color: "#9a8cff" },
-  common: { tag: "COMMON", color: "#5ce8e0" },
+  common: { tag: "COMMON", color: "#9aa3b2" },
 };
 
 function createUpgradeCatalog(skills: SkillConfig[]): Upgrade[] {
@@ -335,6 +335,15 @@ function createUpgradeCatalog(skills: SkillConfig[]): Upgrade[] {
     description: skill.description,
     color: skill.color,
   }));
+}
+
+const SKILL_VALUE_PARTS = /([+-]?\d+(?:\.\d+)?(?:\/[+-]?\d+(?:\.\d+)?)*(?:~[+-]?\d+(?:\.\d+)?)?(?:%|px|초|개|배|DMG|HP|회|발)?)/g;
+const SKILL_VALUE_EXACT = /^[+-]?\d+(?:\.\d+)?(?:\/[+-]?\d+(?:\.\d+)?)*(?:~[+-]?\d+(?:\.\d+)?)?(?:%|px|초|개|배|DMG|HP|회|발)?$/;
+
+function SkillDescriptionText({ text }: { text: string }) {
+  return <>{text.split(SKILL_VALUE_PARTS).filter(Boolean).map((part, index) => (
+    <span key={`${part}-${index}`} className={SKILL_VALUE_EXACT.test(part) ? "skill-value-accent" : undefined}>{part}</span>
+  ))}</>;
 }
 
 let activeSkillMap = skillConfigMap(DEFAULT_SKILLS);
@@ -3038,7 +3047,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       if (rangeBonus <= 0) return;
       const range = width / 2 + rangeBonus;
       ctx.save();
-      ctx.strokeStyle = "#5ce8e0";
+      ctx.strokeStyle = classSkillColor("common-magnet");
       ctx.lineWidth = 1.5;
       ctx.setLineDash([4, 6]);
       game.items.forEach((item) => {
@@ -4421,7 +4430,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                         <strong>{upgrade.name}</strong>
                         <div className="upgrade-level-values"><span className="next"><small>START</small><b>{config.levels[0]}{config.unit}</b></span></div>
                         <em>{initialSelectedIds.length === 0 ? "FIRST PICK" : "SECOND PICK"}</em>
-                        <div className="upgrade-tooltip" role="tooltip"><span>발동 조건</span><b>{config.trigger}</b><p>{config.description}</p></div>
+                        <div className="upgrade-tooltip" role="tooltip"><span>발동 조건</span><b>{config.trigger}</b><p><SkillDescriptionText text={config.description} /></p></div>
                       </button>
                     );
                   })}
@@ -4468,8 +4477,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                         <em>{currentLevel === 2 && config?.evolution ? "LV3 EVOLUTION" : currentLevel > 0 ? `LV ${currentLevel + 1} 획득` : "NEW SKILL"}</em>
                         <div className="upgrade-tooltip" role="tooltip">
                           <span>발동 조건</span><b>{config!.trigger}</b>
-                          <p>{config!.description}</p>
-                          {currentLevel === 2 && config!.evolution && <p className="upgrade-evolution"><b>LV3 진화</b>{config!.evolution}</p>}
+                          <p><SkillDescriptionText text={config!.description} /></p>
+                          {currentLevel === 2 && config!.evolution && <p className="upgrade-evolution"><b>LV3 진화</b><SkillDescriptionText text={config!.evolution} /></p>}
                         </div>
                       </button>
                     );
@@ -4492,7 +4501,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                       <span className="upgrade-index">0{index + 1}</span>
                       <span className="upgrade-tag">{reward.tag}</span>
                       <strong>{reward.name}</strong>
-                      <p>{reward.description}</p>
+                      <p><SkillDescriptionText text={reward.description} /></p>
                       <em>LEGENDARY</em>
                     </button>
                   ))}

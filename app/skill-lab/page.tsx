@@ -17,11 +17,20 @@ const CATEGORY_COLORS: Record<SkillCategory, string> = {
   warrior: "#ff6b57",
   archer: "#72f1b8",
   mage: "#9a8cff",
-  common: "#5ce8e0",
+  common: "#9aa3b2",
 };
 
 const categoryStyle = (category: SkillCategory) => ({ "--category-color": CATEGORY_COLORS[category] }) as CSSProperties;
 const skillStyle = (skill: SkillConfig) => ({ "--category-color": skill.color }) as CSSProperties;
+
+const SKILL_VALUE_PARTS = /([+-]?\d+(?:\.\d+)?(?:\/[+-]?\d+(?:\.\d+)?)*(?:~[+-]?\d+(?:\.\d+)?)?(?:%|px|초|개|배|DMG|HP|회|발)?)/g;
+const SKILL_VALUE_EXACT = /^[+-]?\d+(?:\.\d+)?(?:\/[+-]?\d+(?:\.\d+)?)*(?:~[+-]?\d+(?:\.\d+)?)?(?:%|px|초|개|배|DMG|HP|회|발)?$/;
+
+function SkillDescriptionText({ text }: { text: string }) {
+  return <>{text.split(SKILL_VALUE_PARTS).filter(Boolean).map((part, index) => (
+    <span key={`${part}-${index}`} className={SKILL_VALUE_EXACT.test(part) ? styles.valueAccent : undefined}>{part}</span>
+  ))}</>;
+}
 
 const SYNERGIES: Array<{ ids: string[]; label: string }> = [
   { ids: ["warrior-smash", "warrior-shockwave"], label: "강타로 파괴한 블록에서 충격파 발생" },
@@ -138,7 +147,7 @@ export default function SkillLab() {
           {visibleSkills.map((skill) => (
             <button key={skill.id} className={`${styles.skillCard} ${selected.id === skill.id ? styles.selected : ""}`} style={skillStyle(skill)} onClick={() => setSelectedId(skill.id)}>
               <span>{CATEGORY_LABELS[skill.category]} · {SKILL_MECHANIC_LABELS[skill.mechanic]} · {skill.ultimate ? "보스 궁극기" : "일반 스킬"}</span><strong>{skill.name}</strong><small><b>발동</b> {skill.trigger}</small>
-              <p className={styles.description}>{skill.description}</p>
+              <p className={styles.description}><SkillDescriptionText text={skill.description} /></p>
               <em>{skill.levels.map((value) => `${value}${skill.unit}`).join(" / ")} · {skill.evolution ? "LV3 EVOLUTION" : skill.ultimate ? "ULTIMATE" : "REFLECTION"}</em>
             </button>
           ))}

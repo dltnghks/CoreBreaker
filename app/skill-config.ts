@@ -82,15 +82,15 @@ export const SKILL_COLORS: Record<ClassSkillId, string> = {
   "mage-mana-blast": "#d66bff",
   "mage-elemental-storm": "#c18cff",
   "mage-meteor": "#ff8a3d",
-  "common-magnet": "#5ce8e0",
-  "common-luck": "#ffd166",
-  "common-wide": "#7dd3fc",
-  "common-xp": "#8afff5",
-  "common-combo": "#f0abfc",
-  "common-ball-size": "#fef08a",
-  "common-skill-range": "#c4b5fd",
-  "common-chain": "#86efac",
-  "common-damage": "#fb7185",
+  "common-magnet": "#9aa3b2",
+  "common-luck": "#9aa3b2",
+  "common-wide": "#9aa3b2",
+  "common-xp": "#9aa3b2",
+  "common-combo": "#9aa3b2",
+  "common-ball-size": "#9aa3b2",
+  "common-skill-range": "#9aa3b2",
+  "common-chain": "#9aa3b2",
+  "common-damage": "#9aa3b2",
 };
 
 const SKILL_MECHANICS: Record<ClassSkillId, SkillMechanic> = {
@@ -201,25 +201,25 @@ const passiveSkill = (
 });
 
 export const DEFAULT_SKILLS: SkillConfig[] = [
-  skill("warrior-smash", "강타", "warrior", "패들 반사 횟수 충전", "다음 공격 피해 증가", "충전이 완료된 공의 다음 직접 공격이 LV만큼 추가 피해를 줍니다.", [3, 2, 1]),
+  skill("warrior-smash", "강타", "warrior", "패들 반사 횟수 충전", "다음 공격 피해 증가", "충전이 완료된 공의 다음 직접 공격에 +1/+2/+3 피해가 추가됩니다.", [3, 2, 1]),
   skill("warrior-shockwave", "충격파", "warrior", "패들 반사 횟수 충전", "다음 충돌 시 주변 즉발 피해", "충전된 공이 블럭에 충돌하는 즉시 주변 블럭에 충격파 피해를 줍니다.", [6, 5, 4]),
   skill("warrior-execute", "처형", "warrior", "패들 반사 횟수 충전", "저체력 블럭 즉시 파괴", "충전된 공이 현재 체력 25% 이하인 일반 블럭을 즉시 파괴합니다.", [7, 5, 3]),
-  skill("warrior-crush", "분쇄", "warrior", "패들 반사 횟수 충전", "가드 파괴·특수 블록 추가 피해", "충전된 공은 가드를 제거하고 폭발·회복·반사 블록에 LV+1의 추가 피해를 줍니다.", [5, 4, 3]),
+  skill("warrior-crush", "분쇄", "warrior", "패들 반사 횟수 충전", "가드 파괴·특수 블록 추가 피해", "충전된 공은 가드를 제거하고 폭발·회복·반사 블록에 +2/+3/+4 피해를 추가합니다.", [5, 4, 3]),
   skill("warrior-guard", "철벽", "warrior", "패들 반사 횟수 충전", "CORE LINE 방어막 충전", "충전 완료 시 CORE LINE 피해를 한 번 막는 방어막을 얻습니다.", [14, 11, 8]),
   skill("warrior-earthquake", "대지 분쇄", "warrior", "패들 반사 횟수 충전", "필드 타격 · 여진 활성화", "모든 블럭에 1 피해를 주고, 이번 웨이브 동안 직접 충돌마다 주변에 작은 여진을 발생시킵니다.", [18, 14, 10], true),
   skill("warrior-berserker", "광전사", "warrior", "패들 반사 횟수 충전", "공 공격력·속도·충돌 범위 폭증", "충전된 공이 기본 공격력 +3, 25% 추가 속도와 공격력에 비례한 충돌 파동을 얻습니다.", [15, 12, 9], true),
 
-  skill("archer-rapid", "연사", "archer", "패들 반사 횟수 충전", "시간제 임시 화살 1발 생성", "충전 완료 시 현재 공을 복제한 임시 화살을 발사합니다. 화살은 레벨에 따라 약 4.75~6.25초 후 사라집니다.", [8, 6, 4]),
-  skill("archer-pierce", "관통 화살", "archer", "패들 반사 횟수 충전", "다음 공이 여러 블럭 관통", "충전된 공이 LV+1개의 블럭을 관통합니다.", [6, 5, 4]),
-  skill("archer-ricochet", "도탄 화살", "archer", "패들 반사 횟수 충전", "위험 특수 블럭 우선 도탄", "충전된 공이 적중하면 회복·폭발·가드·반사 블럭을 우선해 주변 블럭 LV개를 추가 공격합니다.", [5, 4, 3]),
-  skill("archer-focus", "집중 사격", "archer", "패들 반사 횟수 충전", "같은 블럭 재공격 강화", "충전된 공이 이미 같은 패들에 맞은 블럭을 공격하면 LV+1의 추가 피해를 줍니다.", [4, 3, 2]),
+  skill("archer-rapid", "연사", "archer", "패들 반사 횟수 충전", "시간제 임시 화살 1발 생성", "충전 완료 시 현재 공을 복제한 임시 화살을 발사합니다. 화살은 4.75/5.5/6.25초 동안 유지됩니다.", [8, 6, 4]),
+  skill("archer-pierce", "관통 화살", "archer", "패들 반사 횟수 충전", "다음 공이 여러 블럭 관통", "충전된 공이 블럭 2/3/4개를 관통합니다.", [6, 5, 4]),
+  skill("archer-ricochet", "도탄 화살", "archer", "패들 반사 횟수 충전", "위험 특수 블럭 우선 도탄", "충전된 공이 적중하면 회복·폭발·가드·반사 블럭을 우선해 주변 블럭 1/2/3개를 추가 공격합니다.", [5, 4, 3]),
+  skill("archer-focus", "집중 사격", "archer", "패들 반사 횟수 충전", "같은 블럭 재공격 강화", "충전된 공이 같은 패들로 이미 공격한 블럭에 적중하면 +2/+3/+4 피해를 추가합니다.", [4, 3, 2]),
   skill("archer-weakpoint", "약점 사격", "archer", "패들 반사 횟수 충전", "다음 공격 확정 치명타", "충전된 공의 다음 직접 공격 피해가 3배가 됩니다.", [8, 6, 4]),
-  skill("archer-arrow-rain", "화살비", "archer", "패들 반사 횟수 충전", "보유 궁수 스킬을 복제한 일제 사격", "관통·도탄·약점 사격 레벨에 따라 대상 수와 피해가 강화된 화살비를 발사합니다.", [20, 16, 12], true),
+  skill("archer-arrow-rain", "화살비", "archer", "패들 반사 횟수 충전", "보유 궁수 스킬을 복제한 일제 사격", "관통·도탄·약점 사격의 현재 수치에 따라 대상 수와 피해가 강화된 화살비를 발사합니다.", [20, 16, 12], true),
   skill("archer-infinite", "무한 탄창", "archer", "패들 반사 횟수 충전", "임시 화살 3발 · 궁수 스킬 복제", "임시 화살 3발을 발사하고, 이후 일반 궁수 스킬이 발동할 때마다 임시 화살 1발을 추가 발사합니다.", [16, 12, 8], true),
 
   skill("mage-fireball", "화염구", "mage", "패들 반사 횟수 충전", "주변 점화 · 회복 차단", "충전된 공이 블럭에 충돌하면 주변 블럭을 3/4/5초 동안 점화해 매초 피해를 주고 회복을 차단합니다.", [6, 5, 4]),
-  skill("mage-lightning", "연쇄 번개", "mage", "패들 반사 횟수 충전", "주변 블럭 연쇄 공격", "충전된 공이 적중한 블럭에서 주변 블럭 LV+1개로 번개가 연결됩니다.", [7, 5, 3]),
-  skill("mage-freeze", "빙결 표식", "mage", "패들 반사 횟수 충전", "회복·반사 봉인 · 다음 피격 강화", "체력이 높은 블록 2+LV개를 빙결합니다. 회복과 반사 특성은 3/4/5초간 봉인되고 다음 직접 피격 피해가 LV만큼 증가합니다.", [12, 9, 6]),
+  skill("mage-lightning", "연쇄 번개", "mage", "패들 반사 횟수 충전", "주변 블럭 연쇄 공격", "충전된 공이 적중한 블럭에서 주변 블럭 2/3/4개로 번개가 연결됩니다.", [7, 5, 3]),
+  skill("mage-freeze", "빙결 표식", "mage", "패들 반사 횟수 충전", "회복·반사 봉인 · 다음 피격 강화", "체력이 높은 블록 3/4/5개를 빙결합니다. 회복과 반사 특성은 3/4/5초간 봉인되고 다음 직접 피격에 +1/+2/+3 피해를 추가합니다.", [12, 9, 6]),
   skill("mage-black-hole", "블랙홀", "mage", "패들 반사 횟수 충전", "상단에 중력장 생성", "충전 완료 시 맵 상단에 공을 끌어당기는 블랙홀을 생성합니다.", [14, 11, 8]),
   skill("mage-mana-blast", "마력 봉인", "mage", "패들 반사 횟수 충전", "특수 블럭 기능 일시 봉인", "충전 완료 시 가까운 특수 블럭 2/3/4개의 가드·회복·반사 기능을 4/6/8초간 봉인합니다. 폭발 기능은 유지됩니다.", [10, 8, 6]),
   skill("mage-elemental-storm", "원소 폭풍", "mage", "패들 반사 횟수 충전", "화염·번개 충전 · 광역 빙결·봉인", "현재 공에 화염과 번개를 충전하고 체력이 높은 블럭에 빙결과 특성 봉인을 함께 적용합니다.", [18, 14, 10], true),
@@ -229,10 +229,10 @@ export const DEFAULT_SKILLS: SkillConfig[] = [
   passiveSkill("common-wide", "패들 확장", "패들 길이 증가", "플레이어 패들의 실제 충돌 범위와 표시 길이가 증가합니다.", [20, 35, 50], "px"),
   passiveSkill("common-xp", "코어 강화", "CORE 최대 체력 증가", "CORE 최대 체력과 현재 체력이 함께 증가합니다.", [1, 2, 3], "HP"),
   passiveSkill("common-combo", "콤보 안정화", "콤보 유지 시간 증가", "브릭을 파괴한 뒤 콤보가 끊기기까지의 시간이 증가합니다.", [0.6, 1.2, 2], "초"),
-  passiveSkill("common-ball-size", "공 거대화", "공 반경 증가", "공의 실제 충돌 반경과 화면에 표시되는 크기가 증가합니다.", [1, 2, 3], "px"),
-  passiveSkill("common-skill-range", "범위 증폭", "범위형 스킬 반경 증가", "충격파·화염구·블랙홀과 충돌 파동의 실제 적용 범위가 증가합니다.", [10, 20, 30], "%"),
-  passiveSkill("common-chain", "연계 증폭", "연쇄 대상 수 증가", "도탄 화살과 연쇄 번개가 한 번에 연결하는 블럭 수가 증가합니다.", [1, 2, 3], "회"),
-  passiveSkill("common-damage", "공격 강화", "공 직접 피해 증가", "모든 기본 공과 임시 공이 블럭에 직접 충돌할 때 주는 피해가 증가합니다.", [1, 2, 3], "DMG"),
+  passiveSkill("common-ball-size", "공 거대화", "공 반경 증가", "공의 최종 반경이 9/10/11px로 증가합니다.", [1, 2, 3], "px"),
+  passiveSkill("common-skill-range", "범위 증폭", "스킬 범위 증가", "스킬의 적용 범위가 10/20/30% 증가합니다.", [10, 20, 30], "%"),
+  passiveSkill("common-chain", "연계 증폭", "스킬 연계 횟수 증가", "스킬의 연계 횟수가 1/2/3회 증가합니다.", [1, 2, 3], "회"),
+  passiveSkill("common-damage", "공격 강화", "공 기본 피해 증가", "공의 기본 직접 피해가 2/3/4로 증가합니다.", [1, 2, 3], "DMG"),
 ];
 
 export const ULTIMATE_SKILL_IDS = new Set<ClassSkillId>(DEFAULT_SKILLS.filter((entry) => entry.ultimate).map((entry) => entry.id));
@@ -249,8 +249,10 @@ export function normalizeSkillConfigs(saved: unknown): SkillConfig[] {
       && `${savedSkill?.effect ?? ""} ${savedSkill?.description ?? ""}`.match(/타이머|제한시간|시간.*정지/);
     const legacyDestructionTrigger = (base.id === "warrior-shockwave" || base.id === "mage-fireball")
       && `${savedSkill?.effect ?? ""} ${savedSkill?.description ?? ""}`.includes("파괴");
+    const formulaDescription = /(?:LV|레벨에 따라|2\+LV)/.test(savedSkill?.description ?? "");
+    const refreshedCommonSpec = (["common-ball-size", "common-skill-range", "common-chain", "common-damage"] as ClassSkillId[]).includes(base.id);
     const migrated = base.id === "common-xp" ? base
-      : legacyTimeFreeze || legacyDestructionTrigger ? { ...savedSkill, name: base.name, effect: base.effect, description: base.description }
+      : legacyTimeFreeze || legacyDestructionTrigger || formulaDescription || refreshedCommonSpec ? { ...savedSkill, name: base.name, effect: base.effect, description: base.description }
       : savedSkill;
     return { ...base, ...migrated, id: base.id, category: base.category, mechanic: base.mechanic, color: base.color, owner: "paddle", ballCost: 0, ultimate: base.ultimate, levels: base.id === "common-xp" ? base.levels : levels };
   });
