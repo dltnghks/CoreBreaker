@@ -40,8 +40,9 @@ test("moves the paddle with A and D while the pointer aims rebounds", async () =
   assert.match(source, /function paddleAimDirection/);
   assert.match(source, /horizontalRatio = Math\.max\(-MAX_PADDLE_REBOUND_RATIO/);
   assert.match(source, /verticalRatio: -Math\.sqrt/);
-  assert.match(source, /const leftLimit = rayEnd\(-MAX_PADDLE_REBOUND_RATIO/);
-  assert.match(source, /const rightLimit = rayEnd\(MAX_PADDLE_REBOUND_RATIO/);
+  assert.match(source, /const AIM_LIMIT_GUIDE_LENGTH = 100/);
+  assert.match(source, /const leftLimit = rayEnd\(-MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio, AIM_LIMIT_GUIDE_LENGTH/);
+  assert.match(source, /const rightLimit = rayEnd\(MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio, AIM_LIMIT_GUIDE_LENGTH/);
   assert.match(source, /paddle\.id === "player"/);
   assert.match(source, /const rawContactTime = verticalTravel > 0/);
   assert.match(source, /const alreadyTouchingTop = previousBallY <= paddle\.y \+ PADDLE_COLLISION_SLOP/);
@@ -59,7 +60,7 @@ test("ramps ball speed by wave elapsed time and resolves circular brick collisio
   const html = await response.text();
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const benchmark = await readFile(new URL("../app/benchmark-headless.ts", import.meta.url), "utf8");
-  assert.match(html, /BALL[\s\S]*100[\s\S]*%/);
+  assert.match(html, /SPEED[\s\S]*100[\s\S]*%/);
   assert.match(source, /OVERDRIVE_RATE_PER_SECOND = 0\.01/);
   assert.match(source, /MAX_OVERDRIVE_LEVEL = 50/);
   assert.match(source, /const dt = Math\.max\(0, Math\.min\(0\.025/);

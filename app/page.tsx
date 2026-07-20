@@ -210,6 +210,7 @@ const PADDLE_SIDE_FORGIVENESS = 14;
 const PADDLE_SIDE_DEPTH = 18;
 const PADDLE_KEYBOARD_SPEED = 460;
 const MIN_AIM_VERTICAL_DISTANCE = 52;
+const AIM_LIMIT_GUIDE_LENGTH = 100;
 
 function paddleAimDirection(fromX: number, fromY: number, targetX: number, targetY: number) {
   const deltaX = targetX - fromX;
@@ -3505,18 +3506,18 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const aim = paddleAimDirection(game.paddleX, PLAYER_PADDLE_Y, pointerXRef.current, pointerYRef.current);
       const targetY = Math.max(BRICK_ROW_Y, Math.min(PLAYER_PADDLE_Y - MIN_AIM_VERTICAL_DISTANCE, pointerYRef.current));
       const verticalTravel = PLAYER_PADDLE_Y - targetY;
-      const rayEnd = (horizontalRatio: number, verticalRatio: number) => {
+      const rayEnd = (horizontalRatio: number, verticalRatio: number, maxTravel = Number.POSITIVE_INFINITY) => {
         const verticalTime = verticalTravel / Math.max(0.001, -verticalRatio);
         const sideTime = horizontalRatio > 0
           ? (W - 12 - game.paddleX) / horizontalRatio
           : horizontalRatio < 0 ? (12 - game.paddleX) / horizontalRatio : Number.POSITIVE_INFINITY;
-        const travel = Math.max(0, Math.min(verticalTime, sideTime));
+        const travel = Math.max(0, Math.min(verticalTime, sideTime, maxTravel));
         return { x: game.paddleX + horizontalRatio * travel, y: PLAYER_PADDLE_Y + verticalRatio * travel };
       };
       const aimEnd = rayEnd(aim.horizontalRatio, aim.verticalRatio);
       const edgeVerticalRatio = -Math.sqrt(1 - MAX_PADDLE_REBOUND_RATIO * MAX_PADDLE_REBOUND_RATIO);
-      const leftLimit = rayEnd(-MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio);
-      const rightLimit = rayEnd(MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio);
+      const leftLimit = rayEnd(-MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio, AIM_LIMIT_GUIDE_LENGTH);
+      const rightLimit = rayEnd(MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio, AIM_LIMIT_GUIDE_LENGTH);
       ctx.save();
       ctx.strokeStyle = "rgba(101,220,255,.18)";
       ctx.lineWidth = 1;
