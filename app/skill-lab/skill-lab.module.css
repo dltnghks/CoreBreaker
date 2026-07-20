@@ -2,6 +2,14 @@
 
 .valueAccent{color:var(--category-color);font:900 11px/1.6 monospace;text-shadow:0 0 9px color-mix(in srgb,var(--category-color) 55%,transparent)}
 
+.skillIcon{width:34px;height:34px;margin-bottom:10px;display:grid;place-items:center;border:1px solid var(--category-color);color:var(--category-color);background:color-mix(in srgb,var(--category-color) 9%,#08101d);box-shadow:0 0 16px color-mix(in srgb,var(--category-color) 22%,transparent);font:900 19px "Arial Unicode MS",sans-serif;font-style:normal}
+.skillCard[data-category="warrior"]{clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px);box-shadow:inset 4px 0 rgba(255,107,87,.2)}
+.skillCard[data-category="warrior"] .skillIcon{clip-path:polygon(18% 0,100% 0,82% 100%,0 100%)}
+.skillCard[data-category="archer"]{border-left:3px solid var(--category-color)}
+.skillCard[data-category="archer"] .skillIcon{clip-path:polygon(0 15%,72% 15%,100% 50%,72% 85%,0 85%,20% 50%)}
+.skillCard[data-category="mage"]{border-radius:14px}.skillCard[data-category="mage"] .skillIcon{border-radius:50%}
+.skillCard[data-category="common"]{border-style:dashed}.skillCard[data-category="common"] .skillIcon{border-radius:4px;color:#e6e9ef;border-color:#9aa3b2;box-shadow:none}
+
 .enchantLegend{display:flex;gap:5px;margin-left:6px}.enchantBadge{display:inline-block;margin-left:5px;padding:3px 5px;border:1px solid currentColor;border-radius:2px;font:800 8px/1 monospace!important;font-style:normal!important;letter-spacing:.08em!important;background:color-mix(in srgb,currentColor,transparent 88%)}.enchantBadge[data-mode="persistent"]{color:#72f1b8!important}.enchantBadge[data-mode="charge"]{color:#ffcf4a!important}.enchantBadge[data-mode="single"]{color:#ff8da1!important}
 
 .editor select{width:100%;border:1px solid rgba(157,180,225,.22);padding:9px;color:#ecf2ff;background:#080d18;font:inherit}

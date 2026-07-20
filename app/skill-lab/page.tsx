@@ -12,6 +12,7 @@ const CATEGORY_LABELS: Record<SkillCategory, string> = {
 };
 
 const CATEGORIES: SkillCategory[] = ["warrior", "archer", "mage", "common"];
+const CATEGORY_ICONS: Record<SkillCategory, string> = { warrior: "◆", archer: "➵", mage: "✧", common: "◇" };
 const MECHANICS = Object.keys(SKILL_MECHANIC_LABELS) as SkillMechanic[];
 const CATEGORY_COLORS: Record<SkillCategory, string> = {
   warrior: "#ff6b57",
@@ -151,7 +152,8 @@ export default function SkillLab() {
       <section className={styles.workspace}>
         <div className={styles.catalog}>
           {visibleSkills.map((skill) => (
-            <button key={skill.id} className={`${styles.skillCard} ${selected.id === skill.id ? styles.selected : ""}`} style={skillStyle(skill)} onClick={() => setSelectedId(skill.id)}>
+            <button key={skill.id} data-category={skill.category} className={`${styles.skillCard} ${selected.id === skill.id ? styles.selected : ""}`} style={skillStyle(skill)} onClick={() => setSelectedId(skill.id)}>
+              <i className={styles.skillIcon} aria-hidden="true">{CATEGORY_ICONS[skill.category]}</i>
               <span>{CATEGORY_LABELS[skill.category]} · {SKILL_MECHANIC_LABELS[skill.mechanic]} · {skill.ultimate ? "보스 궁극기" : "일반 스킬"}</span><strong>{skill.name}</strong><small><b>발동</b> {skill.trigger}</small>
               <p className={styles.description}><SkillDescriptionText text={skill.description} /></p>
               <em>{skill.levels.map((value) => `${value}${skill.unit}`).join(" / ")}{skill.cooldown.some((value) => value > 0) ? ` · CD ${skill.cooldown.join("/")}s` : ""} · {skill.evolution ? "LV3 EVOLUTION" : skill.ultimate ? "ULTIMATE" : "PERMANENT"}</em>

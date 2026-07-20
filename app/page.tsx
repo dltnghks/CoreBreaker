@@ -4965,7 +4965,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                   {choices.map(({ upgrade }, index) => {
                     const config = activeSkillMap[upgrade.id]!;
                     return (
-                      <button key={upgrade.id} className="upgrade-card" onClick={() => selectInitialSkill(upgrade)} style={{ "--accent": upgrade.color } as React.CSSProperties}>
+                      <button key={upgrade.id} className={`upgrade-card class-${upgrade.category}`} onClick={() => selectInitialSkill(upgrade)} style={{ "--accent": upgrade.color } as React.CSSProperties}>
                         <span className="upgrade-index">0{index + 1}</span>
                         <span className="upgrade-tag">STARTING SKILL · {upgrade.tag}</span>
                         <span className="upgrade-icon" aria-hidden="true">{SKILL_ICONS[upgrade.id]}</span>
@@ -4990,7 +4990,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                     const currentLevel = gameRef.current?.upgrades.filter((id) => id === upgrade.id).length ?? 0;
                     const config = activeSkillMap[upgrade.id];
                     return (
-                      <button key={upgrade.id} className="upgrade-card" onClick={() => applyUpgrade(upgrade, 0)} aria-label={`${upgrade.name}, 영구 적용 스킬`} style={{ "--accent": upgrade.color } as React.CSSProperties}>
+                      <button key={upgrade.id} className={`upgrade-card class-${upgrade.category}`} onClick={() => applyUpgrade(upgrade, 0)} aria-label={`${upgrade.name}, 영구 적용 스킬`} style={{ "--accent": upgrade.color } as React.CSSProperties}>
                         <span className="upgrade-index">0{index + 1}</span>
                         <span className="upgrade-tag">{upgrade.tag}</span>
                         <span className="upgrade-icon" aria-hidden="true">{SKILL_ICONS[upgrade.id]}</span>
@@ -5025,7 +5025,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                 <h2>궁극기를 선택하세요</h2>
                 <div className="upgrade-grid">
                   {ultimateCatalog.map((reward, index) => (
-                    <button key={reward.id} className="upgrade-card" onClick={() => applyBossReward(reward.id)} style={{ "--accent": reward.color } as React.CSSProperties}>
+                    <button key={reward.id} className={`upgrade-card class-${reward.category}`} onClick={() => applyBossReward(reward.id)} style={{ "--accent": reward.color } as React.CSSProperties}>
                       <span className="upgrade-index">0{index + 1}</span>
                       <span className="upgrade-tag">{reward.tag}</span>
                       <strong>{reward.name}</strong>

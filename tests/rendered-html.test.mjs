@@ -166,6 +166,10 @@ test("shows level values in separate colors and renders skill icons", async () =
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(source, /className="upgrade-level-values"/);
   assert.match(source, /SKILL_ICONS\[upgrade\.id\]/);
+  assert.match(source, /class-\$\{upgrade\.category\}/);
+  assert.match(css, /\.upgrade-card\.class-warrior/);
+  assert.match(css, /\.class-archer \.upgrade-icon/);
+  assert.match(css, /\.class-mage \.upgrade-icon/);
   assert.match(source, /ctx\.roundRect\(/);
   assert.match(css, /\.upgrade-level-values span:nth-child\(1\)\{color:#65dcff\}/);
   assert.match(css, /\.upgrade-level-values span:nth-child\(2\)\{color:#a78bfa\}/);
@@ -716,12 +720,17 @@ test("uses a fixed multiball item budget for every boss stage", async () => {
 
 test("renders the warrior archer mage Skill Lab", async () => {
   const response = await render("/skill-lab");
+  const source = await readFile(new URL("../app/skill-lab/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/skill-lab/skill-lab.module.css", import.meta.url), "utf8");
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /SKILL LAB/);
   ["전사", "궁수", "법사", "일반 스킬", "보스 궁극기"].forEach((label) => {
     assert.match(html, new RegExp(label));
   });
+  assert.match(source, /CATEGORY_ICONS/);
+  assert.match(source, /data-category=\{skill\.category\}/);
+  assert.match(styles, /\.skillCard\[data-category="warrior"\]/);
 });
 
 test("defines all class skills as permanent ball-owned skills without ball costs", async () => {
