@@ -3399,12 +3399,59 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ctx.arc(ball.x, ball.y, visualRadius + 3 + ring * 3, 0, Math.PI * 2);
         ctx.stroke();
       }
-      const activeClassCharges = [...new Set(game.upgrades)]
-        .map((id) => [id as ClassSkillId, upgradeLevel(game.upgrades, id)] as [ClassSkillId, number])
-        .filter(([id, level]) => {
-          const cooldown = activeSkillMap[id]?.cooldown[Math.min(2, Math.max(0, level - 1))] ?? 0;
-          return level > 0 && cooldown > 0 && (ball.skillCooldowns[id] ?? 0) <= 0;
+      const ballCooldownEntries = [...new Set(game.upgrades)]
+        .map((id) => {
+          const skillId = id as ClassSkillId;
+          const level = upgradeLevel(game.upgrades, id);
+          return { id: skillId, level, total: skillCooldownSeconds(skillId, level, game.upgrades), remaining: ball.skillCooldowns[skillId] ?? 0 };
+        })
+        .filter((entry) => entry.level > 0 && entry.total > 0);
+      const coolingSkills = ballCooldownEntries.filter((entry) => entry.remaining > 0);
+      if (coolingSkills.length > 0) {
+        const gaugeRadius = visualRadius + 5 + powerRingCount * 3;
+        const segmentSpan = Math.PI * 2 / coolingSkills.length;
+        const gap = Math.min(0.12, segmentSpan * 0.12);
+        ctx.save();
+        ctx.lineCap = "round";
+        coolingSkills.forEach((entry, index) => {
+          const progress = Math.max(0, Math.min(1, 1 - entry.remaining / entry.total));
+          const start = -Math.PI / 2 + index * segmentSpan + gap / 2;
+          const segmentLength = segmentSpan - gap;
+          const color = classSkillColor(entry.id);
+          ctx.globalAlpha = 0.2;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(ball.x, ball.y, gaugeRadius, start, start + segmentLength);
+          ctx.stroke();
+          if (progress > 0) {
+            ctx.globalAlpha = 0.95;
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, gaugeRadius, start, start + segmentLength * progress);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+          }
         });
+        if (!ball.waveBonus && ball.temporaryTime <= 0) {
+          const nextReady = [...coolingSkills].sort((a, b) => a.remaining - b.remaining)[0];
+          const label = `${SKILL_ICONS[nextReady.id] ?? "CD"} ${nextReady.remaining.toFixed(1)}s`;
+          ctx.globalAlpha = 0.95;
+          ctx.font = "900 9px monospace";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = "rgba(3,7,18,.92)";
+          ctx.strokeText(label, ball.x, ball.y + gaugeRadius + 10);
+          ctx.fillStyle = classSkillColor(nextReady.id);
+          ctx.fillText(label, ball.x, ball.y + gaugeRadius + 10);
+        }
+        ctx.restore();
+      }
+      const activeClassCharges = ballCooldownEntries
+        .filter((entry) => entry.remaining <= 0)
+        .map(({ id, level }) => [id, level] as [ClassSkillId, number]);
       activeClassCharges.slice(0, 4).forEach(([id, level], index) => {
         const mageSpellVariant = id === "mage-fireball" ? 0 : id === "mage-lightning" ? 1 : -1;
         const mageSpellImage = mageSpellVariant >= 0 ? mageSpellRefs.current[mageSpellVariant] : null;

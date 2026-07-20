@@ -363,7 +363,7 @@ test("keeps ball bodies unified and distinguishes power and skills with effects"
   assert.match(source, /const orbitRadius =/);
   assert.match(source, /visualSkill: ClassSkillId \| null/);
   assert.match(source, /visualSkill: skillId/);
-  assert.match(source, /\(ball\.skillCooldowns\[id\] \?\? 0\) <= 0/);
+  assert.match(source, /const activeClassCharges = ballCooldownEntries/);
   assert.match(source, /const SKILL_ICONS/);
   assert.match(source, /const drawSkillPanel/);
   assert.match(source, /ATK/);
@@ -822,9 +822,17 @@ test("tracks independent per-ball skill cooldowns and applies common cooldown re
 
 test("shows ball skill effects only while each per-ball cooldown is ready", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /const activeClassCharges = \[\.\.\.new Set\(game\.upgrades\)\]/);
-  assert.match(source, /cooldown > 0 && \(ball\.skillCooldowns\[id\] \?\? 0\) <= 0/);
+  assert.match(source, /const ballCooldownEntries = \[\.\.\.new Set\(game\.upgrades\)\]/);
+  assert.match(source, /filter\(\(entry\) => entry\.remaining <= 0\)/);
   assert.doesNotMatch(source, /activeSkillEffects/);
+});
+
+test("renders segmented per-ball cooldown gauges and a numeric timer on the base ball", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /const coolingSkills = ballCooldownEntries\.filter/);
+  assert.match(source, /const progress = Math\.max\(0, Math\.min\(1, 1 - entry\.remaining \/ entry\.total\)\)/);
+  assert.match(source, /nextReady\.remaining\.toFixed\(1\)/);
+  assert.match(source, /!ball\.waveBonus && ball\.temporaryTime <= 0/);
 });
 
 test("layers screen shake, flashes, impact visuals, and stronger synthesized sound", async () => {
