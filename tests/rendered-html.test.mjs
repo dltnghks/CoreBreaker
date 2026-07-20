@@ -286,6 +286,10 @@ test("adds six stage brick traits with distinct combat rules and readable visual
   assert.match(source, /const reflectorThreatened = game\.balls\.some/);
   assert.match(source, /const reflectorScan/);
   assert.match(source, /const reflectorShieldGradient/);
+  assert.match(source, /const traceBrickBody = \(brick: Brick/);
+  assert.match(source, /ctx\.roundRect\(x, y, w, h/);
+  assert.match(source, /if \(brick\.trait === "guard"\)/);
+  assert.match(source, /if \(brick\.trait === "explosive"\)/);
   assert.match(source, /ctx\.quadraticCurveTo\(brick\.x \+ 4, reflectorLineY/);
   assert.match(source, /ctx\.lineWidth = reflectorThreatened \? 4 : 3/);
   assert.match(source, /const hpBaselineY = brick\.y \+ brick\.h \/ 2 \+ 6/);

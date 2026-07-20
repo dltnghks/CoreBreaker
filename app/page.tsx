@@ -3012,6 +3012,28 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     for (let x = 0; x < W; x += 45) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
     for (let y = 0; y < H; y += 45) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
 
+    const traceBrickBody = (brick: Brick, inset = 0) => {
+      const x = brick.x + inset;
+      const y = brick.y + inset;
+      const w = brick.w - inset * 2;
+      const h = brick.h - inset * 2;
+      const cut = brick.trait === "indestructible" ? 8 : brick.trait === "explosive" ? 6 : brick.trait === "reflector" ? 4 : 3;
+      ctx.beginPath();
+      if (brick.trait === "healer") {
+        ctx.roundRect(x, y, w, h, Math.min(8, h / 2));
+        return;
+      }
+      ctx.moveTo(x + cut, y);
+      ctx.lineTo(x + w - cut, y);
+      ctx.lineTo(x + w, y + cut);
+      ctx.lineTo(x + w - (brick.trait === "reflector" ? 2 : 0), y + h - cut);
+      ctx.lineTo(x + w - cut, y + h);
+      ctx.lineTo(x + cut, y + h);
+      ctx.lineTo(x + (brick.trait === "reflector" ? 2 : 0), y + h - cut);
+      ctx.lineTo(x, y + cut);
+      ctx.closePath();
+    };
+
     game.bricks.forEach((brick) => {
       if (!brick.alive) return;
       const alpha = 0.42 + (brick.hp / brick.maxHp) * 0.5;
@@ -3035,11 +3057,16 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         : `hsla(${brick.hue}, 90%, ${brick.maxHp === 3 ? 64 : 58}%, ${alpha})`
         : brickColor;
       ctx.globalAlpha = brick.kind === "normal" ? 1 : alpha;
-      ctx.fillRect(brick.x, brick.y, brick.w, brick.h);
+      traceBrickBody(brick);
+      ctx.fill();
       ctx.globalAlpha = 1;
       ctx.shadowBlur = 0;
-      ctx.fillStyle = "rgba(255,255,255,.28)";
-      ctx.fillRect(brick.x + 3, brick.y + 3, brick.w - 6, 2);
+      traceBrickBody(brick, 1.5);
+      ctx.strokeStyle = brickColor;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,.3)";
+      ctx.fillRect(brick.x + 8, brick.y + 3, brick.w - 16, 2);
       if (brick.kind === "normal" && brick.trait !== "standard") {
         const traitData = BRICK_TRAIT_DATA[brick.trait];
         const traitPulse = 0.72 + Math.sin(game.elapsed * 6 + brick.x * 0.04) * 0.18;
@@ -3059,6 +3086,44 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ctx.lineTo(brick.x + brick.w - 2, brick.y + 3);
           ctx.stroke();
         }
+        if (brick.trait === "guard") {
+          const plateY = brick.y + 5;
+          const plateH = Math.max(8, brick.h - 10);
+          ctx.fillStyle = brick.guardReady ? "rgba(255,242,122,.18)" : "rgba(255,242,122,.05)";
+          ctx.strokeStyle = brick.guardReady ? "#fff27a" : "rgba(255,242,122,.3)";
+          ctx.lineWidth = brick.guardReady ? 2.5 : 1;
+          ctx.beginPath();
+          ctx.moveTo(brick.x + 8, plateY);
+          ctx.lineTo(brick.x + brick.w - 8, plateY);
+          ctx.lineTo(brick.x + brick.w - 4, plateY + plateH / 2);
+          ctx.lineTo(brick.x + brick.w - 8, plateY + plateH);
+          ctx.lineTo(brick.x + 8, plateY + plateH);
+          ctx.lineTo(brick.x + 4, plateY + plateH / 2);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+        if (brick.trait === "explosive") {
+          const coreX = brick.x + brick.w / 2;
+          const coreY = brick.y + brick.h / 2;
+          const coreRadius = Math.min(7, brick.h * 0.24) + Math.sin(game.elapsed * 8 + brick.x) * 1.2;
+          ctx.shadowColor = "#ff8a3d";
+          ctx.shadowBlur = 14;
+          ctx.fillStyle = "#ffd166";
+          ctx.beginPath();
+          ctx.arc(coreX, coreY, coreRadius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = "rgba(255,209,102,.82)";
+          ctx.lineWidth = 1.5;
+          for (let crack = 0; crack < 6; crack++) {
+            const angle = crack * Math.PI / 3 + 0.18;
+            ctx.beginPath();
+            ctx.moveTo(coreX + Math.cos(angle) * (coreRadius + 2), coreY + Math.sin(angle) * (coreRadius + 2));
+            ctx.lineTo(coreX + Math.cos(angle) * Math.min(18, brick.w * 0.3), coreY + Math.sin(angle) * Math.min(11, brick.h * 0.38));
+            ctx.stroke();
+          }
+        }
         if (brick.trait === "healer") {
           ctx.globalAlpha = traitPulse;
           ctx.shadowColor = traitData.color;
@@ -3067,6 +3132,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ctx.lineWidth = 2;
           ctx.beginPath();
           ctx.arc(brick.x + brick.w / 2, brick.y + brick.h / 2, 8 + traitPulse * 3, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(brick.x + brick.w / 2 - 5, brick.y + brick.h / 2);
+          ctx.lineTo(brick.x + brick.w / 2 + 5, brick.y + brick.h / 2);
+          ctx.moveTo(brick.x + brick.w / 2, brick.y + brick.h / 2 - 5);
+          ctx.lineTo(brick.x + brick.w / 2, brick.y + brick.h / 2 + 5);
           ctx.stroke();
           ctx.globalAlpha = 1;
           ctx.shadowBlur = 0;
