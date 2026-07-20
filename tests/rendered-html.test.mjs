@@ -30,6 +30,17 @@ test("server-renders the Core Breaker playtest", async () => {
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|react-loading-skeleton/);
 });
 
+test("uses a restrained techno-fantasy UI palette and layered panels", async () => {
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const labStyles = await readFile(new URL("../app/skill-lab/skill-lab.module.css", import.meta.url), "utf8");
+  assert.match(styles, /--panel-raised:#171b28/);
+  assert.match(styles, /--line-strong:rgba\(216,196,151,\.32\)/);
+  assert.match(styles, /Polished techno-fantasy shell/);
+  assert.match(styles, /\.hud-badge\{[\s\S]*clip-path:polygon/);
+  assert.match(styles, /\.primary-button\{[\s\S]*linear-gradient\(145deg,#f0d58c,#bd984b\)/);
+  assert.match(labStyles, /linear-gradient\(180deg,#080a12,#05060d 72%\)/);
+});
+
 test("moves the paddle with A and D while the pointer aims rebounds", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /PADDLE_KEYBOARD_SPEED = 460/);

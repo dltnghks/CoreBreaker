@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-:root{--ink:#070a13;--panel:#0d1220;--line:rgba(157,180,225,.16);--muted:#71809d;--text:#ecf2ff;--yellow:#fff27a;--cyan:#65dcff;--green:#72f1b8}
+:root{--ink:#05060d;--panel:#10131d;--panel-raised:#171b28;--line:rgba(206,211,226,.14);--line-strong:rgba(216,196,151,.32);--muted:#7f8799;--text:#f1f0eb;--yellow:#e2c477;--cyan:#73b8c3;--green:#76c39f;--violet:#9589c8;--danger:#e76f83}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--ink);color:var(--text)}
 body{font-family:"Segoe UI","Noto Sans KR",Arial,sans-serif;background:radial-gradient(circle at 20% -10%,rgba(83,99,190,.19),transparent 34%),radial-gradient(circle at 90% 20%,rgba(54,205,255,.08),transparent 26%),#070a13}
 button{font:inherit}.app-shell{min-height:100vh;padding:0 28px 30px}
@@ -68,3 +68,30 @@ button{font:inherit}.app-shell{min-height:100vh;padding:0 28px 30px}
 .class-archer .upgrade-icon{border-radius:0;clip-path:polygon(0 15%,72% 15%,100% 50%,72% 85%,0 85%,20% 50%)}
 .class-mage .upgrade-icon{border-radius:50%;background:transparent;color:var(--accent);box-shadow:inset 0 0 14px color-mix(in srgb,var(--accent),transparent 65%),0 0 20px color-mix(in srgb,var(--accent),transparent 68%)}
 .class-common .upgrade-icon{border-radius:4px;color:#e6e9ef;background:#68717f;box-shadow:none}
+
+/* Polished techno-fantasy shell */
+body{background:radial-gradient(circle at 18% -15%,rgba(115,184,195,.11),transparent 32%),radial-gradient(circle at 86% 8%,rgba(149,137,200,.08),transparent 28%),linear-gradient(180deg,#080a12 0,#05060d 72%);background-attachment:fixed}
+.topbar{height:78px;border-color:var(--line-strong)}
+.brand-mark{position:relative;width:42px;height:42px;color:#17130b;background:linear-gradient(145deg,#f1dc9a,#b89343);transform:none;clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px);box-shadow:0 0 24px rgba(226,196,119,.14);text-shadow:0 1px rgba(255,255,255,.35)}
+.brand-block h1{color:#f4f1e8;letter-spacing:.12em;text-shadow:0 2px 18px rgba(0,0,0,.5)}.eyebrow{color:#8daeb5;letter-spacing:.2em}
+.header-rule{background:linear-gradient(90deg,var(--line-strong),rgba(115,184,195,.12),transparent)}
+.lab-link,.sound-toggle{border-color:rgba(206,211,226,.16);color:#aeb6c5;background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,0));transition:border-color .18s,color .18s,background .18s}
+.lab-link:hover,.sound-toggle:hover{border-color:rgba(226,196,119,.46);color:#ead59a;background:rgba(226,196,119,.055)}
+.game-frame{border-color:rgba(216,196,151,.26);background:#090b13;box-shadow:0 24px 60px rgba(0,0,0,.38),inset 0 0 0 1px rgba(255,255,255,.018)}
+.game-frame:after{background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,255,255,.009) 3px 4px)}
+.hud-badge{min-height:40px;border-color:rgba(206,211,226,.18);background:linear-gradient(145deg,rgba(22,26,39,.94),rgba(8,10,17,.86));box-shadow:0 10px 26px rgba(0,0,0,.3),inset 0 1px rgba(255,255,255,.035);backdrop-filter:blur(9px);clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)}
+.hud-badge i{border-color:rgba(226,196,119,.42);color:#e2c477;background:rgba(226,196,119,.055);text-shadow:0 0 12px currentColor}.hud-badge small{color:#737c90}.hud-badge strong{color:#f1f0eb}.hud-badge em{color:#8790a2}
+.hud-wave{border-color:rgba(226,196,119,.34)}.hud-wave i{color:#e2c477;background:rgba(226,196,119,.06)}.hud-score i{color:#9589c8;background:rgba(149,137,200,.06)}
+.hud-core{border-color:rgba(118,195,159,.38);background:linear-gradient(145deg,rgba(15,35,29,.94),rgba(7,12,15,.92));box-shadow:0 12px 30px rgba(0,0,0,.34),inset 0 1px rgba(165,231,199,.07)}
+.core-meter{height:4px;background:#1f2630}.core-meter span{background:linear-gradient(90deg,#4d9f7b,#a5dfbf);box-shadow:0 0 10px rgba(118,195,159,.5)}
+.overlay{background:radial-gradient(circle at 50% 36%,rgba(24,29,45,.92),rgba(5,6,13,.96) 68%);backdrop-filter:blur(10px)}
+.overlay:before,.overlay:after{width:82px;height:82px;border-color:rgba(226,196,119,.34)}.overlay-kicker{color:#b9a56f}.overlay h2{color:#f1f0eb;text-shadow:0 8px 32px rgba(0,0,0,.55)}
+.primary-button{color:#17130b;background:linear-gradient(145deg,#f0d58c,#bd984b);box-shadow:6px 6px 0 rgba(115,184,195,.13),0 12px 28px rgba(0,0,0,.28);clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px)}
+.primary-button:hover{box-shadow:9px 9px 0 rgba(115,184,195,.16),0 16px 34px rgba(0,0,0,.32)}
+.upgrade-card{border-color:color-mix(in srgb,var(--accent),transparent 68%);background:radial-gradient(circle at 18% 8%,color-mix(in srgb,var(--accent),transparent 88%),transparent 36%),linear-gradient(155deg,#171b28,#0b0e16 72%);box-shadow:0 16px 30px rgba(0,0,0,.22),inset 0 1px rgba(255,255,255,.035)}
+.upgrade-card:hover{border-color:color-mix(in srgb,var(--accent),#e2c477 28%);box-shadow:0 22px 38px rgba(0,0,0,.32),0 0 24px color-mix(in srgb,var(--accent),transparent 88%)}
+.upgrade-icon{border-color:color-mix(in srgb,var(--accent),#f1f0eb 20%);box-shadow:0 0 18px color-mix(in srgb,var(--accent),transparent 76%),inset 0 1px rgba(255,255,255,.18)}
+.build-tray{border-color:rgba(206,211,226,.13);background:linear-gradient(180deg,rgba(17,20,30,.96),rgba(9,11,18,.96));box-shadow:inset 0 1px rgba(255,255,255,.025)}
+.build-items span{background:rgba(255,255,255,.018);box-shadow:inset 0 0 12px rgba(255,255,255,.018)}
+.brick-key-strip{border-color:rgba(206,211,226,.13);background:linear-gradient(180deg,#11141e,#0a0c13)}
+@media(max-width:700px){.topbar{height:68px}.hud-badge{min-height:34px}.overlay:before,.overlay:after{width:48px;height:48px}}
