@@ -137,13 +137,13 @@ export const SKILL_COOLDOWNS: Record<ClassSkillId, [number, number, number]> = {
   "warrior-guard": [7, 6, 5],
   "warrior-earthquake": [4.5, 4, 3.5],
   "warrior-berserker": [0, 0, 0],
-  "archer-rapid": [2.2, 1.8, 1.4],
+  "archer-rapid": [3.8, 3.4, 3],
   "archer-pierce": [2.5, 2.1, 1.7],
   "archer-ricochet": [2.2, 1.8, 1.4],
   "archer-focus": [1.8, 1.5, 1.2],
   "archer-weakpoint": [3, 2.5, 2],
   "archer-arrow-rain": [6, 5, 4],
-  "archer-infinite": [7, 6, 5],
+  "archer-infinite": [8, 7, 5.5],
   "mage-fireball": [2.8, 2.3, 1.8],
   "mage-lightning": [2.5, 2, 1.5],
   "mage-freeze": [3, 2.5, 2],
@@ -180,6 +180,8 @@ export const SKILL_EVOLUTIONS: Partial<Record<ClassSkillId, string>> = {
   "mage-black-hole": "블랙홀의 지속 시간이 6초, 흡입 범위가 220px로 증가합니다.",
   "mage-mana-blast": "기능이 봉인된 블럭은 직접 공격으로 1의 추가 피해를 받습니다.",
 };
+
+SKILL_EVOLUTIONS["archer-rapid"] = "임시 화살이 보유한 다른 스킬과 연사·무한 화살을 사용할 수 있습니다. 생성 세대마다 화살 생성 쿨타임이 증가합니다.";
 
 const skill = (
   id: ClassSkillId,

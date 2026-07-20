@@ -71,6 +71,8 @@ type Ball = {
   missileHitCooldown: number;
   gravityRescueCooldown: number;
   gravityBaseSpeed: number | null;
+  canTriggerSkills: boolean;
+  skillGeneration: number;
   skillCharges: Partial<Record<ClassSkillId, number>>;
   skillCooldowns: Partial<Record<ClassSkillId, number>>;
   visualSkill: ClassSkillId | null;
@@ -134,8 +136,12 @@ type GameState = {
   upgrades: UpgradeId[];
   paddleTrack: number[];
   particles: Particle[];
+  particlePool: Particle[];
+  particlePoolCursor: number;
   flashes: Flash[];
   effects: GameEffect[];
+  effectPool: GameEffect[];
+  effectPoolCursor: number;
   items: DropItem[];
   safetyBlocks: SafetyBlock[];
   gravityWells: GravityWell[];
@@ -223,6 +229,9 @@ const MAGE_SPELL_FRAME_SIZE = 16;
 const MAGE_SPELL_FRAMES = 6;
 const MAX_PADDLE_ENGLISH = 220;
 const MIN_VERTICAL_SPEED_RATIO = 0.32;
+const MAX_ACTIVE_PARTICLES = 500;
+const MAX_ACTIVE_EFFECTS = 240;
+const MAX_ACTIVE_FLASHES = 120;
 const PLAYER_BALL_COLOR = "#fff27a";
 const WAVE_MULTIBALL_COLOR = "#9aa3b2";
 const BARRIER_COLOR = "#58a6ff";
@@ -236,6 +245,64 @@ function overdriveLevelAt(seconds: number) {
 
 function overdriveMultiplier(level: number) {
   return 1 + Math.max(0, Math.min(MAX_OVERDRIVE_LEVEL, level)) * OVERDRIVE_STEP;
+}
+
+function pushPooledParticle(game: GameState, values: Particle) {
+  const { x, y, vx, vy, life, color } = values;
+  if (game.particles.length >= MAX_ACTIVE_PARTICLES) {
+    const index = game.particlePoolCursor % game.particles.length;
+    const particle = game.particles[index];
+    particle.x = x;
+    particle.y = y;
+    particle.vx = vx;
+    particle.vy = vy;
+    particle.life = life;
+    particle.color = color;
+    game.particlePoolCursor = (index + 1) % game.particles.length;
+    return;
+  }
+  const particle = game.particlePool.pop() ?? { x, y, vx, vy, life, color };
+  particle.x = x;
+  particle.y = y;
+  particle.vx = vx;
+  particle.vy = vy;
+  particle.life = life;
+  particle.color = color;
+  game.particles.push(particle);
+}
+
+function pushPooledEffect(game: GameState, values: GameEffect) {
+  const { kind, x, y, x2, y2, size, life, color, variant, skillId } = values;
+  if (game.effects.length >= MAX_ACTIVE_EFFECTS) {
+    const index = game.effectPoolCursor % game.effects.length;
+    const effect = game.effects[index];
+    effect.kind = kind;
+    effect.x = x;
+    effect.y = y;
+    effect.x2 = x2;
+    effect.y2 = y2;
+    effect.size = size;
+    effect.life = life;
+    effect.maxLife = life;
+    effect.color = color;
+    effect.variant = variant;
+    effect.skillId = skillId;
+    game.effectPoolCursor = (index + 1) % game.effects.length;
+    return;
+  }
+  const effect = game.effectPool.pop() ?? { kind, x, y, x2, y2, size, life, maxLife: life, color, variant, skillId };
+  effect.kind = kind;
+  effect.x = x;
+  effect.y = y;
+  effect.x2 = x2;
+  effect.y2 = y2;
+  effect.size = size;
+  effect.life = life;
+  effect.maxLife = life;
+  effect.color = color;
+  effect.variant = variant;
+  effect.skillId = skillId;
+  game.effects.push(effect);
 }
 
 function circleRectangleCollision(ball: Pick<Ball, "x" | "y" | "radius">, brick: Pick<Brick, "x" | "y" | "w" | "h">, previousX: number, previousY: number) {
@@ -632,7 +699,7 @@ function makeInitialBricks(ghostCount: number, balance: BalanceConfig): Brick[] 
 
 function makePlayerBall(upgrades: UpgradeId[], x = W / 2): Ball {
   const speed = 1 + upgrades.filter((u) => u === "speed").length * 0.12;
-  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8 + skillValue("common-ball-size", upgradeLevel(upgrades, "common-ball-size")), owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, gravityBaseSpeed: null, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false };
+  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8 + skillValue("common-ball-size", upgradeLevel(upgrades, "common-ball-size")), owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, gravityBaseSpeed: null, canTriggerSkills: true, skillGeneration: 0, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false };
   syncBallPayloadDisplay(ball, upgrades);
   return ball;
 }
@@ -658,8 +725,12 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     skillMetrics: {},
     paddleTrack: [],
     particles: [],
+    particlePool: [],
+    particlePoolCursor: 0,
     flashes: activeGhosts.length > 0 ? [{ text: `ECHO PRESSURE +${activeGhosts.length * 12}%`, x: W / 2, y: H / 2, life: 1.5, color: "#ff6b87" }] : [],
     effects: [],
+    effectPool: [],
+    effectPoolCursor: 0,
     items: [],
     safetyBlocks: [],
     gravityWells: [],
@@ -1072,8 +1143,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const sacrificeValue = (ball: Ball) => ball.attackPower + Object.keys(ball.payloads).length * 0.4 + ball.pierce * 0.15 + (ball.missileTime > 0 ? 2 : 0);
       const sacrificed = new Set([...playerBalls].sort((a, b) => sacrificeValue(a) - sacrificeValue(b)).slice(0, ballCost));
       sacrificed.forEach((ball) => {
-        game.effects.push({ kind: "beam", x: ball.x, y: ball.y, x2: game.paddleX, y2: PLAYER_PADDLE_Y, size: 8, life: 0.65, maxLife: 0.65, color: upgrade.color });
-        game.particles.push(...Array.from({ length: 8 }, () => ({ x: ball.x, y: ball.y, vx: (effectRandom() - 0.5) * 150, vy: (effectRandom() - 0.5) * 150, life: 0.55, color: upgrade.color })));
+        pushPooledEffect(game, { kind: "beam", x: ball.x, y: ball.y, x2: game.paddleX, y2: PLAYER_PADDLE_Y, size: 8, life: 0.65, maxLife: 0.65, color: upgrade.color, variant: 0, skillId: null });
+        for (let index = 0; index < 8; index++) pushPooledParticle(game, { x: ball.x, y: ball.y, vx: (effectRandom() - 0.5) * 150, vy: (effectRandom() - 0.5) * 150, life: 0.55, color: upgrade.color });
       });
       game.balls = game.balls.filter((ball) => !sacrificed.has(ball));
       game.flashes.push({ text: `BALL SACRIFICE -${ballCost}`, x: game.paddleX, y: PLAYER_PADDLE_Y - 38, life: 1.1, color: upgrade.color });
@@ -1100,12 +1171,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     if (upgrade.id === "common-damage") {
       game.balls.filter((ball) => ball.owner === "player").forEach((ball) => syncBallPayloadDisplay(ball, game.upgrades));
     }
-    game.effects.push({ kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 150, life: 0.8, maxLife: 0.8, color: upgrade.color });
+    pushPooledEffect(game, { kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 150, life: 0.8, maxLife: 0.8, color: upgrade.color, variant: 0, skillId: null });
     game.flashes.push({ text: upgrade.name, x: W / 2, y: H / 2, life: 1.2, color: upgrade.color });
     const evolution = activeSkillMap[upgrade.id]?.evolution;
     if (nextLevel === 3 && evolution) {
       game.flashes.push({ text: `LV3 EVOLUTION // ${upgrade.name}`, x: W / 2, y: H / 2 + 38, life: 1.8, color: upgrade.color });
-      game.effects.push({ kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 230, life: 1.1, maxLife: 1.1, color: upgrade.color, variant: 0, skillId: upgrade.id as ClassSkillId });
+      pushPooledEffect(game, { kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 230, life: 1.1, maxLife: 1.1, color: upgrade.color, variant: 0, skillId: upgrade.id as ClassSkillId });
     }
     audioRef.current?.play("skill", nextLevel);
     setImpactFeedback(game, 4 + nextLevel * 0.5, upgrade.color, 0.2, 0.1);
@@ -1130,7 +1201,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       color: skill.color,
     };
     game.flashes.push({ text: reward.name, x: W / 2, y: H / 2, life: 1.4, color: reward.color });
-    game.effects.push({ kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 210, life: 1, maxLife: 1, color: reward.color });
+    pushPooledEffect(game, { kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 210, life: 1, maxLife: 1, color: reward.color, variant: 0, skillId: rewardId });
     game.flashes.push({ text: "ULTIMATE ACQUIRED", x: W / 2, y: H / 2 + 42, life: 1.8, color: reward.color });
     setImpactFeedback(game, 9, reward.color, 0.38, 0.2);
     audioRef.current?.play("ultimate", 1.6);
@@ -1297,6 +1368,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.skillHistory ??= [];
     game.skillMetrics ??= {};
     game.effects ??= [];
+    game.effectPool ??= [];
+    game.effectPoolCursor ??= 0;
+    game.particles ??= [];
+    game.particlePool ??= [];
+    game.particlePoolCursor ??= 0;
     game.safetyBlocks ??= [];
     game.gravityWells ??= [];
     game.botMetrics ??= { maxBalls: 1, ballLosses: 0, missileActivations: 0, safetySaves: 0, gravityRescues: 0 };
@@ -1308,7 +1384,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.bossAttackPattern ??= 0;
     game.bossMultiballsRemaining ??= 0;
     game.bossPending ??= false;
-    game.balls.forEach((ball) => { ball.sourcePaddleId ??= "player"; ball.attackPower ??= 1; ball.missileTime ??= 0; ball.missileHitCooldown ??= 0; ball.gravityBaseSpeed ??= null; ball.skillCharges ??= {}; ball.skillCooldowns ??= {}; ball.visualSkill ??= null; ball.temporaryTime ??= 0; ball.waveBonus ??= false; });
+    game.balls.forEach((ball) => { ball.sourcePaddleId ??= "player"; ball.attackPower ??= 1; ball.missileTime ??= 0; ball.missileHitCooldown ??= 0; ball.gravityBaseSpeed ??= null; ball.canTriggerSkills ??= true; ball.skillGeneration ??= 0; ball.skillCharges ??= {}; ball.skillCooldowns ??= {}; ball.visualSkill ??= null; ball.temporaryTime ??= 0; ball.waveBonus ??= false; });
     game.shakeStrength ??= 0;
     game.shakeTime ??= 0;
     game.shakeDuration ??= 0;
@@ -1346,7 +1422,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.overdriveLevel = nextOverdriveLevel;
       const overdrivePercent = Math.round(overdriveMultiplier(nextOverdriveLevel) * 100);
       game.flashes.push({ text: `OVERDRIVE ${nextOverdriveLevel} // BALL SPEED ${overdrivePercent}%`, x: W / 2, y: H / 2, life: 1.2, color: "#ff9658" });
-      game.effects.push({ kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 150 + nextOverdriveLevel * 18, life: 0.7, maxLife: 0.7, color: "#ff9658", variant: 0, skillId: null });
+      pushPooledEffect(game, { kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 150 + nextOverdriveLevel * 18, life: 0.7, maxLife: 0.7, color: "#ff9658", variant: 0, skillId: null });
       audioRef.current?.play("skill", 0.8 + nextOverdriveLevel * 0.18);
       setImpactFeedback(game, 2 + nextOverdriveLevel, "#ff9658", 0.16, 0.06);
     }
@@ -1361,7 +1437,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         game.bossMultiballsRemaining -= forcedMultiballs;
         game.bossSkillTimer = Math.max(2.6, balanceConfigRef.current.bossAttackInterval - game.bossStage * balanceConfigRef.current.bossAttackAcceleration);
         game.flashes.push({ text: `BOSS SKILL // ${attack.name}`, x: W / 2, y: 190, life: 1, color: "#ff9658" });
-        game.effects.push({ kind: "ring", x: W / 2, y: 150, x2: W / 2, y2: 150, size: 180, life: 0.8, maxLife: 0.8, color: "#ff9658" });
+        pushPooledEffect(game, { kind: "ring", x: W / 2, y: 150, x2: W / 2, y2: 150, size: 180, life: 0.8, maxLife: 0.8, color: "#ff9658", variant: 0, skillId: null });
       }
     }
     if (botActiveRef.current) {
@@ -1429,11 +1505,24 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       counter.lastShotTimer -= dt;
     });
     game.particles.forEach((p) => { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 150 * dt; p.life -= dt; });
-    game.particles = game.particles.filter((p) => p.life > 0);
+    let liveParticleCount = 0;
+    game.particles.forEach((particle) => {
+      if (particle.life > 0) game.particles[liveParticleCount++] = particle;
+      else game.particlePool.push(particle);
+    });
+    game.particles.length = liveParticleCount;
+    game.particlePoolCursor %= Math.max(1, game.particles.length);
     game.flashes.forEach((f) => { f.y -= 28 * dt; f.life -= dt; });
     game.flashes = game.flashes.filter((f) => f.life > 0);
+    if (game.flashes.length > MAX_ACTIVE_FLASHES) game.flashes.splice(0, game.flashes.length - MAX_ACTIVE_FLASHES);
     game.effects.forEach((effect) => { effect.life -= dt; });
-    game.effects = game.effects.filter((effect) => effect.life > 0);
+    let liveEffectCount = 0;
+    game.effects.forEach((effect) => {
+      if (effect.life > 0) game.effects[liveEffectCount++] = effect;
+      else game.effectPool.push(effect);
+    });
+    game.effects.length = liveEffectCount;
+    game.effectPoolCursor %= Math.max(1, game.effects.length);
     game.shakeTime = Math.max(0, game.shakeTime - dt);
     if (game.shakeTime <= 0) game.shakeStrength = 0;
     game.screenFlashTime = Math.max(0, game.screenFlashTime - dt);
@@ -1461,7 +1550,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       return counter;
     };
     const emitEffect = (kind: GameEffect["kind"], x: number, y: number, color: string, size = 45, x2 = x, y2 = y, duration = 0.5, variant = 0, skillId: ClassSkillId | null = null) => {
-      game.effects.push({ kind, x, y, x2, y2, size, life: duration, maxLife: duration, color, variant, skillId });
+      pushPooledEffect(game, { kind, x, y, x2, y2, size, life: duration, maxLife: duration, color, variant, skillId });
     };
     const emitSkillEffect = (skillId: ClassSkillId, x: number, y: number, size = 70, duration = 0.65, x2 = x, y2 = y) => {
       emitEffect("skill", x, y, classSkillColor(skillId), size, x2, y2, duration, 0, skillId);
@@ -1476,7 +1565,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       for (let index = 0; index < count; index++) {
         const angle = effectRandom() * Math.PI * 2;
         const speed = force * (0.35 + effectRandom() * 0.65);
-        game.particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 0.35 + effectRandom() * 0.4, color });
+        pushPooledParticle(game, { x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 0.35 + effectRandom() * 0.4, color });
       }
     };
     const impactFeedback = (strength: number, color?: string, duration = 0.16, flashDuration = 0) => {
@@ -1624,7 +1713,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const points = 100 * multiplier * (ball.owner === "ghost" ? 0.75 : 1) * speedBonus;
       game.score += points;
       game.flashes.push({ text: `+${Math.floor(points)}`, x: brick.x + brick.w / 2, y: brick.y, life: 0.55, color: ball.color });
-      for (let p = 0; p < 7; p++) game.particles.push({ x: brick.x + brick.w / 2, y: brick.y + brick.h / 2, vx: (effectRandom() - 0.5) * 180, vy: (effectRandom() - 0.7) * 150, life: 0.45 + effectRandom() * 0.4, color: `hsl(${brick.hue} 95% 68%)` });
+      for (let p = 0; p < 7; p++) pushPooledParticle(game, { x: brick.x + brick.w / 2, y: brick.y + brick.h / 2, vx: (effectRandom() - 0.5) * 180, vy: (effectRandom() - 0.7) * 150, life: 0.45 + effectRandom() * 0.4, color: `hsl(${brick.hue} 95% 68%)` });
       let earnedDrop = brick.drop;
       const luckChance = skillValue("common-luck", upgradeLevel(sourcePaddle.upgrades, "common-luck")) / 100;
       if (!earnedDrop && luckChance > 0 && decisionRandom() < luckChance) earnedDrop = "multiball";
@@ -1929,6 +2018,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             missileHitCooldown: 0,
             gravityRescueCooldown: 0,
             gravityBaseSpeed: null,
+            canTriggerSkills: true,
+            skillGeneration: 0,
             skillCharges: {},
             skillCooldowns: {},
             temporaryTime: 0,
@@ -1954,7 +2045,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     });
     game.items = game.items.filter((item) => item.alive);
 
-    for (const ball of game.balls) {
+    const ballsAtFrameStart = [...game.balls];
+    for (const ball of ballsAtFrameStart) {
       ball.payloads ??= {};
       ball.payloadLevel ??= 0;
       ball.skillCooldowns ??= {};
@@ -1963,10 +2055,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ball.skillCooldowns[skillId] = Math.max(0, (ball.skillCooldowns[skillId] ?? 0) - dt);
       });
       const permanentOwner = paddleFor(ball.sourcePaddleId);
-      const berserkerLevel = upgradeLevel(permanentOwner.upgrades, "warrior-berserker");
+      const inheritedUpgrades = ball.canTriggerSkills ? permanentOwner.upgrades : [];
+      const berserkerLevel = upgradeLevel(inheritedUpgrades, "warrior-berserker");
       if (berserkerLevel > 0) ball.skillCharges["warrior-berserker"] = berserkerLevel;
       else delete ball.skillCharges["warrior-berserker"];
-      syncBallPayloadDisplay(ball, permanentOwner.upgrades);
+      syncBallPayloadDisplay(ball, inheritedUpgrades);
       if (berserkerLevel > 0) {
         const currentSpeed = Math.max(1, Math.hypot(ball.vx, ball.vy));
         const targetSpeed = Math.hypot(BASE_BALL_VX, BASE_BALL_VY) * overdriveMultiplier(game.overdriveLevel) * 1.25;
@@ -2095,6 +2188,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               skillCharges: {},
               skillCooldowns: {},
               gravityBaseSpeed: null,
+              canTriggerSkills: false,
+              skillGeneration: ball.skillGeneration + 1,
               visualSkill: skillId,
               x: ball.x + offset,
               vx: ball.vx * (offset < 0 ? -0.86 : 0.86),
@@ -2365,13 +2460,15 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const sourcePaddle = paddleFor(ball.sourcePaddleId);
         const activatedImpactSkills = new Set<ClassSkillId>();
         const availableBallSkillLevel = (id: ClassSkillId) => {
+          if (!ball.canTriggerSkills) return 0;
           const level = upgradeLevel(sourcePaddle.upgrades, id);
           return level > 0 && (ball.skillCooldowns[id] ?? 0) <= 0 ? level : 0;
         };
         const consumeBallSkill = (id: ClassSkillId, level: number) => {
           if (level <= 0) return;
           const cooldown = skillCooldownSeconds(id, level, sourcePaddle.upgrades);
-          ball.skillCooldowns[id] = cooldown;
+          const recursiveMultiplier = ball.temporaryTime > 0 && (id === "archer-rapid" || id === "archer-infinite") ? 1 + ball.skillGeneration * 0.5 : 1;
+          ball.skillCooldowns[id] = cooldown * recursiveMultiplier;
           activatedImpactSkills.add(id);
           skillMetricFor(id).activations++;
         };
@@ -2455,12 +2552,25 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             activate(level);
           };
           const spawnHitArrow = (offset: number, lifetime: number, id: ClassSkillId) => {
+            const rapidLevel = upgradeLevel(sourcePaddle.upgrades, "archer-rapid");
+            const inheritsSkills = rapidLevel >= 3;
+            const skillGeneration = ball.skillGeneration + 1;
+            const inheritedCooldowns = inheritsSkills ? { ...ball.skillCooldowns } : {};
+            if (inheritsSkills) {
+              (["archer-rapid", "archer-infinite"] as ClassSkillId[]).forEach((spawnSkillId) => {
+                const spawnLevel = upgradeLevel(sourcePaddle.upgrades, spawnSkillId);
+                if (spawnLevel <= 0) return;
+                inheritedCooldowns[spawnSkillId] = skillCooldownSeconds(spawnSkillId, spawnLevel, sourcePaddle.upgrades) * (1 + skillGeneration * 0.5);
+              });
+            }
             game.balls.push({
               ...ball,
-              payloads: { ...ball.payloads },
-              skillCharges: { ...ball.skillCharges },
-              skillCooldowns: { ...ball.skillCooldowns },
+              payloads: inheritsSkills ? { ...ball.payloads } : {},
+              skillCharges: inheritsSkills ? { ...ball.skillCharges } : {},
+              skillCooldowns: inheritedCooldowns,
               gravityBaseSpeed: null,
+              canTriggerSkills: inheritsSkills,
+              skillGeneration,
               x: ball.x + offset,
               vx: ball.vx * (offset === 0 ? -0.88 : offset < 0 ? -0.82 : 0.82),
               vy: -Math.abs(ball.vy),
@@ -3435,7 +3545,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ctx.arc(ball.x, ball.y, visualRadius + 3 + ring * 3, 0, Math.PI * 2);
         ctx.stroke();
       }
-      const ballCooldownEntries = [...new Set(game.upgrades)]
+      const ballCooldownEntries = (ball.canTriggerSkills ? [...new Set(game.upgrades)] : [])
         .map((id) => {
           const skillId = id as ClassSkillId;
           const level = upgradeLevel(game.upgrades, id);

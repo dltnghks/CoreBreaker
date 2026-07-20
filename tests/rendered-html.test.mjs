@@ -726,6 +726,33 @@ test("applies class skills from brick hits and grants ultimates after bosses", a
   assert.doesNotMatch(source, /activeSkillMap\[upgrade\.id\]\.ballCost/);
 });
 
+test("gates temporary-arrow skill inheritance behind rapid level three while allowing paced recursion", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const config = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
+  assert.match(source, /canTriggerSkills: boolean/);
+  assert.match(source, /const inheritsSkills = rapidLevel >= 3/);
+  assert.match(source, /canTriggerSkills: inheritsSkills/);
+  assert.match(source, /skillGeneration: number/);
+  assert.match(source, /1 \+ skillGeneration \* 0\.5/);
+  assert.match(source, /id === "archer-rapid" \|\| id === "archer-infinite"/);
+  assert.match(source, /const ballsAtFrameStart = \[\.\.\.game\.balls\]/);
+  assert.match(config, /"archer-rapid": \[3\.8, 3\.4, 3\]/);
+  assert.match(config, /"archer-infinite": \[8, 7, 5\.5\]/);
+  assert.match(config, /SKILL_EVOLUTIONS\["archer-rapid"\]/);
+});
+
+test("reuses bounded particle and effect slots during recursive arrow storms", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /const MAX_ACTIVE_PARTICLES = 500/);
+  assert.match(source, /const MAX_ACTIVE_EFFECTS = 240/);
+  assert.match(source, /function pushPooledParticle/);
+  assert.match(source, /function pushPooledEffect/);
+  assert.match(source, /const particle = game\.particles\[index\]/);
+  assert.match(source, /const effect = game\.effects\[index\]/);
+  assert.match(source, /game\.particlePool\.push\(particle\)/);
+  assert.match(source, /game\.effectPool\.push\(effect\)/);
+});
+
 test("lets balls pass through black-hole centers and restores their entry speed", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /gravityBaseSpeed: number \| null/);
@@ -844,7 +871,7 @@ test("tracks independent per-ball skill cooldowns and applies common cooldown re
 
 test("shows ball skill effects only while each per-ball cooldown is ready", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /const ballCooldownEntries = \[\.\.\.new Set\(game\.upgrades\)\]/);
+  assert.match(source, /const ballCooldownEntries = \(ball\.canTriggerSkills \? \[\.\.\.new Set\(game\.upgrades\)\] : \[\]\)/);
   assert.match(source, /filter\(\(entry\) => entry\.remaining <= 0\)/);
   assert.doesNotMatch(source, /activeSkillEffects/);
 });
