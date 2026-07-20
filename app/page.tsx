@@ -148,6 +148,7 @@ type GameState = {
   nextBossWave: number;
   bossTimeRemaining: number;
   bossSkillTimer: number;
+  bossAttackPattern: number;
   bossMultiballsRemaining: number;
   bossRewards: BossRewardId[];
   autoGuard: boolean;
@@ -530,7 +531,7 @@ function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfi
   const height = rows * cellHeight;
   const startX = (W - width) / 2;
   const startY = 94;
-  const bossHpMultiplier = stage >= 2 ? 1.9 : 1.25;
+  const bossHpMultiplier = stage >= 2 ? 1.3 : 0.95;
   const coreHp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage + ghostCount * 10) * bossHpMultiplier);
   return [{
     x: startX, y: startY, w: width, h: height,
@@ -541,26 +542,53 @@ function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfi
   }];
 }
 
-function makeBossAttackBricks(stage: number, forcedMultiballs = 0): Brick[] {
+type BossAttackPattern = { name: string; cells: Array<{ col: number; row: number; trait: BrickTrait }> };
+
+const MID_BOSS_ATTACK_PATTERNS: BossAttackPattern[] = [
+  { name: "SCATTER BOMB", cells: [
+    { col: 1, row: 0, trait: "standard" }, { col: 4, row: 1, trait: "explosive" },
+    { col: 7, row: 0, trait: "standard" }, { col: 10, row: 1, trait: "explosive" },
+  ] },
+  { name: "GUARD WINGS", cells: [
+    { col: 2, row: 1, trait: "guard" }, { col: 3, row: 0, trait: "standard" },
+    { col: 8, row: 0, trait: "standard" }, { col: 9, row: 1, trait: "guard" },
+  ] },
+  { name: "REFLECTOR GATE", cells: [
+    { col: 0, row: 0, trait: "reflector" }, { col: 5, row: 1, trait: "guard" },
+    { col: 6, row: 1, trait: "guard" }, { col: 11, row: 0, trait: "reflector" },
+  ] },
+];
+
+const FINAL_BOSS_ATTACK_PATTERNS: BossAttackPattern[] = [
+  { name: "REPAIR CROSS", cells: [
+    { col: 3, row: 1, trait: "guard" }, { col: 5, row: 0, trait: "standard" },
+    { col: 6, row: 1, trait: "healer" }, { col: 7, row: 0, trait: "standard" },
+    { col: 9, row: 1, trait: "guard" },
+  ] },
+  { name: "BLAST MAZE", cells: [
+    { col: 0, row: 1, trait: "reflector" }, { col: 2, row: 0, trait: "explosive" },
+    { col: 5, row: 1, trait: "guard" }, { col: 8, row: 0, trait: "explosive" },
+    { col: 11, row: 1, trait: "reflector" },
+  ] },
+];
+
+function makeBossAttackBricks(stage: number, patternIndex: number, forcedMultiballs = 0) {
   const cols = 12;
   const gap = 7;
   const margin = 36;
   const width = (W - margin * 2 - gap * (cols - 1)) / cols;
-  const count = Math.min(5, 2 + stage);
-  const selected = Array.from({ length: cols }, (_, col) => col).sort(() => environmentRandom() - 0.5).slice(0, count);
-  return selected.map((col, index) => {
+  const patterns = stage >= 2 ? [...MID_BOSS_ATTACK_PATTERNS, ...FINAL_BOSS_ATTACK_PATTERNS] : MID_BOSS_ATTACK_PATTERNS;
+  const pattern = patterns[patternIndex % patterns.length];
+  const bricks = pattern.cells.map(({ col, row, trait }, index) => {
     const hp = 1 + Math.floor(stage / 2);
-    const trait: BrickTrait = stage >= 2 && index === count - 1 ? "healer"
-      : index % 4 === 1 ? "explosive"
-      : index % 4 === 2 ? "guard"
-      : "standard";
     return {
-      x: margin + col * (width + gap), y: 205 + (index % 2) * 8, w: width, h: 24,
+      x: margin + col * (width + gap), y: 214 + row * BRICK_ROW_STEP, w: width, h: 24,
       hp, maxHp: hp, hue: 28, alive: true, kind: "boss-minion" as const,
-      drop: index < forcedMultiballs ? "multiball" : environmentRandom() < 0.22 ? pickBrickDrop() : null,
+      drop: index < forcedMultiballs ? "multiball" as const : null,
       ...brickRuntimeState(trait),
     };
   });
+  return { name: pattern.name, bricks };
 }
 
 function makeInitialBricks(ghostCount: number, balance: BalanceConfig): Brick[] {
@@ -611,6 +639,7 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     nextBossWave: BOSS_INTERVAL,
     bossTimeRemaining: 0,
     bossSkillTimer: 0,
+    bossAttackPattern: 0,
     bossMultiballsRemaining: 0,
     bossRewards: [],
     autoGuard: false,
@@ -1241,6 +1270,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.waveResolution ??= null;
     game.bossTimeRemaining ??= 0;
     game.bossSkillTimer ??= 0;
+    game.bossAttackPattern ??= 0;
     game.bossMultiballsRemaining ??= 0;
     game.bossPending ??= false;
     game.balls.forEach((ball) => { ball.sourcePaddleId ??= "player"; ball.attackPower ??= 1; ball.missileTime ??= 0; ball.missileHitCooldown ??= 0; ball.skillCharges ??= {}; ball.visualSkill ??= null; ball.temporaryTime ??= 0; ball.waveBonus ??= false; });
@@ -1288,10 +1318,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.bossSkillTimer -= dt;
       if (game.bossSkillTimer <= 0) {
         const forcedMultiballs = Math.min(BOSS_MULTIBALL_BUDGET, game.bossMultiballsRemaining);
-        game.bricks.push(...makeBossAttackBricks(game.bossStage, forcedMultiballs));
+        const attack = makeBossAttackBricks(game.bossStage, game.bossAttackPattern, forcedMultiballs);
+        const reinforcements = attack.bricks.filter((candidate) => !game.bricks.some((brick) => brick.alive && brick.kind === "boss-minion" && Math.abs(brick.x - candidate.x) < 2 && Math.abs(brick.y - candidate.y) < 2));
+        game.bricks.push(...reinforcements);
+        game.bossAttackPattern++;
         game.bossMultiballsRemaining -= forcedMultiballs;
         game.bossSkillTimer = Math.max(2.6, balanceConfigRef.current.bossAttackInterval - game.bossStage * balanceConfigRef.current.bossAttackAcceleration);
-        game.flashes.push({ text: "BOSS SKILL // REINFORCEMENTS", x: W / 2, y: 190, life: 1, color: "#ff9658" });
+        game.flashes.push({ text: `BOSS SKILL // ${attack.name}`, x: W / 2, y: 190, life: 1, color: "#ff9658" });
         game.effects.push({ kind: "ring", x: W / 2, y: 150, x2: W / 2, y2: 150, size: 180, life: 0.8, maxLife: 0.8, color: "#ff9658" });
       }
     }
@@ -2529,6 +2562,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.overdriveLevel = 0;
       game.bossTimeRemaining = 0;
       game.bossSkillTimer = game.bossActive ? 5 : 0;
+      game.bossAttackPattern = 0;
       game.bossMultiballsRemaining = game.bossActive ? BOSS_MULTIBALL_BUDGET : 0;
       game.waveResolution = null;
       clearWaveScopedSkillState();

@@ -4,7 +4,7 @@ import { DEFAULT_BENCHMARK_CONFIG, type BenchmarkConfig } from "./benchmark-conf
 import { waveDefinition } from "./wave-config";
 
 export type HeadlessBotPolicy = "balanced" | "survival" | "random";
-export const PARALLEL_BENCHMARK_RULESET = "parallel-v6" as const;
+export const PARALLEL_BENCHMARK_RULESET = "parallel-v7" as const;
 const OVERDRIVE_THRESHOLDS = [30, 50, 70, 90] as const;
 const OVERDRIVE_STEP = 0.05;
 
@@ -112,7 +112,7 @@ function normalWaveStats(wave: number, balance: BalanceConfig) {
 
 function bossWaveStats(wave: number, balance: BalanceConfig) {
   const stage = wave >= 20 ? 2 : 1;
-  const multiplier = stage >= 2 ? 1.9 : 1.25;
+  const multiplier = stage >= 2 ? 1.3 : 0.95;
   const hp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage) * multiplier);
   return { count: 1, damageable: 1, hp };
 }

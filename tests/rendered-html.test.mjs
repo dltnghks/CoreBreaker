@@ -168,7 +168,9 @@ test("uses stationary 4x3 bosses with reinforcement bricks", async () => {
   assert.match(source, /return \[\{/);
   assert.match(source, /CORE FORTRESS.*HP/);
   assert.match(source, /brick\.kind === "boss-minion"/);
-  assert.match(source, /BOSS SKILL \/\/ REINFORCEMENTS/);
+  assert.match(source, /BOSS SKILL \/\/ \$\{attack\.name\}/);
+  ["SCATTER BOMB", "GUARD WINGS", "REFLECTOR GATE", "REPAIR CROSS", "BLAST MAZE"].forEach((name) => assert.match(source, new RegExp(name)));
+  assert.match(source, /game\.bossAttackPattern\+\+/);
 });
 
 test("defines 20 fixed brick patterns with bosses at waves 10 and 20", async () => {
@@ -225,7 +227,7 @@ test("raises post-wave-5 density, brick health, and boss health", async () => {
   assert.match(balance, /bossHpPerStage: 160/);
   assert.match(source, /function lateWaveHpMultiplier/);
   assert.match(source, /waveNumber >= 16 \? 1\.5 : waveNumber >= 11 \? 1\.25 : 1/);
-  assert.match(source, /const bossHpMultiplier = stage >= 2 \? 1\.9 : 1\.25/);
+  assert.match(source, /const bossHpMultiplier = stage >= 2 \? 1\.3 : 0\.95/);
   assert.match(balance, /echo-breaker-balance-v3/);
 });
 
@@ -728,7 +730,7 @@ test("separates impact shockwave damage from fireball damage over time", async (
   assert.match(source, /near\.burnTime = Math\.max\(near\.burnTime, 2 \+ level\)/);
   assert.match(source, /recordSkillImpact\("mage-fireball"/);
   assert.match(source, /BURN \$\{Math\.max\(0, Math\.ceil\(brick\.burnTime\)\)\}s/);
-  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v6"/);
+  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v7"/);
   assert.match(benchmark, /skill\.id === "warrior-shockwave"/);
   assert.match(benchmark, /skill\.id === "mage-fireball"/);
 });
