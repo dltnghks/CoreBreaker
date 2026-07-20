@@ -1005,6 +1005,7 @@ test("gives every warrior skill a distinct charged or field signature", async ()
   });
   assert.match(source, /ctx\.arc\(0, 0, visualRadius \+ 3 \+ pulse/);
   assert.match(source, /ctx\.fillRect\(-3\.5, -3\.5, 7, 7\)/);
+  assert.match(source, /const distance = reach \* \(0\.25 \+ progress \* 0\.5\)/);
 });
 
 test("gives every archer skill a distinct projectile or targeting signature", async () => {
@@ -1018,6 +1019,7 @@ test("gives every archer skill a distinct projectile or targeting signature", as
   assert.match(source, /const fall = \(PLAYER_LINE_Y - BRICK_ROW_Y\) \* progress/);
   assert.match(source, /const denominator = 1 \+ Math\.sin\(t\) \*\* 2/);
   assert.match(source, /ctx\.arc\(0, 0, reticle/);
+  assert.match(source, /const points = \[\[-length \* 0\.25/);
 });
 
 test("gives every mage skill a distinct elemental field signature", async () => {
@@ -1031,6 +1033,7 @@ test("gives every mage skill a distinct elemental field signature", async () => 
   ["mage-fireball", "mage-lightning", "mage-freeze", "mage-black-hole", "mage-mana-blast", "mage-elemental-storm", "mage-meteor"].forEach((id) => {
     assert.match(source, new RegExp(`effect\\.skillId === "${id}"|id === "${id}"`));
   });
+  assert.match(source, /ctx\.fillStyle = "#fff7dc"/);
   assert.match(source, /const stormColors = \["#ff7043", "#a78bfa", "#65dcff"\]/);
   assert.match(source, /const destinationY = effect\.y2 - effect\.y/);
   assert.match(source, /const radius = effect\.size \* 0\.035 \* t/);

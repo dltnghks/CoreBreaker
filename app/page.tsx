@@ -4140,6 +4140,21 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ctx.moveTo(-reach * 0.7, reach * 0.45);
           ctx.lineTo(reach * 0.7, -reach * 0.45);
           ctx.stroke();
+          ctx.fillStyle = "#fff4df";
+          for (let shard = 0; shard < 5; shard++) {
+            const angle = shard * Math.PI * 2 / 5 - 0.35;
+            const distance = reach * (0.25 + progress * 0.5);
+            ctx.save();
+            ctx.rotate(angle);
+            ctx.translate(distance, 0);
+            ctx.beginPath();
+            ctx.moveTo(8 * remaining, 0);
+            ctx.lineTo(-5, -3);
+            ctx.lineTo(-3, 4);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          }
         } else if (effect.skillId === "warrior-shockwave") {
           for (let wave = 0; wave < 3; wave++) {
             const radius = effect.size * Math.max(0.08, progress - wave * 0.12);
@@ -4246,6 +4261,22 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ctx.lineTo(length * 0.25, length * 0.16);
           ctx.lineTo(length, -length * 0.4);
           ctx.stroke();
+          const points = [[-length * 0.25, -length * 0.2], [length * 0.25, length * 0.16], [length, -length * 0.4]];
+          points.forEach(([x, y], pointIndex) => {
+            const previous = pointIndex === 0 ? [-length, length * 0.35] : points[pointIndex - 1];
+            const angle = Math.atan2(y - previous[1], x - previous[0]);
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            ctx.beginPath();
+            ctx.moveTo(7, 0);
+            ctx.lineTo(-4, -5);
+            ctx.lineTo(-1, 0);
+            ctx.lineTo(-4, 5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          });
         } else if (effect.skillId === "archer-focus") {
           const radius = effect.size * (0.7 - progress * 0.42);
           ctx.lineWidth = 3.5;
@@ -4312,6 +4343,19 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             ctx.closePath();
             ctx.fill();
           }
+          ctx.globalAlpha = Math.min(1, remaining * 2.4);
+          ctx.fillStyle = "#fff7dc";
+          ctx.shadowColor = "#ffffff";
+          ctx.shadowBlur = 20;
+          ctx.beginPath();
+          ctx.arc(0, 0, effect.size * Math.max(0.05, 0.15 * remaining), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = remaining * 0.8;
+          ctx.strokeStyle = "#ffb347";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(0, 0, effect.size * (0.18 + progress * 0.48), 0, Math.PI * 2);
+          ctx.stroke();
         } else if (effect.skillId === "mage-lightning") {
           ctx.lineWidth = 3.5;
           for (let bolt = 0; bolt < 5; bolt++) {
