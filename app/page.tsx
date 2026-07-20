@@ -3709,6 +3709,60 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const activeClassCharges = ballCooldownEntries
         .filter((entry) => entry.remaining <= 0)
         .map(({ id, level }) => [id, level] as [ClassSkillId, number]);
+      const readyCategories = [...new Set(activeClassCharges
+        .map(([id]) => activeSkillMap[id]?.category)
+        .filter((category): category is SkillCategory => Boolean(category) && category !== "common"))];
+      readyCategories.forEach((category, categoryIndex) => {
+        const color = CLASS_META[category].color;
+        const signatureRadius = visualRadius + 12 + categoryIndex * 6;
+        ctx.save();
+        ctx.globalAlpha = 0.72 * skillEffectAlpha;
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 10;
+        ctx.translate(ball.x, ball.y);
+        if (category === "warrior") {
+          ctx.rotate(game.elapsed * 0.7);
+          ctx.lineWidth = 3;
+          for (let shard = 0; shard < 4; shard++) {
+            ctx.rotate(Math.PI / 2);
+            ctx.beginPath();
+            ctx.moveTo(signatureRadius - 5, -5);
+            ctx.lineTo(signatureRadius + 4, 0);
+            ctx.lineTo(signatureRadius - 5, 5);
+            ctx.stroke();
+          }
+        } else if (category === "archer") {
+          ctx.rotate(Math.atan2(ball.vy, ball.vx));
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(signatureRadius + 7, 0);
+          ctx.lineTo(signatureRadius - 2, -6);
+          ctx.moveTo(signatureRadius + 7, 0);
+          ctx.lineTo(signatureRadius - 2, 6);
+          for (let lane = -1; lane <= 1; lane++) {
+            ctx.moveTo(-signatureRadius - 10 - Math.abs(lane) * 5, lane * 5);
+            ctx.lineTo(-signatureRadius + 1, lane * 5);
+          }
+          ctx.stroke();
+        } else if (category === "mage") {
+          ctx.rotate(game.elapsed * 0.85);
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 5]);
+          ctx.beginPath();
+          ctx.arc(0, 0, signatureRadius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          for (let rune = 0; rune < 3; rune++) {
+            const angle = rune * Math.PI * 2 / 3;
+            ctx.beginPath();
+            ctx.arc(Math.cos(angle) * signatureRadius, Math.sin(angle) * signatureRadius, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.restore();
+      });
       activeClassCharges.slice(0, 4).forEach(([id, level], index) => {
         const mageSpellVariant = id === "mage-fireball" ? 0 : id === "mage-lightning" ? 1 : -1;
         const mageSpellImage = mageSpellVariant >= 0 ? mageSpellRefs.current[mageSpellVariant] : null;

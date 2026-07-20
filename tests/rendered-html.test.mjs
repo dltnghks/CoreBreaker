@@ -1051,6 +1051,10 @@ test("classifies skills by both hero class and combat mechanic", async () => {
   assert.match(config, /type SkillMechanic = "impact" \| "chain" \| "control" \| "summon" \| "defense" \| "passive" \| "ultimate"/);
   ["타격", "연쇄", "제어", "소환", "방어", "지속", "궁극"].forEach((label) => assert.match(config, new RegExp(`"${label}"`)));
   assert.match(source, /SKILL_MECHANIC_LABELS\[skill\.mechanic\]/);
+  assert.match(source, /const readyCategories = \[\.\.\.new Set\(activeClassCharges/);
+  assert.match(source, /category === "warrior"/);
+  assert.match(source, /category === "archer"/);
+  assert.match(source, /category === "mage"/);
   assert.match(lab, /mechanicFilter/);
   assert.match(lab, /aria-label="스킬 작동 방식 필터"/);
   assert.match(config, /mechanic: base\.mechanic/);
