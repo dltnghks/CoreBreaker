@@ -103,7 +103,7 @@ body{background:radial-gradient(circle at 18% -15%,rgba(115,184,195,.11),transpa
 .gameplay-shell .solo-workspace{display:block;max-width:1500px;margin:0 auto}
 .gameplay-shell .game-column{min-width:0}
 .gameplay-shell .build-tray{display:none}
-.gameplay-shell .game-frame{aspect-ratio:16/9;min-height:0;max-height:calc(100vh - 28px);margin:0 auto;border:3px solid #7f693c;border-radius:7px;background:#07080b;box-shadow:0 0 0 1px #18140d,0 0 0 7px #17191e,0 0 0 9px #4f432a,0 28px 72px rgba(0,0,0,.72),inset 0 0 42px rgba(0,0,0,.75)}
+.gameplay-shell .game-frame{width:min(100%,calc((100vh - 28px)*1.5));aspect-ratio:3/2;min-height:0;max-height:calc(100vh - 28px);margin:0 auto;border:3px solid #7f693c;border-radius:7px;background:#07080b;box-shadow:0 0 0 1px #18140d,0 0 0 7px #17191e,0 0 0 9px #4f432a,0 28px 72px rgba(0,0,0,.72),inset 0 0 42px rgba(0,0,0,.75)}
 .gameplay-shell .game-frame:before{content:"";position:absolute;z-index:2;inset:8px;pointer-events:none;border:1px solid rgba(225,193,119,.2);clip-path:polygon(0 0,11% 0,11% 2px,89% 2px,89% 0,100% 0,100% 100%,89% 100%,89% calc(100% - 2px),11% calc(100% - 2px),11% 100%,0 100%);box-shadow:inset 0 0 22px rgba(0,0,0,.72)}
 .gameplay-shell .game-frame:after{z-index:2;background:linear-gradient(90deg,rgba(0,0,0,.26),transparent 7%,transparent 93%,rgba(0,0,0,.26)),repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,255,255,.006) 3px 4px)}
 
@@ -117,10 +117,10 @@ body{background:radial-gradient(circle at 18% -15%,rgba(115,184,195,.11),transpa
 .gameplay-shell .hud-core{bottom:10px;min-width:310px;min-height:42px;border-color:#9b7e3e;background:linear-gradient(180deg,rgba(39,32,20,.96),rgba(9,9,10,.97));box-shadow:0 10px 28px rgba(0,0,0,.58),inset 0 0 16px rgba(197,167,102,.06);clip-path:polygon(12px 0,calc(100% - 12px) 0,100% 50%,calc(100% - 12px) 100%,12px 100%,0 50%)}
 .gameplay-shell .hud-core i{color:#e0bd68;border-color:#9b7e3e;background:rgba(224,189,104,.08)}.gameplay-shell .hud-core strong{color:#f1d78f}.gameplay-shell .core-meter{left:48px;right:14px;bottom:5px;background:#2a261e}.gameplay-shell .core-meter span{background:linear-gradient(90deg,#8c6c2c,#e6c56f,#fff0b3);box-shadow:0 0 12px rgba(230,197,111,.52)}
 .gameplay-shell .drop-legend{display:none}
+.gameplay-shell.mode-lobby .hud-badge,.gameplay-shell.mode-initialskills .hud-badge{display:none}
+.fullscreen-toggle{position:absolute;z-index:12;top:13px;right:15px;width:34px;height:34px;border:1px solid rgba(199,173,111,.44);color:#d8bd7a;background:rgba(8,9,12,.82);font:900 17px/1 monospace;cursor:pointer;transition:.16s}
+.fullscreen-toggle:hover{color:#fff0bc;border-color:#d8bd7a;background:rgba(49,39,22,.9);box-shadow:0 0 16px rgba(216,189,122,.18)}
+.mode-playing .fullscreen-toggle{top:52px}
+:fullscreen body{overflow:hidden}:fullscreen .gameplay-shell{max-width:none;width:100vw;height:100vh;padding:12px;display:grid;place-items:center}:fullscreen .gameplay-shell .workspace{width:100%;margin:0}:fullscreen .gameplay-shell .game-frame{width:min(calc(100vw - 24px),calc((100vh - 24px)*1.5));max-height:calc(100vh - 24px)}
 
-.class-crest-rail{position:absolute;z-index:5;left:12px;top:50%;display:grid;gap:10px;transform:translateY(-50%);pointer-events:none}
-.class-crest{position:relative;width:43px;height:52px;display:grid;place-items:center;color:#66666a;border:1px solid #3f3d39;background:linear-gradient(145deg,rgba(31,32,36,.95),rgba(8,9,11,.96));clip-path:polygon(50% 0,100% 15%,92% 82%,50% 100%,8% 82%,0 15%);opacity:.42;filter:saturate(.3)}
-.class-crest b{font:900 22px Georgia,serif;text-shadow:0 2px 8px #000}.class-crest em{position:absolute;right:2px;bottom:8px;width:15px;height:15px;display:grid;place-items:center;border-radius:50%;color:#f7f2e7;background:#08090b;font:900 8px monospace;font-style:normal}
-.class-crest.active{opacity:1;filter:none}.crest-warrior.active{color:#dc735c;border-color:#9d4e40;box-shadow:0 0 18px rgba(216,90,69,.2)}.crest-archer.active{color:#7ac98e;border-color:#4f8b60;box-shadow:0 0 18px rgba(98,184,121,.2)}.crest-mage.active{color:#a393e7;border-color:#6c5eb3;box-shadow:0 0 18px rgba(128,109,209,.22)}
-
-@media(max-width:900px){.gameplay-shell .game-frame{aspect-ratio:3/2;max-height:none}.class-crest-rail{left:6px;gap:6px}.class-crest{width:34px;height:41px}.class-crest b{font-size:17px}.gameplay-shell .hud-core{min-width:220px}.gameplay-shell .hud-wave{min-width:190px}}
+@media(max-width:900px){.gameplay-shell .game-frame{width:100%;max-height:none}.gameplay-shell .hud-core{min-width:220px}.gameplay-shell .hud-wave{min-width:190px}}

@@ -906,6 +906,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const [savedMessage, setSavedMessage] = useState("");
   const [upgradeCatalog, setUpgradeCatalog] = useState<Upgrade[]>(DEFAULT_UPGRADES);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const syncFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreen);
+  }, []);
 
   useEffect(() => {
     const setMovementKey = (event: KeyboardEvent, pressed: boolean) => {
@@ -4877,6 +4884,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     if (next) void audio.unlock().then(() => audio.play("item"));
   };
 
+  const toggleFullscreen = async () => {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  };
+
   const saveGhost = () => {
     if (!result) return;
     const record: GhostRecord = {
@@ -5017,11 +5029,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     localStorage.setItem(BENCHMARK_STORAGE_KEY, JSON.stringify(next));
   };
 
-  const classCrests = (["warrior", "archer", "mage"] as const).map((category) => {
-    const owned = (gameRef.current?.upgrades ?? []).filter((id) => activeSkillMap[id]?.category === category);
-    return { category, count: owned.length, active: owned.length > 0 };
-  });
-
   return (
     <main className={`app-shell mode-${mode} ${benchmarkMode ? "benchmark-shell" : "gameplay-shell"}`}>
       <header className="topbar">
@@ -5047,14 +5054,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           </div>}
 
           <div className="game-frame">
-            <div className="class-crest-rail" aria-label="Equipped class skills">
-              {classCrests.map(({ category, count, active }) => (
-                <span key={category} className={`class-crest crest-${category}${active ? " active" : ""}`} title={`${CLASS_META[category].tag}: ${count}`}>
-                  <b aria-hidden="true">{category === "warrior" ? "⚔" : category === "archer" ? "➶" : "✦"}</b>
-                  {count > 0 && <em>{count}</em>}
-                </span>
-              ))}
-            </div>
+            <button className="fullscreen-toggle" type="button" onClick={() => void toggleFullscreen()} aria-label={isFullscreen ? "전체화면 종료" : "전체화면으로 보기"} title={isFullscreen ? "전체화면 종료" : "전체화면"}>{isFullscreen ? "×" : "⛶"}</button>
             <canvas
               ref={canvasRef}
               width={W}
