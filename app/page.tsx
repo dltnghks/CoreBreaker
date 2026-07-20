@@ -2928,6 +2928,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.items = [];
       game.safetyBlocks = [];
       game.gravityWells = [];
+      game.effects = [];
+      game.particles = [];
+      game.flashes = [];
       game.ultimateAuras = {};
       game.rowInterval = 0;
       game.rowTimer = 0;
@@ -2938,6 +2941,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.bossMultiballsRemaining = game.bossActive ? BOSS_MULTIBALL_BUDGET : 0;
       clearWaveScopedSkillState();
       resetBallsForWave();
+      game.paddleX = W / 2;
+      parkBallsAbovePaddle(game);
       if (game.autoGuard) game.paddleBarriers.player = Math.max(1, game.paddleBarriers.player ?? 0);
       game.flashes.push({ text: `WAVE ${waveNumber} // ${definition.name}`, x: W / 2, y: H / 2, life: 1.8, color: game.bossActive ? "#ff6b87" : "#ffcf4a" });
       if (game.bossActive) {
@@ -3020,11 +3025,31 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     ctx.translate(shakeX, shakeY);
 
     const bg = ctx.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, "#10162f");
-    bg.addColorStop(0.65, "#080d1e");
-    bg.addColorStop(1, "#050812");
+    bg.addColorStop(0, "#11131a");
+    bg.addColorStop(0.58, "#090b11");
+    bg.addColorStop(1, "#050608");
     ctx.fillStyle = bg;
     ctx.fillRect(-18, -18, W + 36, H + 36);
+
+    const arenaGlow = ctx.createRadialGradient(W / 2, H * 0.38, 40, W / 2, H * 0.42, W * 0.62);
+    arenaGlow.addColorStop(0, "rgba(181,145,70,.055)");
+    arenaGlow.addColorStop(0.55, "rgba(77,88,112,.025)");
+    arenaGlow.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = arenaGlow;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.translate(W / 2, H * 0.46);
+    ctx.strokeStyle = "rgba(205,176,112,.035)";
+    ctx.lineWidth = 1;
+    for (let ring = 0; ring < 4; ring++) {
+      ctx.beginPath();
+      ctx.arc(0, 0, 96 + ring * 38, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.rotate(Math.PI / 4);
+    ctx.strokeRect(-104, -104, 208, 208);
+    ctx.restore();
 
     if (game.bossActive) {
       const fortressGlow = ctx.createRadialGradient(W / 2, 220, 30, W / 2, 220, 360);
@@ -3053,7 +3078,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ctx.restore();
     }
 
-    ctx.strokeStyle = "rgba(92, 214, 255, .07)";
+    ctx.strokeStyle = "rgba(201, 180, 132, .035)";
     ctx.lineWidth = 1;
     for (let x = 0; x < W; x += 45) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
     for (let y = 0; y < H; y += 45) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
@@ -3092,7 +3117,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         : brick.trait === "indestructible" ? "#8d96a8"
         : brick.trait === "healer" ? "#72f1b8"
         : brick.trait === "reflector" ? "#65dcff"
-        : `hsl(${brick.hue} 95% 65%)`;
+        : brick.maxHp >= 5 ? "#c5a766" : brick.maxHp >= 3 ? "#aeb4bd" : "#8f969f";
       ctx.shadowColor = brickColor;
       ctx.fillStyle = brick.kind === "normal"
         ? brick.trait === "guard" ? `rgba(135,115,25,${alpha})`
@@ -3100,7 +3125,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         : brick.trait === "indestructible" ? "rgba(55,62,76,.98)"
         : brick.trait === "healer" ? `rgba(30,122,91,${alpha})`
         : brick.trait === "reflector" ? `rgba(22,102,145,${alpha})`
-        : `hsla(${brick.hue}, 90%, ${brick.maxHp === 3 ? 64 : 58}%, ${alpha})`
+        : brick.maxHp >= 5 ? `rgba(111,88,43,${alpha})` : brick.maxHp >= 3 ? `rgba(78,83,92,${alpha})` : `rgba(61,66,73,${alpha})`
         : brickColor;
       ctx.globalAlpha = brick.kind === "normal" ? 1 : alpha;
       traceBrickBody(brick);
@@ -4992,8 +5017,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     localStorage.setItem(BENCHMARK_STORAGE_KEY, JSON.stringify(next));
   };
 
+  const classCrests = (["warrior", "archer", "mage"] as const).map((category) => {
+    const owned = (gameRef.current?.upgrades ?? []).filter((id) => activeSkillMap[id]?.category === category);
+    return { category, count: owned.length, active: owned.length > 0 };
+  });
+
   return (
-    <main className="app-shell">
+    <main className={`app-shell mode-${mode} ${benchmarkMode ? "benchmark-shell" : "gameplay-shell"}`}>
       <header className="topbar">
         <div className="brand-block">
           <span className="brand-mark">CB</span>
@@ -5017,6 +5047,14 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           </div>}
 
           <div className="game-frame">
+            <div className="class-crest-rail" aria-label="Equipped class skills">
+              {classCrests.map(({ category, count, active }) => (
+                <span key={category} className={`class-crest crest-${category}${active ? " active" : ""}`} title={`${CLASS_META[category].tag}: ${count}`}>
+                  <b aria-hidden="true">{category === "warrior" ? "⚔" : category === "archer" ? "➶" : "✦"}</b>
+                  {count > 0 && <em>{count}</em>}
+                </span>
+              ))}
+            </div>
             <canvas
               ref={canvasRef}
               width={W}
