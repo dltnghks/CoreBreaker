@@ -715,6 +715,13 @@ function makePlayerBall(upgrades: UpgradeId[], x = W / 2): Ball {
   return ball;
 }
 
+function effectivePaddleWidth(base: number, upgrades: UpgradeId[], dangerActive = false) {
+  const emergencyLevel = upgradeLevel(upgrades, "emergency-wide");
+  const commonWide = skillValue("common-wide", upgradeLevel(upgrades, "common-wide"));
+  const emergencyWide = dangerActive ? skillValue("emergency-wide", emergencyLevel) : 0;
+  return Math.min(280, base + commonWide + emergencyWide);
+}
+
 function parkBallsAbovePaddle(game: GameState) {
   const playerBalls = game.balls.filter((ball) => ball.owner === "player");
   const paddleWidth = effectivePaddleWidth(game.paddleWidth, game.upgrades);
@@ -1527,13 +1534,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       .filter((ball) => ball.owner === "player" && ball.vy > 0)
       .sort((a, b) => b.y - a.y)[0] ?? game.balls.find((ball) => ball.owner === "player");
     const dangerActive = game.bricks.some((brick) => brick.alive && brick.y + brick.h >= PLAYER_LINE_Y - BRICK_ROW_STEP * 2);
-    const effectivePaddleWidth = (base: number, upgrades: UpgradeId[]) => {
-      const level = upgradeLevel(upgrades, "emergency-wide");
-      const commonWide = skillValue("common-wide", upgradeLevel(upgrades, "common-wide"));
-      return Math.min(280, base + commonWide + (dangerActive ? skillValue("emergency-wide", level) : 0));
-    };
     activeGhostsRef.current.forEach((ghost, index) => {
-      const width = effectivePaddleWidth(ghostPaddleWidth(ghost), ghost.upgrades);
+      const width = effectivePaddleWidth(ghostPaddleWidth(ghost), ghost.upgrades, dangerActive);
       const zoneWidth = W / activeGhostsRef.current.length;
       const zoneStart = zoneWidth * index;
       const zoneEnd = zoneStart + zoneWidth;
@@ -1588,9 +1590,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
     const paddleY = PLAYER_PADDLE_Y;
     const paddles = [
-      { id: "player", x: game.paddleX, previousX: previousPaddleX, y: paddleY, width: effectivePaddleWidth(game.paddleWidth, game.upgrades), upgrades: game.upgrades, name: "PLAYER" },
+      { id: "player", x: game.paddleX, previousX: previousPaddleX, y: paddleY, width: effectivePaddleWidth(game.paddleWidth, game.upgrades, dangerActive), upgrades: game.upgrades, name: "PLAYER" },
       ...activeGhostsRef.current.map((ghost, index) => ({
-        id: `ghost-${index}`, x: game.ghostPaddles[index], previousX: game.ghostPaddles[index], y: ghostPaddleY(), width: effectivePaddleWidth(ghostPaddleWidth(ghost), ghost.upgrades), upgrades: ghost.upgrades, name: ghost.name,
+        id: `ghost-${index}`, x: game.ghostPaddles[index], previousX: game.ghostPaddles[index], y: ghostPaddleY(), width: effectivePaddleWidth(ghostPaddleWidth(ghost), ghost.upgrades, dangerActive), upgrades: ghost.upgrades, name: ghost.name,
       })),
     ];
     const paddleFor = (id: string) => paddles.find((paddle) => paddle.id === id) ?? paddles[0];
@@ -2901,7 +2903,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const resetBallsForWave = () => {
       game.balls = [makePlayerBall(game.upgrades, game.paddleX)];
       const ballCount = game.balls.length;
-      const paddleWidth = effectivePaddleWidth(game.paddleWidth, game.upgrades);
+      const paddleWidth = effectivePaddleWidth(game.paddleWidth, game.upgrades, dangerActive);
       const spread = Math.min(paddleWidth * 0.78, Math.max(0, (ballCount - 1) * 12));
       game.balls.forEach((ball, index) => {
         clearBallEnchantments(ball, game.upgrades);
