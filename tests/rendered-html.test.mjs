@@ -753,6 +753,20 @@ test("reuses bounded particle and effect slots during recursive arrow storms", a
   assert.match(source, /game\.effectPool\.push\(effect\)/);
 });
 
+test("shows emphasized damage numbers and resets hit combos on paddle return", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const config = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
+  assert.match(source, /emphasis\?: "damage"/);
+  assert.match(source, /const brickHpAtFrameStart = new Map/);
+  assert.match(source, /text: `-\$\{roundedDamage\}`/);
+  assert.match(source, /ctx\.strokeText\(f\.text, 0, 0\)/);
+  assert.match(source, /const registerBrickComboHit = \(ball: Ball\)/);
+  assert.match(source, /registerBrickComboHit\(ball\)/);
+  assert.match(source, /ball\.sourcePaddleId = paddle\.id;[\s\S]*?game\.combo = 0;/);
+  assert.doesNotMatch(source, /if \(game\.comboTimer <= 0 && game\.combo > 0\) game\.combo = 0/);
+  assert.match(config, /"common-combo", "콤보 증폭", "콤보당 점수 증가"/);
+});
+
 test("lets balls pass through black-hole centers and restores their entry speed", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /gravityBaseSpeed: number \| null/);

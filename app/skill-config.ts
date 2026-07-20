@@ -271,7 +271,7 @@ export const DEFAULT_SKILLS: SkillConfig[] = [
   passiveSkill("common-luck", "행운", "아이템 추가 드롭 확률 증가", "아이템이 없는 브릭을 파괴했을 때 추가로 아이템이 생성될 확률이 증가합니다.", [8, 14, 20], "%"),
   passiveSkill("common-wide", "패들 확장", "패들 길이 증가", "플레이어 패들의 실제 충돌 범위와 표시 길이가 증가합니다.", [20, 35, 50], "px"),
   passiveSkill("common-xp", "코어 강화", "CORE 최대 체력 증가", "CORE 최대 체력과 현재 체력이 함께 증가합니다.", [1, 2, 3], "HP"),
-  passiveSkill("common-combo", "콤보 안정화", "콤보 유지 시간 증가", "브릭을 파괴한 뒤 콤보가 끊기기까지의 시간이 증가합니다.", [0.6, 1.2, 2], "초"),
+  passiveSkill("common-combo", "콤보 증폭", "콤보당 점수 증가", "패들에 다시 닿기 전까지 쌓인 콤보 1회당 획득 점수 배율이 추가로 증가합니다.", [1, 2, 3], "%"),
   passiveSkill("common-ball-size", "공 거대화", "공 반경 증가", "공의 최종 반경이 9/10/11px로 증가합니다.", [1, 2, 3], "px"),
   passiveSkill("common-skill-range", "범위 증폭", "스킬 범위 증가", "스킬의 적용 범위가 10/20/30% 증가합니다.", [10, 20, 30], "%"),
   passiveSkill("common-chain", "연계 증폭", "스킬 연계 횟수 증가", "스킬의 연계 횟수가 1/2/3회 증가합니다.", [1, 2, 3], "회"),

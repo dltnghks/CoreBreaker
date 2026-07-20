@@ -179,7 +179,7 @@ type GameState = {
 };
 
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
-type Flash = { text: string; x: number; y: number; life: number; color: string };
+type Flash = { text: string; x: number; y: number; life: number; color: string; emphasis?: "damage" };
 type GameEffect = { kind: "ring" | "beam" | "blast" | "drop" | "spark" | "lightning" | "skill"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string; variant: number; skillId: ClassSkillId | null };
 type PaddleCounter = { reflections: number; barrierReflections: number; missileReflections: number; safetyTimer: number; gravityTimer: number; directKills: number; pierceKills: number; feverMilestone: number; lastShotTimer: number; combo: number; comboTimer: number; skillCooldowns: Partial<Record<ClassSkillId, number>>; skillReflections?: Partial<Record<ClassSkillId, number>>; chargePulse?: number; chargeColor?: string };
 type WaveSettlement = { wave: number; waveName: string; cleared: boolean; wasBoss: boolean; survivors: number; coreDamage: number; blocked: number; coreHp: number; elapsed: number; finalWave: boolean };
@@ -1409,6 +1409,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       brick.lastHitPaddleId ??= null;
       brick.traitLockTime = Math.max(0, brick.traitLockTime - dt);
     });
+    const brickHpAtFrameStart = new Map(game.bricks.map((brick) => [brick, brick.hp]));
     game.elapsed += dt;
     game.rowTimer += dt;
     const nextOverdriveLevel = overdriveLevelAt(game.rowTimer);
@@ -1494,14 +1495,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.ghostPaddles[index] = Math.max(zoneStart + width / 2, Math.min(zoneEnd - width / 2, game.ghostPaddles[index] + delta));
     });
 
-    game.comboTimer -= dt;
-    if (game.comboTimer <= 0 && game.combo > 0) game.combo = 0;
     Object.values(game.paddleCounters).forEach((counter) => {
       counter.missileReflections ??= 0;
       counter.safetyTimer = Number.isFinite(counter.safetyTimer) ? counter.safetyTimer - dt : 0;
       counter.gravityTimer = Number.isFinite(counter.gravityTimer) ? counter.gravityTimer - dt : 0;
-      counter.comboTimer -= dt;
-      if (counter.comboTimer <= 0) { counter.combo = 0; counter.feverMilestone = 0; }
       counter.lastShotTimer -= dt;
     });
     game.particles.forEach((p) => { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 150 * dt; p.life -= dt; });
@@ -1702,14 +1699,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const commonCombo = skillValue("common-combo", upgradeLevel(sourcePaddle.upgrades, "common-combo"));
       const speedBonus = 1 + skillValue("speed", upgradeLevel(sourcePaddle.upgrades, "speed")) / 100;
       game.bricksBroken++;
-      game.combo++;
       audioRef.current?.play("brick-break", game.combo);
       impactFeedback(Math.min(2.8, 1.1 + game.combo * 0.035), ball.color, 0.09);
-      sourceCounter.combo++;
-      game.maxCombo = Math.max(game.maxCombo, game.combo);
-      game.comboTimer = 1.8 + chainLevel * 0.45 + commonCombo;
-      sourceCounter.comboTimer = game.comboTimer;
-      const multiplier = 1 + Math.min(4, game.combo * (0.05 + chainLevel * 0.015));
+      const multiplier = 1 + Math.min(4, game.combo * (0.05 + chainLevel * 0.015 + commonCombo / 100));
       const points = 100 * multiplier * (ball.owner === "ghost" ? 0.75 : 1) * speedBonus;
       game.score += points;
       game.flashes.push({ text: `+${Math.floor(points)}`, x: brick.x + brick.w / 2, y: brick.y, life: 0.55, color: ball.color });
@@ -1895,6 +1887,14 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     };
 
     const lostPlayerBalls = new Set<Ball>();
+    const registerBrickComboHit = (ball: Ball) => {
+      const sourceCounter = counterFor(ball.sourcePaddleId);
+      game.combo++;
+      sourceCounter.combo++;
+      game.maxCombo = Math.max(game.maxCombo, game.combo);
+      game.comboTimer = 0;
+      sourceCounter.comboTimer = 0;
+    };
 
     game.bricks.forEach((brick) => {
       if (!brick.alive || !isDamageableBrick(brick) || brick.poisonTime <= 0 || !brick.poisonSourcePaddleId) return;
@@ -2167,6 +2167,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ball.x = contactX;
           ball.y = paddle.y - ball.radius - 0.1;
           ball.sourcePaddleId = paddle.id;
+          game.combo = 0;
+          game.comboTimer = 0;
+          Object.values(game.paddleCounters).forEach((counter) => {
+            counter.combo = 0;
+            counter.comboTimer = 0;
+            counter.feverMilestone = 0;
+          });
           audioRef.current?.play("paddle", game.combo);
           const grantedPayloads = grantPaddlePayloads(ball, paddle.upgrades);
           emitBurst(ball.x, paddle.y, grantedPayloads.length > 1 ? "#ffffff" : grantedPayloads.length === 1 ? PAYLOAD_COLORS[grantedPayloads[0].id] : ball.color, 7, 135);
@@ -2436,6 +2443,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         if (!brick.alive) continue;
         const collision = circleRectangleCollision(ball, brick, previousBallX, previousBallY);
         if (!collision) continue;
+        registerBrickComboHit(ball);
 
         if (brick.trait === "reflector" && brick.traitLockTime <= 0 && ball.vy < 0 && collision.normalY > 0) {
           ball.y = brick.y + brick.h + ball.radius;
@@ -2786,6 +2794,21 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         break;
       }
     }
+
+    brickHpAtFrameStart.forEach((hpBefore, brick) => {
+      const damage = Math.min(Math.max(0, hpBefore), Math.max(0, hpBefore - brick.hp));
+      if (damage <= 0) return;
+      const roundedDamage = Math.abs(damage - Math.round(damage)) < 0.05 ? String(Math.round(damage)) : damage.toFixed(1);
+      const heavyHit = damage >= Math.max(3, hpBefore * 0.25);
+      game.flashes.push({
+        text: `-${roundedDamage}`,
+        x: brick.x + brick.w / 2,
+        y: brick.y + brick.h / 2 + 8,
+        life: 0.82,
+        color: heavyHit ? "#ffcf4a" : "#ffffff",
+        emphasis: "damage",
+      });
+    });
 
     if (lostPlayerBalls.size > 0) {
       if (botActiveRef.current) game.botMetrics.ballLosses += lostPlayerBalls.size;
@@ -4262,9 +4285,25 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.flashes.forEach((f) => {
       ctx.globalAlpha = Math.min(1, f.life * 1.5);
       ctx.fillStyle = f.color;
-      ctx.font = `900 ${f.text.includes("BOARD") ? 28 : 15}px monospace`;
       ctx.textAlign = "center";
-      ctx.fillText(f.text, f.x, f.y);
+      if (f.emphasis === "damage") {
+        const pulse = 1 + Math.max(0, f.life - 0.55) * 0.45;
+        ctx.save();
+        ctx.translate(f.x, f.y);
+        ctx.scale(pulse, pulse);
+        ctx.font = "1000 24px monospace";
+        ctx.lineJoin = "round";
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = "rgba(5, 8, 16, .95)";
+        ctx.shadowColor = f.color;
+        ctx.shadowBlur = 12;
+        ctx.strokeText(f.text, 0, 0);
+        ctx.fillText(f.text, 0, 0);
+        ctx.restore();
+      } else {
+        ctx.font = `900 ${f.text.includes("BOARD") ? 28 : 15}px monospace`;
+        ctx.fillText(f.text, f.x, f.y);
+      }
     });
     ctx.globalAlpha = 1;
 
