@@ -4,9 +4,9 @@ import { DEFAULT_BENCHMARK_CONFIG, type BenchmarkConfig } from "./benchmark-conf
 import { waveDefinition } from "./wave-config";
 
 export type HeadlessBotPolicy = "balanced" | "survival" | "random";
-export const PARALLEL_BENCHMARK_RULESET = "parallel-v8" as const;
-const OVERDRIVE_THRESHOLDS = [30, 50, 70, 90] as const;
-const OVERDRIVE_STEP = 0.25;
+export const PARALLEL_BENCHMARK_RULESET = "parallel-v9" as const;
+const OVERDRIVE_RATE_PER_SECOND = 0.01;
+const MAX_OVERDRIVE_LEVEL = 50;
 
 export type HeadlessBenchmarkRequest = {
   run: number;
@@ -131,22 +131,17 @@ function bossWaveStats(wave: number, balance: BalanceConfig) {
 function overdriveAdjustedDuration(baseDuration: number) {
   let remainingWork = Math.max(0, baseDuration);
   let elapsed = 0;
-  let previousThreshold = 0;
-  for (let level = 0; level < OVERDRIVE_THRESHOLDS.length; level++) {
-    const threshold = OVERDRIVE_THRESHOLDS[level];
-    const segmentDuration = threshold - previousThreshold;
-    const multiplier = 1 + level * OVERDRIVE_STEP;
-    const segmentWork = segmentDuration * multiplier;
-    if (remainingWork <= segmentWork) return elapsed + remainingWork / multiplier;
-    remainingWork -= segmentWork;
-    elapsed += segmentDuration;
-    previousThreshold = threshold;
+  for (let level = 0; level < MAX_OVERDRIVE_LEVEL; level++) {
+    const multiplier = 1 + level * OVERDRIVE_RATE_PER_SECOND;
+    if (remainingWork <= multiplier) return elapsed + remainingWork / multiplier;
+    remainingWork -= multiplier;
+    elapsed += 1;
   }
-  return elapsed + remainingWork / (1 + OVERDRIVE_THRESHOLDS.length * OVERDRIVE_STEP);
+  return elapsed + remainingWork / (1 + MAX_OVERDRIVE_LEVEL * OVERDRIVE_RATE_PER_SECOND);
 }
 
 function overdriveLevelAt(seconds: number) {
-  return OVERDRIVE_THRESHOLDS.filter((threshold) => seconds >= threshold).length;
+  return Math.min(MAX_OVERDRIVE_LEVEL, Math.max(0, Math.floor(seconds)));
 }
 
 export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): HeadlessBenchmarkResult {
@@ -216,7 +211,7 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
     }
 
     const survivalPower = levelOf(upgrades, "warrior-guard") * 0.018 + levelOf(upgrades, "mage-black-hole") * 0.012 + levelOf(upgrades, "common-wide") * 0.01;
-    const overdriveRisk = overdriveLevelAt(waveElapsed) * 0.012;
+    const overdriveRisk = Math.floor(overdriveLevelAt(waveElapsed) / 10) * 0.012;
     const lossChance = Math.max(0.02, Math.min(0.38, 0.045 + wave * 0.004 + (definition.boss ? 0.035 : 0) + overdriveRisk - survivalPower));
     const lossChecks = Math.max(1, Math.ceil(waveElapsed / 24));
     let waveBallLosses = 0;

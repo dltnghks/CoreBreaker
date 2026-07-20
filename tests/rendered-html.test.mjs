@@ -51,16 +51,18 @@ test("ramps ball speed by wave elapsed time and resolves circular brick collisio
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const benchmark = await readFile(new URL("../app/benchmark-headless.ts", import.meta.url), "utf8");
   assert.match(html, /BALL[\s\S]*100[\s\S]*%/);
-  assert.match(source, /OVERDRIVE_THRESHOLDS = \[30, 50, 70, 90\]/);
-  assert.match(source, /OVERDRIVE_STEP = 0\.25/);
+  assert.match(source, /OVERDRIVE_RATE_PER_SECOND = 0\.01/);
+  assert.match(source, /MAX_OVERDRIVE_LEVEL = 50/);
+  assert.match(source, /const dt = Math\.max\(0, Math\.min\(0\.025/);
   assert.match(source, /MAX_PADDLE_REBOUND_SPEED = Math\.hypot\(BASE_BALL_VX, BASE_BALL_VY\) \* 2/);
-  assert.match(source, /MAX OVERDRIVE · 200%/);
+  assert.match(source, /\+1% \/ SEC · MAX 150%/);
+  assert.match(source, /MAX OVERDRIVE · 150%/);
   assert.match(source, /OVERDRIVE .* BALL SPEED/);
   assert.match(source, /function circleRectangleCollision/);
   assert.match(source, /function separateAndReflectBall/);
   assert.match(source, /collision\.penetration \+ 0\.1/);
   assert.match(benchmark, /function overdriveAdjustedDuration/);
-  assert.match(benchmark, /const overdriveRisk = overdriveLevelAt\(waveElapsed\) \* 0\.012/);
+  assert.match(benchmark, /const overdriveRisk = Math\.floor\(overdriveLevelAt\(waveElapsed\) \/ 10\) \* 0\.012/);
 });
 
 test("guarantees a minimum vertical angle after every reflection", async () => {
@@ -798,7 +800,7 @@ test("separates impact shockwave damage from fireball damage over time", async (
   assert.match(source, /near\.burnTime = Math\.max\(near\.burnTime, 2 \+ level\)/);
   assert.match(source, /recordSkillImpact\("mage-fireball"/);
   assert.match(source, /BURN \$\{Math\.max\(0, Math\.ceil\(brick\.burnTime\)\)\}s/);
-  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v8"/);
+  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v9"/);
   assert.match(benchmark, /skill\.id === "warrior-shockwave"/);
   assert.match(benchmark, /skill\.id === "mage-fireball"/);
 });

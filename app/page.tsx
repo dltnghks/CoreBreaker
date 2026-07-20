@@ -203,9 +203,9 @@ const BOSS_MULTIBALL_BUDGET = 2;
 const BOT_EVALUATION_WAVE = MAX_WAVE;
 const BASE_BALL_VX = 240;
 const BASE_BALL_VY = 320;
-const OVERDRIVE_THRESHOLDS = [30, 50, 70, 90] as const;
-const OVERDRIVE_STEP = 0.25;
-const MAX_OVERDRIVE_LEVEL = OVERDRIVE_THRESHOLDS.length;
+const OVERDRIVE_RATE_PER_SECOND = 0.01;
+const MAX_OVERDRIVE_LEVEL = 50;
+const OVERDRIVE_EFFECT_INTERVAL = 10;
 const MIN_PADDLE_REBOUND_SPEED = 300;
 const MAX_PADDLE_REBOUND_SPEED = Math.hypot(BASE_BALL_VX, BASE_BALL_VY) * 2;
 const MAX_PADDLE_REBOUND_RATIO = 0.84;
@@ -240,11 +240,11 @@ let decisionRandom = () => Math.random();
 let effectRandom = () => Math.random();
 
 function overdriveLevelAt(seconds: number) {
-  return OVERDRIVE_THRESHOLDS.filter((threshold) => seconds >= threshold).length;
+  return Math.min(MAX_OVERDRIVE_LEVEL, Math.max(0, Math.floor(seconds)));
 }
 
 function overdriveMultiplier(level: number) {
-  return 1 + Math.max(0, Math.min(MAX_OVERDRIVE_LEVEL, level)) * OVERDRIVE_STEP;
+  return 1 + Math.max(0, Math.min(MAX_OVERDRIVE_LEVEL, level)) * OVERDRIVE_RATE_PER_SECOND;
 }
 
 function pushPooledParticle(game: GameState, values: Particle) {
@@ -1414,6 +1414,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.rowTimer += dt;
     const nextOverdriveLevel = overdriveLevelAt(game.rowTimer);
     if (nextOverdriveLevel > game.overdriveLevel) {
+      const previousOverdriveLevel = game.overdriveLevel;
       const speedRatio = overdriveMultiplier(nextOverdriveLevel) / overdriveMultiplier(game.overdriveLevel);
       game.balls.filter((ball) => ball.owner === "player").forEach((ball) => {
         ball.vx *= speedRatio;
@@ -1421,11 +1422,14 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         if (ball.gravityBaseSpeed !== null) ball.gravityBaseSpeed *= speedRatio;
       });
       game.overdriveLevel = nextOverdriveLevel;
-      const overdrivePercent = Math.round(overdriveMultiplier(nextOverdriveLevel) * 100);
-      game.flashes.push({ text: `OVERDRIVE ${nextOverdriveLevel} // BALL SPEED ${overdrivePercent}%`, x: W / 2, y: H / 2, life: 1.2, color: "#ff9658" });
-      pushPooledEffect(game, { kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 150 + nextOverdriveLevel * 18, life: 0.7, maxLife: 0.7, color: "#ff9658", variant: 0, skillId: null });
-      audioRef.current?.play("skill", 0.8 + nextOverdriveLevel * 0.18);
-      setImpactFeedback(game, 2 + nextOverdriveLevel, "#ff9658", 0.16, 0.06);
+      const crossedEffectMilestone = Math.floor(nextOverdriveLevel / OVERDRIVE_EFFECT_INTERVAL) > Math.floor(previousOverdriveLevel / OVERDRIVE_EFFECT_INTERVAL);
+      if (crossedEffectMilestone) {
+        const overdrivePercent = Math.round(overdriveMultiplier(nextOverdriveLevel) * 100);
+        game.flashes.push({ text: `OVERDRIVE // BALL SPEED ${overdrivePercent}%`, x: W / 2, y: H / 2, life: 1.2, color: "#ff9658" });
+        pushPooledEffect(game, { kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 150 + nextOverdriveLevel * 2, life: 0.7, maxLife: 0.7, color: "#ff9658", variant: 0, skillId: null });
+        audioRef.current?.play("skill", 0.8 + nextOverdriveLevel * 0.01);
+        setImpactFeedback(game, 2 + nextOverdriveLevel * 0.05, "#ff9658", 0.16, 0.06);
+      }
     }
     if (game.bossActive) {
       game.bossSkillTimer -= dt;
@@ -4350,7 +4354,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   }, []);
 
   const loop = useCallback((time: number) => {
-    const dt = Math.min(0.025, (time - lastRef.current) / 1000 || 0);
+    const dt = Math.max(0, Math.min(0.025, (time - lastRef.current) / 1000 || 0));
     lastRef.current = time;
     if (runningRef.current) {
       const steps = botActiveRef.current ? botSpeedRef.current : 1;
@@ -4763,7 +4767,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             <div className={hud.overdriveLevel > 0 ? "overdrive-cell active" : "overdrive-cell"}>
               <span>WAVE {hud.wave}/{MAX_WAVE} · {hud.nextRow.toFixed(1)}s</span>
               <strong>BALL {Math.round(hud.overdriveMultiplier * 100)}%</strong>
-              <small>{hud.overdriveLevel < MAX_OVERDRIVE_LEVEL ? `NEXT +${Math.round(OVERDRIVE_STEP * 100)}% IN ${Math.max(0, OVERDRIVE_THRESHOLDS[hud.overdriveLevel] - hud.nextRow).toFixed(0)}s` : "MAX OVERDRIVE · 200%"}</small>
+              <small>{hud.overdriveLevel < MAX_OVERDRIVE_LEVEL ? `+1% / SEC · MAX 150% IN ${Math.max(0, MAX_OVERDRIVE_LEVEL - hud.nextRow).toFixed(0)}s` : "MAX OVERDRIVE · 150%"}</small>
             </div>
           </div>
           <div className="brick-key-strip" aria-label="특수 블록 기능 안내">
