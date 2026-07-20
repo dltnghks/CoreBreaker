@@ -835,6 +835,15 @@ test("renders segmented per-ball cooldown gauges and a numeric timer on the base
   assert.match(source, /!ball\.waveBonus && ball\.temporaryTime <= 0/);
 });
 
+test("keeps extra-ball skill readiness visible at reduced intensity", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /const isExtraBall = ball\.waveBonus \|\| ball\.temporaryTime > 0 \|\| ball\.visualSkill !== null/);
+  assert.match(source, /const skillEffectAlpha = isExtraBall \? 0\.38 : 1/);
+  assert.match(source, /const cooldownGaugeAlpha = isExtraBall \? 0\.5 : 1/);
+  assert.match(source, /0\.92 \* skillEffectAlpha/);
+  assert.match(source, /0\.95 \* cooldownGaugeAlpha/);
+});
+
 test("layers screen shake, flashes, impact visuals, and stronger synthesized sound", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const audio = await readFile(new URL("../app/game-audio.ts", import.meta.url), "utf8");

@@ -3372,6 +3372,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     drawPaddleChargeAura(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, playerChargeVisual);
     game.balls.filter((ball) => ball.owner === "player").forEach((ball) => {
       const drawColor = ballBodyColor(ball);
+      const isExtraBall = ball.waveBonus || ball.temporaryTime > 0 || ball.visualSkill !== null;
+      const skillEffectAlpha = isExtraBall ? 0.38 : 1;
+      const cooldownGaugeAlpha = isExtraBall ? 0.5 : 1;
       const speed = Math.max(1, Math.hypot(ball.vx, ball.vy));
       const powerBoost = Math.max(0, ball.attackPower - 1);
       const visualRadius = ball.radius + Math.min(3.5, powerBoost * 0.7);
@@ -3418,14 +3421,14 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           const start = -Math.PI / 2 + index * segmentSpan + gap / 2;
           const segmentLength = segmentSpan - gap;
           const color = classSkillColor(entry.id);
-          ctx.globalAlpha = 0.2;
+          ctx.globalAlpha = 0.2 * cooldownGaugeAlpha;
           ctx.strokeStyle = color;
           ctx.lineWidth = 3;
           ctx.beginPath();
           ctx.arc(ball.x, ball.y, gaugeRadius, start, start + segmentLength);
           ctx.stroke();
           if (progress > 0) {
-            ctx.globalAlpha = 0.95;
+            ctx.globalAlpha = 0.95 * cooldownGaugeAlpha;
             ctx.shadowColor = color;
             ctx.shadowBlur = 8;
             ctx.beginPath();
@@ -3461,7 +3464,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ctx.save();
           ctx.translate(ball.x, ball.y);
           if (id === "mage-fireball") ctx.rotate(Math.atan2(ball.vy, ball.vx));
-          ctx.globalAlpha = 0.92;
+          ctx.globalAlpha = 0.92 * skillEffectAlpha;
           ctx.imageSmoothingEnabled = false;
           ctx.shadowBlur = 16;
           ctx.shadowColor = classSkillColor(id);
@@ -3482,7 +3485,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const effectColor = classSkillColor(id);
         const classCategory = activeSkillMap[id]?.category;
         ctx.save();
-        ctx.globalAlpha = 0.78;
+        ctx.globalAlpha = 0.78 * skillEffectAlpha;
         ctx.shadowBlur = 12;
         ctx.shadowColor = effectColor;
         ctx.strokeStyle = effectColor;
@@ -3499,7 +3502,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           } else if (id === "warrior-shockwave") {
             for (let wave = 0; wave < 2; wave++) {
               const pulse = (game.elapsed * 2.8 + wave * 0.5) % 1;
-              ctx.globalAlpha = 0.8 * (1 - pulse);
+              ctx.globalAlpha = 0.8 * (1 - pulse) * skillEffectAlpha;
               ctx.beginPath();
               ctx.arc(0, 0, visualRadius + 3 + pulse * (10 + wave * 4), 0, Math.PI * 2);
               ctx.stroke();
