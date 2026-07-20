@@ -10,7 +10,7 @@ import { PARALLEL_BENCHMARK_RULESET, type HeadlessBenchmarkRequest, type Headles
 import { clearBenchmarkResults, getBenchmarkResults, putBenchmarkResults } from "./benchmark-result-store";
 
 type PayloadId = "pierce" | "blast" | "glass" | "link";
-type ItemKind = "multiball";
+type ItemKind = "multiball" | "auto-barrier" | "core-repair" | "cooldown-reset";
 type BrickKind = "normal" | "boss-armor" | "boss-core" | "boss-minion";
 type BrickTrait = "standard" | "guard" | "explosive" | "indestructible" | "healer" | "reflector";
 type BossRewardId = ClassSkillId;
@@ -146,6 +146,7 @@ type GameState = {
   safetyBlocks: SafetyBlock[];
   gravityWells: GravityWell[];
   paddleBarriers: Record<string, number>;
+  itemBarrierTime: number;
   ultimateAuras: Partial<Record<ClassSkillId, boolean>>;
   paddleCounters: Record<string, PaddleCounter>;
   coreHp: number;
@@ -209,6 +210,8 @@ const PADDLE_COLLISION_SLOP = 3;
 const PADDLE_SIDE_FORGIVENESS = 14;
 const PADDLE_SIDE_DEPTH = 18;
 const PADDLE_KEYBOARD_SPEED = 460;
+const ITEM_BARRIER_DURATION = 10;
+const ITEM_BARRIER_Y = H - 18;
 const MIN_AIM_VERTICAL_DISTANCE = 52;
 const AIM_LIMIT_GUIDE_LENGTH = 100;
 const AIM_LINE_LENGTH = 170;
@@ -392,7 +395,7 @@ const SKILL_ICONS: Partial<Record<UpgradeId, string>> = {
   "warrior-smash": "⚒", "warrior-shockwave": "◉", "warrior-execute": "✦", "warrior-crush": "◆", "warrior-guard": "⬡", "warrior-earthquake": "▰", "warrior-berserker": "♨",
   "archer-rapid": "➶", "archer-pierce": "➵", "archer-ricochet": "⌁", "archer-focus": "◎", "archer-weakpoint": "⌾", "archer-arrow-rain": "⇊", "archer-infinite": "∞",
   "mage-fireball": "●", "mage-lightning": "ϟ", "mage-freeze": "❄", "mage-black-hole": "◌", "mage-mana-blast": "✧", "mage-elemental-storm": "✺", "mage-meteor": "☄",
-  "common-magnet": "⌁", "common-luck": "✤", "common-wide": "↔", "common-xp": "◇", "common-combo": "∞",
+  "common-magnet": "⌁", "common-luck": "✤", "common-wide": "↔", "common-move-speed": "»", "common-xp": "◇", "common-combo": "∞",
   "common-ball-size": "●", "common-skill-range": "◎", "common-chain": "⌘", "common-damage": "▲", "common-cooldown": "◷",
 };
 // Class skills no longer expose paddle-reflection progress; the rail stays empty.
@@ -400,6 +403,9 @@ const COUNTED_SKILL_IDS: UpgradeId[] = [];
 const PADDLE_UPGRADES = new Set<UpgradeId>(DEFAULT_SKILLS.map((entry) => entry.id));
 const ITEM_DATA: Record<ItemKind, { label: string; symbol: string; color: string }> = {
   multiball: { label: "MULTI BALL", symbol: "+", color: "#ffcf4a" },
+  "auto-barrier": { label: "AUTO BARRIER", symbol: "▰", color: "#65dcff" },
+  "core-repair": { label: "CORE REPAIR", symbol: "♥", color: "#72f1b8" },
+  "cooldown-reset": { label: "COOLDOWN RESET", symbol: "↻", color: "#c18cff" },
 };
 const ITEM_KINDS = Object.keys(ITEM_DATA) as ItemKind[];
 const BRICK_TRAIT_DATA: Record<Exclude<BrickTrait, "standard">, { label: string; glyph: string; color: string; description: string }> = {
@@ -546,7 +552,9 @@ function clearBallEnchantments(ball: Ball, upgrades: UpgradeId[] = []) {
 }
 
 function pickBrickDrop(): ItemKind | null {
-  return null;
+  if (environmentRandom() >= 0.055) return null;
+  const utilityDrops: ItemKind[] = ["auto-barrier", "core-repair", "cooldown-reset"];
+  return utilityDrops[Math.floor(environmentRandom() * utilityDrops.length)];
 }
 
 function hasScheduledMultiball(wave: number) {
@@ -715,6 +723,14 @@ function makePlayerBall(upgrades: UpgradeId[], x = W / 2): Ball {
   return ball;
 }
 
+function launchBallToward(ball: Ball, targetX: number, targetY: number, speed = Math.hypot(ball.vx, ball.vy)) {
+  const aim = paddleAimDirection(ball.x, ball.y, targetX, targetY);
+  const launchSpeed = Math.max(MIN_PADDLE_REBOUND_SPEED, speed);
+  ball.vx = aim.horizontalRatio * launchSpeed;
+  ball.vy = -Math.sqrt(Math.max(1, launchSpeed * launchSpeed - ball.vx * ball.vx));
+  ensureMinimumVerticalAngle(ball, -1);
+}
+
 function effectivePaddleWidth(base: number, upgrades: UpgradeId[], dangerActive = false) {
   const emergencyLevel = upgradeLevel(upgrades, "emergency-wide");
   const commonWide = skillValue("common-wide", upgradeLevel(upgrades, "common-wide"));
@@ -722,18 +738,16 @@ function effectivePaddleWidth(base: number, upgrades: UpgradeId[], dangerActive 
   return Math.min(280, base + commonWide + emergencyWide);
 }
 
-function parkBallsAbovePaddle(game: GameState) {
+function parkBallsAbovePaddle(game: GameState, targetX = W / 2, targetY = H / 3) {
   const playerBalls = game.balls.filter((ball) => ball.owner === "player");
   const paddleWidth = effectivePaddleWidth(game.paddleWidth, game.upgrades);
   const spread = Math.min(paddleWidth * 0.72, Math.max(0, (playerBalls.length - 1) * 14));
   playerBalls.forEach((ball, index) => {
     const position = playerBalls.length <= 1 ? 0.5 : index / (playerBalls.length - 1);
-    const horizontalRatio = (position - 0.5) * 0.9;
     const speed = Math.max(MIN_PADDLE_REBOUND_SPEED, Math.hypot(ball.vx, ball.vy));
     ball.x = game.paddleX - spread / 2 + spread * position;
     ball.y = PLAYER_PADDLE_Y - ball.radius - 3;
-    ball.vx = horizontalRatio * speed;
-    ball.vy = -Math.sqrt(Math.max(1, speed * speed - ball.vx * ball.vx));
+    launchBallToward(ball, targetX, targetY, speed);
   });
 }
 
@@ -768,6 +782,7 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     safetyBlocks: [],
     gravityWells: [],
     paddleBarriers: {},
+    itemBarrierTime: 0,
     ultimateAuras: {},
     paddleCounters: Object.fromEntries(["player", ...activeGhosts.map((_, index) => `ghost-${index}`)].map((id) => [id, newPaddleCounter()])),
     coreHp: MAX_CORE_HP,
@@ -1245,7 +1260,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     setImpactFeedback(game, 4 + nextLevel * 0.5, upgrade.color, 0.2, 0.1);
     setHud(hudFromGame(game));
     if (resume) {
-      parkBallsAbovePaddle(game);
+      parkBallsAbovePaddle(game, pointerXRef.current, pointerYRef.current);
       levelUpRef.current = false;
       runningRef.current = true;
       setMode("playing");
@@ -1269,7 +1284,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.flashes.push({ text: "ULTIMATE ACQUIRED", x: W / 2, y: H / 2 + 42, life: 1.8, color: reward.color });
     setImpactFeedback(game, 9, reward.color, 0.38, 0.2);
     audioRef.current?.play("ultimate", 1.6);
-    parkBallsAbovePaddle(game);
+    parkBallsAbovePaddle(game, pointerXRef.current, pointerYRef.current);
     runningRef.current = true;
     setMode("playing");
     lastRef.current = performance.now();
@@ -1387,7 +1402,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
   const skipUpgradeChoice = useCallback(() => {
     const game = gameRef.current;
-    if (game) parkBallsAbovePaddle(game);
+    if (game) parkBallsAbovePaddle(game, pointerXRef.current, pointerYRef.current);
     levelUpRef.current = false;
     runningRef.current = true;
     setMode("playing");
@@ -1406,6 +1421,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       audioRef.current?.play("level-up", 1.15);
       return;
     }
+    parkBallsAbovePaddle(game, pointerXRef.current, pointerYRef.current);
     levelUpRef.current = false;
     runningRef.current = true;
     setMode("playing");
@@ -1435,6 +1451,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.bossAttackPattern ??= 0;
     game.bossMultiballsRemaining ??= 0;
     game.bossPending ??= false;
+    game.itemBarrierTime ??= 0;
     game.balls.forEach((ball) => { ball.sourcePaddleId ??= "player"; ball.attackPower ??= 1; ball.missileTime ??= 0; ball.missileHitCooldown ??= 0; ball.gravityBaseSpeed ??= null; ball.canTriggerSkills ??= true; ball.skillGeneration ??= 0; ball.skillCharges ??= {}; ball.skillCooldowns ??= {}; ball.visualSkill ??= null; ball.temporaryTime ??= 0; ball.waveBonus ??= false; });
     game.shakeStrength ??= 0;
     game.shakeTime ??= 0;
@@ -1462,6 +1479,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     });
     const brickHpAtFrameStart = new Map(game.bricks.map((brick) => [brick, brick.hp]));
     game.elapsed += dt;
+    game.itemBarrierTime = Math.max(0, game.itemBarrierTime - dt);
     game.rowTimer += dt;
     const nextOverdriveLevel = overdriveLevelAt(game.rowTimer);
     if (nextOverdriveLevel > game.overdriveLevel) {
@@ -1523,7 +1541,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.paddleX += (pointerXRef.current - game.paddleX) * Math.min(1, dt * 14);
     } else {
       const movement = Number(keyboardRef.current.right) - Number(keyboardRef.current.left);
-      game.paddleX += movement * PADDLE_KEYBOARD_SPEED * dt;
+      const moveSpeedMultiplier = 1 + skillValue("common-move-speed", upgradeLevel(game.upgrades, "common-move-speed")) / 100;
+      game.paddleX += movement * PADDLE_KEYBOARD_SPEED * moveSpeedMultiplier * dt;
     }
     game.paddleX = Math.max(game.paddleWidth / 2, Math.min(W - game.paddleWidth / 2, game.paddleX));
 
@@ -2054,7 +2073,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         emitEffect("ring", item.x, catcher.y, itemData.color, 42, item.x, catcher.y, 0.45);
         emitBurst(item.x, catcher.y, itemData.color, 10, 150);
         audioRef.current?.play("item", 1.4);
-        if (source) {
+        if (item.kind === "multiball" && source) {
           const overdrive = 1 + Math.min(0.18, catcher.upgrades.filter((id) => id === "speed").length * 0.06);
           const newBall: Ball = {
             ...source,
@@ -2080,19 +2099,33 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             temporaryTime: 0,
             waveBonus: true,
           };
+          launchBallToward(newBall, pointerXRef.current, pointerYRef.current, Math.hypot(newBall.vx, newBall.vy));
           const grantedPayloads = grantPaddlePayloads(newBall, catcher.upgrades);
           game.balls.push(newBall);
           emitEffect("ring", catcher.x, catcher.y, WAVE_MULTIBALL_COLOR, 58, catcher.x, catcher.y, 0.55);
           const doubleLevel = upgradeLevel(catcher.upgrades, "double-drop");
           const doubleChance = skillValue("double-drop", doubleLevel) / 100;
           if (doubleChance > 0 && decisionRandom() < doubleChance) {
-            game.balls.push({ ...newBall, payloads: { ...newBall.payloads }, x: newBall.x + 12, vx: -newBall.vx });
+            const doubleBall = { ...newBall, payloads: { ...newBall.payloads }, x: newBall.x + 12 };
+            launchBallToward(doubleBall, pointerXRef.current, pointerYRef.current, Math.hypot(doubleBall.vx, doubleBall.vy));
+            game.balls.push(doubleBall);
             game.flashes.push({ text: `${catcher.name} // DOUBLE DROP`, x: item.x, y: catcher.y - 38, life: 0.9, color: "#fff27a" });
           }
           const catcherComboLevel = catcher.upgrades.filter((id) => id === "chain").length;
           if (catcherComboLevel > 0) game.comboTimer = Math.max(game.comboTimer, 1.8 + catcherComboLevel * 0.45);
           const payloadSummary = grantedPayloads.map(({ id, level }) => `${PAYLOAD_LABELS[id]}${level}`).join("+");
           game.flashes.push({ text: `${catcher.name} // MULTI BALL +1${payloadSummary ? ` // ${payloadSummary}` : ""}`, x: item.x, y: catcher.y - 24, life: 1, color: WAVE_MULTIBALL_COLOR });
+        } else if (item.kind === "auto-barrier") {
+          game.itemBarrierTime = Math.max(game.itemBarrierTime, ITEM_BARRIER_DURATION);
+          game.flashes.push({ text: `AUTO BARRIER // ${ITEM_BARRIER_DURATION}s`, x: W / 2, y: ITEM_BARRIER_Y - 22, life: 1.1, color: itemData.color });
+        } else if (item.kind === "core-repair") {
+          const recovered = Math.min(1, game.maxCoreHp - game.coreHp);
+          game.coreHp += recovered;
+          game.flashes.push({ text: recovered > 0 ? "CORE REPAIR // +1" : "CORE FULL", x: W / 2, y: catcher.y - 28, life: 1, color: itemData.color });
+        } else if (item.kind === "cooldown-reset") {
+          game.balls.forEach((ball) => { ball.skillCooldowns = {}; });
+          Object.values(game.paddleCounters).forEach((counter) => { counter.skillCooldowns = {}; });
+          game.flashes.push({ text: "SKILL COOLDOWN // READY", x: W / 2, y: catcher.y - 28, life: 1, color: itemData.color });
         }
         item.alive = false;
       }
@@ -2467,6 +2500,19 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
 
       if (ball.vy > 0) {
+        const crossedItemBarrier = game.itemBarrierTime > 0
+          && previousBallY + ball.radius <= ITEM_BARRIER_Y
+          && ball.y + ball.radius >= ITEM_BARRIER_Y;
+        if (crossedItemBarrier) {
+          ball.y = ITEM_BARRIER_Y - ball.radius;
+          ball.vy = -Math.max(MIN_PADDLE_REBOUND_SPEED, Math.abs(ball.vy));
+          ensureMinimumVerticalAngle(ball, -1);
+          game.flashes.push({ text: "AUTO BARRIER // REFLECT", x: ball.x, y: ITEM_BARRIER_Y - 14, life: 0.7, color: ITEM_DATA["auto-barrier"].color });
+          emitEffect("ring", ball.x, ITEM_BARRIER_Y, ITEM_DATA["auto-barrier"].color, 48, ball.x, ITEM_BARRIER_Y, 0.42);
+          emitBurst(ball.x, ITEM_BARRIER_Y, ITEM_DATA["auto-barrier"].color, 10, 180);
+          audioRef.current?.play("barrier", 1.2);
+          if (botActiveRef.current) game.botMetrics.safetySaves++;
+        }
         const safetyBlock = game.safetyBlocks.find((block) => ball.y + ball.radius >= block.y && ball.y - ball.radius <= block.y + 8 && ball.x >= block.x - block.width / 2 && ball.x <= block.x + block.width / 2);
         if (safetyBlock) {
           const owner = paddleFor(safetyBlock.ownerPaddleId);
@@ -2893,6 +2939,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const respawnOverdrive = overdriveMultiplier(game.overdriveLevel);
         respawnBall.vx *= respawnOverdrive;
         respawnBall.vy *= respawnOverdrive;
+        launchBallToward(respawnBall, pointerXRef.current, pointerYRef.current, Math.hypot(respawnBall.vx, respawnBall.vy));
         game.balls.push(respawnBall);
         game.flashes.push({ text: "BALL LOST // CORE -1 // RESPAWN", x: W / 2, y: H - 105, life: 1.4, color: "#ffcf4a" });
         emitEffect("ring", game.paddleX, PLAYER_PADDLE_Y, "#ffcf4a", 90, game.paddleX, PLAYER_PADDLE_Y, 0.8);
@@ -2908,12 +2955,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.balls.forEach((ball, index) => {
         clearBallEnchantments(ball, game.upgrades);
         const position = ballCount <= 1 ? 0.5 : index / (ballCount - 1);
-        const launch = (position - 0.5) * 1.1;
         const speed = Math.max(300, Math.hypot(ball.vx, ball.vy));
         ball.x = game.paddleX - spread / 2 + spread * position;
         ball.y = PLAYER_PADDLE_Y - ball.radius - 3;
-        ball.vx = launch * speed;
-        ball.vy = -Math.sqrt(Math.max(1, speed * speed - ball.vx * ball.vx));
+        launchBallToward(ball, pointerXRef.current, pointerYRef.current, speed);
       });
     };
     const clearWaveScopedSkillState = () => {
@@ -2949,9 +2994,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.bossAttackPattern = 0;
       game.bossMultiballsRemaining = game.bossActive ? BOSS_MULTIBALL_BUDGET : 0;
       clearWaveScopedSkillState();
-      resetBallsForWave();
       game.paddleX = W / 2;
-      parkBallsAbovePaddle(game);
+      resetBallsForWave();
       if (game.autoGuard) game.paddleBarriers.player = Math.max(1, game.paddleBarriers.player ?? 0);
       game.flashes.push({ text: `WAVE ${waveNumber} // ${definition.name}`, x: W / 2, y: H / 2, life: 1.8, color: game.bossActive ? "#ff6b87" : "#ffcf4a" });
       if (game.bossActive) {
@@ -3493,6 +3537,29 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ctx.fillText("AUTO REFLECT", block.x, block.y + 6);
       ctx.restore();
     });
+
+    if (game.itemBarrierTime > 0) {
+      const barrierColor = ITEM_DATA["auto-barrier"].color;
+      const pulse = 0.72 + Math.sin(game.elapsed * 10) * 0.2;
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.strokeStyle = barrierColor;
+      ctx.shadowColor = barrierColor;
+      ctx.shadowBlur = 18;
+      ctx.lineWidth = 4;
+      ctx.setLineDash([22, 8]);
+      ctx.beginPath();
+      ctx.moveTo(24, ITEM_BARRIER_Y);
+      ctx.lineTo(W - 24, ITEM_BARRIER_Y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = barrierColor;
+      ctx.font = "900 10px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`AUTO BARRIER ${game.itemBarrierTime.toFixed(1)}s`, W / 2, ITEM_BARRIER_Y - 9);
+      ctx.restore();
+    }
 
     if (game.bossActive) {
       const bossCore = game.bricks.find((brick) => brick.alive && brick.kind === "boss-core");

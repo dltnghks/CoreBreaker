@@ -20,7 +20,7 @@ export type ClassSkillId =
   | "archer-arrow-rain" | "archer-infinite"
   | "mage-fireball" | "mage-lightning" | "mage-freeze" | "mage-black-hole" | "mage-mana-blast"
   | "mage-elemental-storm" | "mage-meteor"
-  | "common-magnet" | "common-luck" | "common-wide" | "common-xp" | "common-combo"
+  | "common-magnet" | "common-luck" | "common-wide" | "common-move-speed" | "common-xp" | "common-combo"
   | "common-ball-size" | "common-skill-range" | "common-chain" | "common-damage" | "common-cooldown";
 
 export type LegacyUpgradeId =
@@ -86,6 +86,7 @@ export const SKILL_COLORS: Record<ClassSkillId, string> = {
   "common-magnet": "#9aa3b2",
   "common-luck": "#9aa3b2",
   "common-wide": "#9aa3b2",
+  "common-move-speed": "#9aa3b2",
   "common-xp": "#9aa3b2",
   "common-combo": "#9aa3b2",
   "common-ball-size": "#9aa3b2",
@@ -120,6 +121,7 @@ const SKILL_MECHANICS: Record<ClassSkillId, SkillMechanic> = {
   "common-magnet": "passive",
   "common-luck": "passive",
   "common-wide": "passive",
+  "common-move-speed": "passive",
   "common-xp": "passive",
   "common-combo": "passive",
   "common-ball-size": "passive",
@@ -154,6 +156,7 @@ export const SKILL_COOLDOWNS: Record<ClassSkillId, [number, number, number]> = {
   "common-magnet": [0, 0, 0],
   "common-luck": [0, 0, 0],
   "common-wide": [0, 0, 0],
+  "common-move-speed": [0, 0, 0],
   "common-xp": [0, 0, 0],
   "common-combo": [0, 0, 0],
   "common-ball-size": [0, 0, 0],
@@ -270,6 +273,7 @@ export const DEFAULT_SKILLS: SkillConfig[] = [
   passiveSkill("common-magnet", "아이템 자석", "아이템 흡수 범위 증가", "패들 주변의 아이템을 끌어당기는 범위가 증가합니다.", [70, 120, 180], "px"),
   passiveSkill("common-luck", "행운", "아이템 추가 드롭 확률 증가", "아이템이 없는 브릭을 파괴했을 때 추가로 아이템이 생성될 확률이 증가합니다.", [8, 14, 20], "%"),
   passiveSkill("common-wide", "패들 확장", "패들 길이 증가", "플레이어 패들의 실제 충돌 범위와 표시 길이가 증가합니다.", [20, 35, 50], "px"),
+  passiveSkill("common-move-speed", "패들 가속", "패들 이동속도 증가", "A/D로 조작하는 패들의 이동속도가 15/25/40% 증가합니다.", [15, 25, 40], "%"),
   passiveSkill("common-xp", "코어 강화", "CORE 최대 체력 증가", "CORE 최대 체력과 현재 체력이 함께 증가합니다.", [1, 2, 3], "HP"),
   passiveSkill("common-combo", "콤보 증폭", "콤보당 점수 증가", "패들에 다시 닿기 전까지 쌓인 콤보 1회당 획득 점수 배율이 추가로 증가합니다.", [1, 2, 3], "%"),
   passiveSkill("common-ball-size", "공 거대화", "공 반경 증가", "공의 최종 반경이 9/10/11px로 증가합니다.", [1, 2, 3], "px"),
@@ -294,7 +298,7 @@ export function normalizeSkillConfigs(saved: unknown): SkillConfig[] {
     const legacyDestructionTrigger = (base.id === "warrior-shockwave" || base.id === "mage-fireball")
       && `${savedSkill?.effect ?? ""} ${savedSkill?.description ?? ""}`.includes("파괴");
     const formulaDescription = /(?:LV|레벨에 따라|2\+LV)/.test(savedSkill?.description ?? "");
-    const refreshedCommonSpec = (["common-ball-size", "common-skill-range", "common-chain", "common-damage", "common-cooldown"] as ClassSkillId[]).includes(base.id);
+    const refreshedCommonSpec = (["common-move-speed", "common-ball-size", "common-skill-range", "common-chain", "common-damage", "common-cooldown"] as ClassSkillId[]).includes(base.id);
     const legacyReflectionTrigger = /패들|반사 횟수|충전/.test(savedSkill?.trigger ?? "");
     const legacyAlwaysOnTrigger = base.category !== "common" && /상시 적용|자동 발동/.test(savedSkill?.trigger ?? "");
     const migrated = base.id === "common-xp" ? base

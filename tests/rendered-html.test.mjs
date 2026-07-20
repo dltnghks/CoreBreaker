@@ -63,7 +63,7 @@ test("moves the paddle with A and D while the pointer aims rebounds", async () =
   assert.match(source, /PADDLE_SIDE_FORGIVENESS/);
   assert.match(source, /const paddleContactX = paddle\.previousX \+ \(paddle\.x - paddle\.previousX\) \* contactTime/);
   assert.match(source, /const reboundSpeed = .*Math\.hypot\(ball\.vx, ball\.vy\)/);
-  assert.match(source, /ball\.vy = -Math\.sqrt/);
+  assert.match(source, /launchBallToward\(ball, pointerXRef\.current, pointerYRef\.current, speed\)/);
   assert.match(source, /MOVE <kbd>A<\/kbd><kbd>D<\/kbd> · AIM \/ MOUSE/);
   assert.doesNotMatch(source, /PADDLE_ENGLISH_FACTOR|paddle\.velocity/);
 });
@@ -460,9 +460,9 @@ test("resets every wave to exactly one base ball above the paddle", async () => 
   assert.match(source, /ball\.vy = -Math\.sqrt/);
   assert.match(source, /const resetBallsForWave =/);
   assert.match(source, /game\.balls = \[makePlayerBall\(game\.upgrades, game\.paddleX\)\]/);
-  assert.match(source, /function parkBallsAbovePaddle\(game: GameState\)/);
-  assert.match(source, /if \(resume\) \{\s+parkBallsAbovePaddle\(game\)/);
-  assert.match(source, /if \(game\) parkBallsAbovePaddle\(game\)/);
+  assert.match(source, /function parkBallsAbovePaddle\(game: GameState, targetX = W \/ 2, targetY = H \/ 3\)/);
+  assert.match(source, /if \(resume\) \{\s+parkBallsAbovePaddle\(game, pointerXRef\.current, pointerYRef\.current\)/);
+  assert.match(source, /if \(game\) parkBallsAbovePaddle\(game, pointerXRef\.current, pointerYRef\.current\)/);
   assert.doesNotMatch(source, /while \(game\.balls\.length < game\.wave\)/);
 });
 
@@ -721,7 +721,7 @@ test.skip("unlocks legacy fixed-cost skills after the first boss and offers one 
   assert.match(lab, /ORIGINAL/);
 });
 
-test("uses a fixed multiball item budget for every boss stage", async () => {
+test("keeps fixed multiball budgets and adds utility item drops", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const NORMAL_STAGE_MULTIBALL_WAVES = \[2, 4, 6, 8, 11, 13, 16, 18\]/);
   assert.match(source, /const BOSS_MULTIBALL_BUDGET = 2/);
@@ -730,9 +730,12 @@ test("uses a fixed multiball item budget for every boss stage", async () => {
   assert.match(source, /index < forcedMultiballs \? "multiball"/);
   assert.match(source, /game\.bossMultiballsRemaining = game\.bossActive \? BOSS_MULTIBALL_BUDGET : 0/);
   const randomDrop = source.slice(source.indexOf("function pickBrickDrop"), source.indexOf("function hasScheduledMultiball"));
-  assert.match(randomDrop, /return null/);
-  assert.match(source, /type ItemKind = "multiball"/);
-  assert.doesNotMatch(source.slice(source.indexOf("const ITEM_DATA"), source.indexOf("const ITEM_KINDS")), /COMBO|BARRIER|REPAIR|STRIKE/);
+  assert.match(randomDrop, /environmentRandom\(\) >= 0\.055/);
+  assert.match(randomDrop, /\["auto-barrier", "core-repair", "cooldown-reset"\]/);
+  assert.match(source, /type ItemKind = "multiball" \| "auto-barrier" \| "core-repair" \| "cooldown-reset"/);
+  assert.match(source, /AUTO BARRIER/);
+  assert.match(source, /CORE REPAIR/);
+  assert.match(source, /COOLDOWN RESET/);
 });
 
 test("renders the warrior archer mage Skill Lab", async () => {
@@ -879,13 +882,14 @@ test("adds common utility skills to gameplay, Skill Lab, and skill benchmarks", 
   const config = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
   const lab = await readFile(new URL("../app/skill-lab/page.tsx", import.meta.url), "utf8");
   const bench = await readFile(new URL("../app/skill-lab/skill-bench.tsx", import.meta.url), "utf8");
-  ["common-magnet", "common-luck", "common-wide", "common-xp", "common-combo", "common-ball-size", "common-skill-range", "common-chain", "common-damage", "common-cooldown"].forEach((id) => assert.match(config, new RegExp(`"${id}"`)));
+  ["common-magnet", "common-luck", "common-wide", "common-move-speed", "common-xp", "common-combo", "common-ball-size", "common-skill-range", "common-chain", "common-damage", "common-cooldown"].forEach((id) => assert.match(config, new RegExp(`"${id}"`)));
   assert.match(config, /passiveSkill\("common-xp", "코어 강화", "CORE 최대 체력 증가"/);
   assert.match(source, /if \(upgrade\.id === "common-xp"\)/);
   assert.match(source, /game\.maxCoreHp \+= coreGain/);
   assert.match(source, /skillValue\("common-magnet"/);
   assert.match(source, /skillValue\("common-luck"/);
   assert.match(source, /skillValue\("common-wide"/);
+  assert.match(source, /skillValue\("common-move-speed"/);
   assert.match(source, /skillValue\("common-combo"/);
   assert.match(source, /commonSkillRangeMultiplier/);
   assert.match(source, /commonChainBonus/);
@@ -902,7 +906,7 @@ test("uses neutral common colors and highlights explicit skill values", async ()
   const lab = await readFile(new URL("../app/skill-lab/page.tsx", import.meta.url), "utf8");
   const labCss = await readFile(new URL("../app/skill-lab/skill-lab.module.css", import.meta.url), "utf8");
   const commonColors = [...config.matchAll(/"common-[^"]+": "(#[0-9a-f]+)"/g)].map((match) => match[1]);
-  assert.equal(commonColors.length, 10);
+  assert.equal(commonColors.length, 11);
   assert.ok(commonColors.every((color) => color === "#9aa3b2"));
   assert.match(source, /common: \{ tag: "COMMON", color: "#9aa3b2" \}/);
   assert.match(lab, /common: "#9aa3b2"/);
