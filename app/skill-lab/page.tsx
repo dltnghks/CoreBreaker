@@ -148,7 +148,7 @@ export default function SkillLab() {
             <button key={skill.id} className={`${styles.skillCard} ${selected.id === skill.id ? styles.selected : ""}`} style={skillStyle(skill)} onClick={() => setSelectedId(skill.id)}>
               <span>{CATEGORY_LABELS[skill.category]} · {SKILL_MECHANIC_LABELS[skill.mechanic]} · {skill.ultimate ? "보스 궁극기" : "일반 스킬"}</span><strong>{skill.name}</strong><small><b>발동</b> {skill.trigger}</small>
               <p className={styles.description}><SkillDescriptionText text={skill.description} /></p>
-              <em>{skill.levels.map((value) => `${value}${skill.unit}`).join(" / ")} · {skill.evolution ? "LV3 EVOLUTION" : skill.ultimate ? "ULTIMATE" : "REFLECTION"}</em>
+              <em>{skill.levels.map((value) => `${value}${skill.unit}`).join(" / ")} · {skill.evolution ? "LV3 EVOLUTION" : skill.ultimate ? "ULTIMATE" : "PERMANENT"}</em>
             </button>
           ))}
         </div>

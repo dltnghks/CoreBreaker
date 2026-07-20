@@ -173,7 +173,7 @@ type GameState = {
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
 type Flash = { text: string; x: number; y: number; life: number; color: string };
 type GameEffect = { kind: "ring" | "beam" | "blast" | "drop" | "spark" | "lightning" | "skill"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string; variant: number; skillId: ClassSkillId | null };
-type PaddleCounter = { reflections: number; barrierReflections: number; missileReflections: number; safetyTimer: number; gravityTimer: number; directKills: number; pierceKills: number; feverMilestone: number; lastShotTimer: number; combo: number; comboTimer: number; skillReflections: Partial<Record<ClassSkillId, number>>; chargePulse: number; chargeColor: string };
+type PaddleCounter = { reflections: number; barrierReflections: number; missileReflections: number; safetyTimer: number; gravityTimer: number; directKills: number; pierceKills: number; feverMilestone: number; lastShotTimer: number; combo: number; comboTimer: number; skillCooldowns: Partial<Record<ClassSkillId, number>>; skillReflections?: Partial<Record<ClassSkillId, number>>; chargePulse?: number; chargeColor?: string };
 type WaveSettlement = { wave: number; waveName: string; cleared: boolean; wasBoss: boolean; survivors: number; coreDamage: number; blocked: number; coreHp: number; elapsed: number; finalWave: boolean };
 type WaveResolution = { timer: number; maxTimer: number; cleared: boolean; wasBoss: boolean; survivors: number; coreDamage: number; blocked: number };
 
@@ -296,7 +296,6 @@ const GHOST_COLORS = ["#9b8cff", "#58d5ff", "#ff78b7"];
 const PAYLOAD_COLORS: Record<PayloadId, string> = { pierce: "#9a8cff", blast: "#ff6b87", glass: "#60d7ff", link: "#72f1b8" };
 const PAYLOAD_LABELS: Record<PayloadId, string> = { pierce: "PIERCE", blast: "BOMB", glass: "GLASS", link: "LINK" };
 const PAYLOAD_IDS: PayloadId[] = ["pierce", "blast", "glass", "link"];
-const COUNTED_SKILL_IDS: UpgradeId[] = DEFAULT_SKILLS.filter((entry) => entry.category !== "common").map((entry) => entry.id);
 const SKILL_ICONS: Partial<Record<UpgradeId, string>> = {
   "warrior-smash": "⚒", "warrior-shockwave": "◉", "warrior-execute": "✦", "warrior-crush": "◆", "warrior-guard": "⬡", "warrior-earthquake": "▰", "warrior-berserker": "♨",
   "archer-rapid": "➶", "archer-pierce": "➵", "archer-ricochet": "⌁", "archer-focus": "◎", "archer-weakpoint": "⌾", "archer-arrow-rain": "⇊", "archer-infinite": "∞",
@@ -304,6 +303,8 @@ const SKILL_ICONS: Partial<Record<UpgradeId, string>> = {
   "common-magnet": "⌁", "common-luck": "✤", "common-wide": "↔", "common-xp": "◇", "common-combo": "∞",
   "common-ball-size": "●", "common-skill-range": "◎", "common-chain": "⌘", "common-damage": "▲",
 };
+// Class skills no longer expose paddle-reflection progress; the rail stays empty.
+const COUNTED_SKILL_IDS: UpgradeId[] = [];
 const PADDLE_UPGRADES = new Set<UpgradeId>(DEFAULT_SKILLS.map((entry) => entry.id));
 const ITEM_DATA: Record<ItemKind, { label: string; symbol: string; color: string }> = {
   multiball: { label: "MULTI BALL", symbol: "+", color: "#ffcf4a" },
@@ -456,7 +457,7 @@ function brickRuntimeState(trait: BrickTrait = "standard") {
 }
 
 function lateWaveHpMultiplier(waveNumber: number) {
-  return waveNumber >= 16 ? 1.5 : waveNumber >= 11 ? 1.25 : 1;
+  return waveNumber >= 16 ? 2.5 : waveNumber >= 11 ? 1.9 : waveNumber >= 6 ? 1.45 : waveNumber >= 4 ? 1.15 : 1;
 }
 
 function isDamageableBrick(brick: Brick) {
@@ -464,7 +465,7 @@ function isDamageableBrick(brick: Brick) {
 }
 
 function newPaddleCounter(): PaddleCounter {
-  return { reflections: 0, barrierReflections: 0, missileReflections: 0, safetyTimer: 0, gravityTimer: 0, directKills: 0, pierceKills: 0, feverMilestone: 0, lastShotTimer: 0, combo: 0, comboTimer: 0, skillReflections: {}, chargePulse: 0, chargeColor: PLAYER_BALL_COLOR };
+  return { reflections: 0, barrierReflections: 0, missileReflections: 0, safetyTimer: 0, gravityTimer: 0, directKills: 0, pierceKills: 0, feverMilestone: 0, lastShotTimer: 0, combo: 0, comboTimer: 0, skillCooldowns: {} };
 }
 
 function makeBrickRow(row: number, wave = 1, ghostCount = 0, balance = DEFAULT_BALANCE_CONFIG): Brick[] {
@@ -541,7 +542,7 @@ function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfi
   const height = rows * cellHeight;
   const startX = (W - width) / 2;
   const startY = 94;
-  const bossHpMultiplier = stage >= 2 ? 1.3 : 0.95;
+  const bossHpMultiplier = stage >= 2 ? 1.8 : 1.25;
   const coreHp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage + ghostCount * 10) * bossHpMultiplier);
   return [{
     x: startX, y: startY, w: width, h: height,
@@ -1413,7 +1414,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.screenFlashTime = Math.max(0, game.screenFlashTime - dt);
     game.gravityWells.forEach((well) => { well.life -= dt; });
     game.gravityWells = game.gravityWells.filter((well) => well.life > 0);
-    Object.values(game.paddleCounters).forEach((counter) => { counter.chargePulse = Math.max(0, (counter.chargePulse ?? 0) - dt); });
+    Object.values(game.paddleCounters).forEach((counter) => {
+      counter.skillCooldowns ??= {};
+      Object.keys(counter.skillCooldowns).forEach((id) => {
+        const skillId = id as ClassSkillId;
+        counter.skillCooldowns[skillId] = Math.max(0, (counter.skillCooldowns[skillId] ?? 0) - dt);
+      });
+    });
 
     const paddleY = PLAYER_PADDLE_Y;
     const paddles = [
@@ -1425,8 +1432,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const paddleFor = (id: string) => paddles.find((paddle) => paddle.id === id) ?? paddles[0];
     const counterFor = (id: string) => {
       const counter = game.paddleCounters[id] ??= newPaddleCounter();
-      counter.chargePulse ??= 0;
-      counter.chargeColor ??= PLAYER_BALL_COLOR;
+      counter.skillCooldowns ??= {};
       return counter;
     };
     const emitEffect = (kind: GameEffect["kind"], x: number, y: number, color: string, size = 45, x2 = x, y2 = y, duration = 0.5, variant = 0, skillId: ClassSkillId | null = null) => {
@@ -1924,6 +1930,19 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     for (const ball of game.balls) {
       ball.payloads ??= {};
       ball.payloadLevel ??= 0;
+      const permanentOwner = paddleFor(ball.sourcePaddleId);
+      const berserkerLevel = upgradeLevel(permanentOwner.upgrades, "warrior-berserker");
+      if (berserkerLevel > 0) ball.skillCharges["warrior-berserker"] = berserkerLevel;
+      else delete ball.skillCharges["warrior-berserker"];
+      syncBallPayloadDisplay(ball, permanentOwner.upgrades);
+      if (berserkerLevel > 0) {
+        const currentSpeed = Math.max(1, Math.hypot(ball.vx, ball.vy));
+        const targetSpeed = Math.hypot(BASE_BALL_VX, BASE_BALL_VY) * overdriveMultiplier(game.overdriveLevel) * 1.25;
+        if (currentSpeed < targetSpeed) {
+          ball.vx *= targetSpeed / currentSpeed;
+          ball.vy *= targetSpeed / currentSpeed;
+        }
+      }
       if (ball.temporaryTime > 0) {
         ball.temporaryTime = Math.max(0, ball.temporaryTime - dt);
         if (ball.temporaryTime <= 0) {
@@ -2011,35 +2030,18 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ball.x = contactX;
           ball.y = paddle.y - ball.radius - 0.1;
           ball.sourcePaddleId = paddle.id;
+          const permanentPierceLevel = upgradeLevel(paddle.upgrades, "archer-pierce");
+          ball.pierce = permanentPierceLevel > 0 ? skillValue("archer-pierce", permanentPierceLevel) : 0;
+          ball.maxPierce = ball.pierce;
           audioRef.current?.play("paddle", game.combo);
           const grantedPayloads = grantPaddlePayloads(ball, paddle.upgrades);
           emitBurst(ball.x, paddle.y, grantedPayloads.length > 1 ? "#ffffff" : grantedPayloads.length === 1 ? PAYLOAD_COLORS[grantedPayloads[0].id] : ball.color, 7, 135);
           if (grantedPayloads.length > 0) emitEffect("ring", ball.x, paddle.y, ball.color, 34, ball.x, paddle.y, 0.38);
           const paddleCounter = counterFor(paddle.id);
-          paddleCounter.skillReflections ??= {};
-          const triggerReflectionSkill = (id: ClassSkillId, onTrigger: (level: number) => void) => {
-            if (ball.temporaryTime > 0) return;
-            const level = upgradeLevel(paddle.upgrades, id);
-            if (level <= 0) return;
-            const next = (paddleCounter.skillReflections[id] ?? 0) + 1;
-            const threshold = Math.max(1, Math.round(skillValue(id, level)));
-            if (next < threshold) {
-              paddleCounter.skillReflections[id] = next;
-              return;
-            }
-            paddleCounter.skillReflections[id] = 0;
-            onTrigger(level);
-            skillMetricFor(id).activations++;
-            const color = classSkillColor(id);
-            const name = activeSkillMap[id]?.name ?? id;
-            paddleCounter.chargePulse = 1.2;
-            paddleCounter.chargeColor = color;
-            emitEffect("ring", paddle.x, paddle.y, color, 58 + level * 8, paddle.x, paddle.y, 0.65);
-            emitBurst(paddle.x, paddle.y, color, 14 + level * 3, 220);
-            game.flashes.push({ text: `${paddle.name} // ${name}`, x: paddle.x, y: paddle.y - 42, life: 1, color });
-            audioRef.current?.play("skill", 1 + level * 0.35);
-            impactFeedback(2.4 + level * 0.7, color, 0.16, level >= 3 ? 0.08 : 0);
-          };
+          // Class skills are resolved from the owning ball's upgrades on brick impact.
+          // Keeping the callbacks below inert preserves the legacy skill implementations
+          // while removing paddle-reflection charging from the live ruleset.
+          const triggerReflectionSkill = (_id: ClassSkillId, _onTrigger: (level: number) => void) => {};
           const chargeBall = (id: ClassSkillId, level: number, label: string, color: string) => {
             ball.skillCharges[id] = level;
             game.flashes.push({ text: `${paddle.name} // ${label}`, x: paddle.x, y: paddle.y - 32, life: 0.85, color });
@@ -2315,8 +2317,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const blastLevel = ball.payloads.blast ?? 0;
         const linkLevel = ball.payloads.link ?? 0;
         const sourcePaddle = paddleFor(ball.sourcePaddleId);
+        const permanentPierceLevel = upgradeLevel(sourcePaddle.upgrades, "archer-pierce");
         const piercingHit = ball.pierce > 0 || ball.missileTime > 0;
-        const crushLevel = ball.skillCharges["warrior-crush"] ?? 0;
+        const crushLevel = upgradeLevel(sourcePaddle.upgrades, "warrior-crush");
         if (crushLevel > 0 && brick.guardReady) {
           brick.guardReady = false;
           game.flashes.push({ text: "분쇄 // GUARD BREAK", x: brick.x + brick.w / 2, y: brick.y - 8, life: 0.8, color: "#ffcf4a" });
@@ -2335,22 +2338,22 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         }
         const corrosionLevel = upgradeLevel(sourcePaddle.upgrades, "corrosion");
         const corrosionDamage = !guardAbsorbed && corrosionLevel > 0 && brick.lastHitPaddleId === sourcePaddle.id ? skillValue("corrosion", corrosionLevel) : 0;
-        const smashLevel = ball.skillCharges["warrior-smash"] ?? 0;
-        const executeLevel = ball.skillCharges["warrior-execute"] ?? 0;
-        const focusLevel = ball.skillCharges["archer-focus"] ?? 0;
-        const weakpointLevel = ball.skillCharges["archer-weakpoint"] ?? 0;
+        const smashLevel = upgradeLevel(sourcePaddle.upgrades, "warrior-smash");
+        const executeLevel = upgradeLevel(sourcePaddle.upgrades, "warrior-execute");
+        const focusLevel = upgradeLevel(sourcePaddle.upgrades, "archer-focus");
+        const weakpointLevel = upgradeLevel(sourcePaddle.upgrades, "archer-weakpoint");
         const repeatedTarget = brick.lastHitPaddleId === sourcePaddle.id;
         const frostDamage = brick.frostVulnerability;
         const hpBeforeDirect = brick.hp;
-        const directSkillContributors = (["warrior-execute", "archer-weakpoint", "warrior-smash", "warrior-crush", "archer-focus"] as ClassSkillId[]).filter((id) => (ball.skillCharges[id] ?? 0) > 0);
+        const directSkillContributors = (["warrior-execute", "archer-weakpoint", "warrior-smash", "warrior-crush", "archer-focus"] as ClassSkillId[]).filter((id) => upgradeLevel(sourcePaddle.upgrades, id) > 0);
         const baselineDirectDamage = (Math.max(1, ball.attackPower) + corrosionDamage) * damageMultiplier(brick);
-        const pierceEvolutionDamage = ball.skillCharges["archer-pierce"] === 3 ? Math.max(0, ball.maxPierce - ball.pierce) : 0;
+        const pierceEvolutionDamage = permanentPierceLevel >= 3 ? Math.max(0, permanentPierceLevel - Math.max(0, ball.pierce)) : 0;
         const sealedEvolutionDamage = brick.traitLockTime > 0 && upgradeLevel(sourcePaddle.upgrades, "mage-mana-blast") >= 3 ? 1 : 0;
         let directDamage = Math.max(1, ball.attackPower) + corrosionDamage + smashLevel + frostDamage + pierceEvolutionDamage + sealedEvolutionDamage;
         if (crushLevel > 0 && brick.trait !== "standard" && brick.trait !== "guard") directDamage += crushLevel + 1;
         if (focusLevel > 0 && repeatedTarget) directDamage += (focusLevel + 1) * (focusLevel >= 3 ? 1.5 : 1);
-        if (weakpointLevel > 0) directDamage *= weakpointLevel >= 3 ? 4 : 3;
-        const executeThreshold = executeLevel >= 3 ? 0.4 : 0.25;
+        if (weakpointLevel > 0) directDamage *= skillValue("archer-weakpoint", weakpointLevel);
+        const executeThreshold = skillValue("warrior-execute", executeLevel) / 100;
         if (executeLevel > 0 && brick.kind !== "boss-core" && brick.hp / Math.max(1, brick.maxHp) <= executeThreshold) directDamage = brick.hp;
         if (!guardAbsorbed) applyDebuffs(brick, sourcePaddle);
         if (!guardAbsorbed) {
@@ -2377,6 +2380,111 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             const damageShare = attributedDamage / directSkillContributors.length;
             directSkillContributors.forEach((id, index) => recordSkillImpact(id, damageShare, brick.hp <= 0 && index === 0));
           }
+
+          const hitCounter = counterFor(sourcePaddle.id);
+          hitCounter.skillCooldowns ??= {};
+          const activateHitSkill = (id: ClassSkillId, cooldown: number, activate: (level: number) => void) => {
+            const level = upgradeLevel(sourcePaddle.upgrades, id);
+            if (level <= 0 || (hitCounter.skillCooldowns[id] ?? 0) > 0) return;
+            hitCounter.skillCooldowns[id] = cooldown;
+            skillMetricFor(id).activations++;
+            activate(level);
+          };
+          const spawnHitArrow = (offset: number, lifetime: number, id: ClassSkillId) => {
+            game.balls.push({
+              ...ball,
+              payloads: { ...ball.payloads },
+              skillCharges: { ...ball.skillCharges },
+              x: ball.x + offset,
+              vx: ball.vx * (offset === 0 ? -0.88 : offset < 0 ? -0.82 : 0.82),
+              vy: -Math.abs(ball.vy),
+              temporaryTime: lifetime,
+              visualSkill: id,
+              color: PLAYER_BALL_COLOR,
+            });
+          };
+
+          activateHitSkill("warrior-guard", Math.max(4, 7 - upgradeLevel(sourcePaddle.upgrades, "warrior-guard")), (level) => {
+            const gain = level >= 3 ? 2 : 1;
+            game.paddleBarriers[sourcePaddle.id] = Math.min(4, (game.paddleBarriers[sourcePaddle.id] ?? 0) + gain);
+            emitSkillEffect("warrior-guard", W / 2, PLAYER_LINE_Y, 120, 0.75, W - 24, PLAYER_LINE_Y);
+            game.flashes.push({ text: `철벽 // CORE BARRIER +${gain}`, x: W / 2, y: PLAYER_LINE_Y - 22, life: 0.85, color: classSkillColor("warrior-guard") });
+          });
+
+          activateHitSkill("archer-rapid", Math.max(1, 2.2 - upgradeLevel(sourcePaddle.upgrades, "archer-rapid") * 0.35), (level) => {
+            const lifetime = skillValue("archer-rapid", level);
+            spawnHitArrow(ball.vx >= 0 ? -14 : 14, lifetime, "archer-rapid");
+            if (level >= 3) spawnHitArrow(ball.vx >= 0 ? 18 : -18, lifetime, "archer-rapid");
+            emitSkillEffect("archer-rapid", ball.x, ball.y, 62, 0.5, ball.x + ball.vx * 0.12, ball.y + ball.vy * 0.12);
+          });
+
+          const freezeLevel = upgradeLevel(sourcePaddle.upgrades, "mage-freeze");
+          if (freezeLevel > 0 && brick.alive) {
+            brick.frostVulnerability = Math.max(brick.frostVulnerability, skillValue("mage-freeze", freezeLevel));
+            brick.traitLockTime = Math.max(brick.traitLockTime, 2 + freezeLevel);
+            skillMetricFor("mage-freeze").activations++;
+            emitSkillEffect("mage-freeze", brick.x + brick.w / 2, brick.y + brick.h / 2, Math.min(brick.w, brick.h) + 24, 0.45);
+          }
+
+          const manaLevel = upgradeLevel(sourcePaddle.upgrades, "mage-mana-blast");
+          if (manaLevel > 0 && brick.trait !== "standard" && brick.trait !== "explosive") {
+            brick.traitLockTime = Math.max(brick.traitLockTime, skillValue("mage-mana-blast", manaLevel));
+            skillMetricFor("mage-mana-blast").activations++;
+            emitSkillEffect("mage-mana-blast", brick.x + brick.w / 2, brick.y + brick.h / 2, 58, 0.48);
+          }
+
+          activateHitSkill("mage-black-hole", 2.5, (level) => {
+            const radius = skillValue("mage-black-hole", level) * commonSkillRangeMultiplier(sourcePaddle.upgrades);
+            const wellX = Math.max(150, Math.min(W - 150, brick.x + brick.w / 2));
+            const wellY = Math.max(120, Math.min(240, brick.y + brick.h / 2));
+            const existing = game.gravityWells.find((well) => well.ownerPaddleId === sourcePaddle.id && well.color === classSkillColor("mage-black-hole"));
+            if (existing) Object.assign(existing, { x: wellX, y: wellY, radius, life: 4, maxLife: 4 });
+            else game.gravityWells.push({ ownerPaddleId: sourcePaddle.id, x: wellX, y: wellY, radius, life: 4, maxLife: 4, color: classSkillColor("mage-black-hole") });
+            emitSkillEffect("mage-black-hole", wellX, wellY, radius * 0.7, 0.7);
+          });
+
+          if (upgradeLevel(sourcePaddle.upgrades, "warrior-earthquake") > 0) game.ultimateAuras["warrior-earthquake"] = true;
+          activateHitSkill("archer-arrow-rain", 5, (level) => {
+            const targetCount = skillValue("archer-arrow-rain", level) + commonChainBonus(sourcePaddle.upgrades);
+            const targets = game.bricks.filter((target) => target.alive && target !== brick && isDamageableBrick(target)).sort(() => decisionRandom() - 0.5).slice(0, targetCount);
+            targets.forEach((target) => {
+              if (absorbGuardHit(target)) return;
+              const hpBefore = target.hp;
+              target.hp -= damageMultiplier(target);
+              recordSkillImpact("archer-arrow-rain", Math.min(hpBefore, Math.max(0, hpBefore - target.hp)), target.hp <= 0);
+              emitEffect("beam", ball.x, ball.y, classSkillColor("archer-arrow-rain"), 5, target.x + target.w / 2, target.y + target.h / 2, 0.32, 0, "archer-arrow-rain");
+              if (target.hp <= 0) destroyBrick(target, ball, false, 0);
+            });
+            emitSkillEffect("archer-arrow-rain", W / 2, BRICK_ROW_Y, W - 80, 0.75, W / 2, PLAYER_LINE_Y);
+          });
+          activateHitSkill("archer-infinite", 4, (level) => {
+            [-18, 0, 18].forEach((offset) => spawnHitArrow(offset, skillValue("archer-infinite", level), "archer-infinite"));
+            emitSkillEffect("archer-infinite", ball.x, ball.y, 84, 0.65);
+          });
+          activateHitSkill("mage-elemental-storm", 5, (level) => {
+            const targets = game.bricks.filter((target) => target.alive && isDamageableBrick(target)).sort((a, b) => b.hp - a.hp).slice(0, skillValue("mage-elemental-storm", level));
+            targets.forEach((target) => {
+              target.burnTime = Math.max(target.burnTime, 3 + level);
+              target.burnTick = target.burnTick > 0 ? Math.min(target.burnTick, 0.75) : 0.75;
+              target.burnLevel = Math.max(target.burnLevel, level);
+              target.burnSourcePaddleId = sourcePaddle.id;
+              target.frostVulnerability = Math.max(target.frostVulnerability, level);
+              target.traitLockTime = Math.max(target.traitLockTime, 3 + level);
+            });
+            emitSkillEffect("mage-elemental-storm", W / 2, H / 2, 190, 0.9);
+          });
+          activateHitSkill("mage-meteor", 6, (level) => {
+            const afflicted = game.bricks.filter((target) => target.alive && (target.burnTime > 0 || target.frostVulnerability > 0 || target.traitLockTime > 0));
+            const targets = afflicted.sort((a, b) => b.hp - a.hp).slice(0, Math.max(1, 1 + Math.floor(afflicted.length / 4)));
+            targets.forEach((target, index) => {
+              const damage = skillValue("mage-meteor", level);
+              const hpBefore = target.hp;
+              target.hp -= damage * damageMultiplier(target);
+              recordSkillImpact("mage-meteor", Math.min(hpBefore, Math.max(0, hpBefore - target.hp)), target.hp <= 0);
+              emitSkillEffect("mage-meteor", target.x + target.w / 2, BRICK_ROW_Y - 35 - index * 8, 120, 0.8, target.x + target.w / 2, target.y + target.h / 2);
+              if (target.hp <= 0) destroyBrick(target, ball, false, 0);
+            });
+          });
         }
         emitEffect(
           "spark",
@@ -2393,7 +2501,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         if (corrosionDamage > 0) emitEffect("ring", brick.x + brick.w / 2, brick.y + brick.h / 2, "#c18cff", 28 + corrosionDamage * 5, brick.x + brick.w / 2, brick.y + brick.h / 2, 0.32);
         if (!guardAbsorbed && smashLevel >= 3) strikeEvolutionPulse(brick, ball, "warrior-smash", 115, 2);
         if (!guardAbsorbed && game.ultimateAuras["warrior-earthquake"]) strikeEvolutionPulse(brick, ball, "warrior-earthquake", 78, game.bricks.length);
-        if (!guardAbsorbed && (ball.skillCharges["warrior-berserker"] ?? 0) > 0) {
+        if (!guardAbsorbed && berserkerLevel > 0) {
           const berserkerTargets = Math.max(1, Math.floor(ball.attackPower / 2));
           strikeEvolutionPulse(brick, ball, "warrior-berserker", 75 + ball.attackPower * 6, berserkerTargets);
         }
@@ -2427,8 +2535,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             if (linked.hp <= 0) destroyBrick(linked, ball, false, 0);
           });
         }
-        const ricochetLevel = ball.skillCharges["archer-ricochet"] ?? 0;
-        const lightningLevel = ball.skillCharges["mage-lightning"] ?? 0;
+        const ricochetLevel = upgradeLevel(sourcePaddle.upgrades, "archer-ricochet");
+        const lightningLevel = upgradeLevel(sourcePaddle.upgrades, "mage-lightning");
         const classChainBase = Math.max(ricochetLevel, lightningLevel + (lightningLevel > 0 ? 1 : 0));
         const classChainCount = classChainBase > 0 ? classChainBase + commonChainBonus(sourcePaddle.upgrades) : 0;
         if (!guardAbsorbed && classChainCount > 0) {
@@ -2467,14 +2575,14 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           }
           if (evolvedChain && chainedHits > classChainCount) game.flashes.push({ text: `${activeSkillMap[chainSkillId]?.name} 진화 // CHAIN ×${chainedHits}`, x: brick.x + brick.w / 2, y: brick.y - 22, life: 1, color });
         }
-        const shockwaveLevel = ball.skillCharges["warrior-shockwave"] ?? 0;
-        const fireballLevel = ball.skillCharges["mage-fireball"] ?? 0;
+        const shockwaveLevel = upgradeLevel(sourcePaddle.upgrades, "warrior-shockwave");
+        const fireballLevel = upgradeLevel(sourcePaddle.upgrades, "mage-fireball");
         if (shockwaveLevel > 0) triggerImpactShockwave(brick, ball, shockwaveLevel);
         if (fireballLevel > 0) igniteFireballArea(brick, sourcePaddle.id, fireballLevel);
         if (brick.hp <= 0) destroyBrick(brick, ball, blastLevel > 0, blastLevel || ball.blast, true, piercingHit);
-        const consumedClassSkills = (["warrior-smash", "warrior-shockwave", "warrior-execute", "warrior-crush", "archer-ricochet", "archer-focus", "archer-weakpoint", "mage-fireball", "mage-lightning"] as ClassSkillId[]).filter((id) => (ball.skillCharges[id] ?? 0) > 0);
-        consumedClassSkills.forEach((id, index) => {
-          if (id === "warrior-shockwave" || id === "mage-fireball") return;
+        const impactClassSkills = (["warrior-smash", "warrior-shockwave", "warrior-execute", "warrior-crush", "archer-pierce", "archer-ricochet", "archer-focus", "archer-weakpoint", "mage-fireball", "mage-lightning"] as ClassSkillId[]).filter((id) => upgradeLevel(sourcePaddle.upgrades, id) > 0);
+        impactClassSkills.forEach((id, index) => {
+          if (id === "warrior-shockwave" || id === "mage-fireball" || id === "mage-lightning" || id === "archer-ricochet") return;
           const color = classSkillColor(id);
           const impactX = brick.x + brick.w / 2;
           const impactY = brick.y + brick.h / 2;
@@ -2488,7 +2596,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           impactFeedback(blastLike ? 5.5 : 3.2, color, blastLike ? 0.22 : 0.13, blastLike ? 0.1 : 0);
           audioRef.current?.play(id === "warrior-execute" || id === "archer-weakpoint" ? "critical" : blastLike ? "explosion" : "skill-impact", 1 + index * 0.15);
         });
-        consumedClassSkills.forEach((id) => { delete ball.skillCharges[id]; });
         delete ball.payloads.glass;
         if (ball.pierce <= 0) delete ball.payloads.pierce;
         syncBallPayloadDisplay(ball, sourcePaddle.upgrades);
@@ -4410,7 +4517,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               <div className="overlay lobby-overlay">
                 <p className="overlay-kicker">{benchmarkMode ? benchmarkRunMode === "watch" ? `WATCH RUN · REAL PHYSICS · ${botSpeed}×` : `HEADLESS · W1–W20 · ${benchmarkConfig.runs} RUNS` : "20 WAVES. ONE BALL. BREAK THROUGH."}</p>
                 <h2>{benchmarkMode ? benchmarkRunMode === "watch" ? <>실제 플레이를<br />관찰합니다.</> : <>실제 게임 규칙을<br />병렬 테스트합니다.</> : <>패턴을 돌파하고<br />코어를 지키세요.</>}</h2>
-                <p>{benchmarkMode ? benchmarkRunMode === "watch" ? "봇이 실제 캔버스에서 패들을 조작합니다. 블록 충돌, 스킬 충전과 발동, 공 손실을 화면으로 확인하세요." : "웨이브 패턴, 블록 체력, 보스와 Skill LAB 수치를 헤드리스 Worker가 동시에 시뮬레이션합니다." : "웨이브마다 공 1개로 고정 패턴을 모두 파괴하세요. 공을 놓치면 CORE 1을 잃고 새 공으로 즉시 이어집니다."}</p>
+                <p>{benchmarkMode ? benchmarkRunMode === "watch" ? "봇이 실제 캔버스에서 패들을 조작합니다. 블록 타격마다 적용되는 스킬 효과와 공 손실을 화면으로 확인하세요." : "웨이브 패턴, 블록 체력, 보스와 Skill LAB 수치를 헤드리스 Worker가 동시에 시뮬레이션합니다." : "웨이브마다 공 1개로 고정 패턴을 모두 파괴하세요. 공을 놓치면 CORE 1을 잃고 새 공으로 즉시 이어집니다."}</p>
                 {!benchmarkMode && <button className="primary-button" onClick={() => startRun(false)}>20 웨이브 시작 <span>→</span></button>}
                 <small>{benchmarkMode ? benchmarkRunMode === "watch" ? "오른쪽에서 관찰 배속과 봇 정책을 선택하세요." : "오른쪽에서 반복 횟수와 봇 정책을 선택하세요." : "마우스 또는 터치로 패들을 움직이세요."}</small>
               </div>
@@ -4458,12 +4565,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                 <p className="overlay-kicker">WAVE REWARD // SIGNAL UPGRADE</p>
                 <h2>조합을 선택하세요</h2>
                 <div className="upgrade-grid">
-                  <p className="upgrade-ball-summary">직업 스킬은 패들 반사로 충전 · 공용 스킬은 획득 즉시 상시 적용 · 궁극기는 보스 보상 전용</p>
+                  <p className="upgrade-ball-summary">모든 스킬은 획득 즉시 영구 적용 · 공격 스킬은 블록 타격 시 발동 · 궁극기는 보스 보상 전용</p>
                   {choices.map(({ upgrade, ballCost }, index) => {
                     const currentLevel = gameRef.current?.upgrades.filter((id) => id === upgrade.id).length ?? 0;
                     const config = activeSkillMap[upgrade.id];
                     return (
-                      <button key={upgrade.id} className="upgrade-card" onClick={() => applyUpgrade(upgrade, 0)} aria-label={`${upgrade.name}, ${config?.category === "common" ? "상시 적용 공용 스킬" : "반사 횟수 충전 스킬"}`} style={{ "--accent": upgrade.color } as React.CSSProperties}>
+                      <button key={upgrade.id} className="upgrade-card" onClick={() => applyUpgrade(upgrade, 0)} aria-label={`${upgrade.name}, 영구 적용 스킬`} style={{ "--accent": upgrade.color } as React.CSSProperties}>
                         <span className="upgrade-index">0{index + 1}</span>
                         <span className="upgrade-tag">{upgrade.tag}</span>
                         <span className="upgrade-icon" aria-hidden="true">{SKILL_ICONS[upgrade.id]}</span>

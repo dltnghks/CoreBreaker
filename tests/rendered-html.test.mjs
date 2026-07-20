@@ -226,8 +226,8 @@ test("raises post-wave-5 density, brick health, and boss health", async () => {
   assert.match(balance, /bossBaseHp: 280/);
   assert.match(balance, /bossHpPerStage: 160/);
   assert.match(source, /function lateWaveHpMultiplier/);
-  assert.match(source, /waveNumber >= 16 \? 1\.5 : waveNumber >= 11 \? 1\.25 : 1/);
-  assert.match(source, /const bossHpMultiplier = stage >= 2 \? 1\.3 : 0\.95/);
+  assert.match(source, /waveNumber >= 16 \? 2\.5 : waveNumber >= 11 \? 1\.9 : waveNumber >= 6 \? 1\.45/);
+  assert.match(source, /const bossHpMultiplier = stage >= 2 \? 1\.8 : 1\.25/);
   assert.match(balance, /echo-breaker-balance-v3/);
 });
 
@@ -688,25 +688,26 @@ test("renders the warrior archer mage Skill Lab", async () => {
   });
 });
 
-test("defines all class skills as reflection-driven skills without ball costs", async () => {
+test("defines all class skills as permanent ball-owned skills without ball costs", async () => {
   const config = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
   const names = ["강타", "충격파", "처형", "분쇄", "철벽", "대지 분쇄", "광전사", "연사", "관통 화살", "도탄 화살", "집중 사격", "약점 사격", "화살비", "무한 탄창", "화염구", "연쇄 번개", "빙결 표식", "블랙홀", "마력 봉인", "원소 폭풍", "메테오"];
   names.forEach((name) => assert.match(config, new RegExp(`"${name}"`)));
   assert.match(config, /export const NORMAL_SKILLS/);
   assert.match(config, /export const ULTIMATE_SKILLS/);
-  assert.match(config, /direction: "down"/);
+  assert.match(config, /owner: "ball"/);
+  assert.match(config, /블록 타격 시 상시 적용/);
   assert.match(config, /ballCost: 0/);
   assert.doesNotMatch(config, /ballCost: [12]/);
 });
 
-test("charges class skills from paddle reflections and grants ultimates after bosses", async () => {
+test("applies class skills from brick hits and grants ultimates after bosses", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /skillReflections: Partial<Record<ClassSkillId, number>>/);
-  assert.match(source, /const triggerReflectionSkill =/);
-  assert.match(source, /paddleCounter\.skillReflections\[id\]/);
-  assert.match(source, /triggerReflectionSkill\("warrior-smash"/);
-  assert.match(source, /triggerReflectionSkill\("archer-rapid"/);
-  assert.match(source, /triggerReflectionSkill\("mage-fireball"/);
+  assert.match(source, /const smashLevel = upgradeLevel\(sourcePaddle\.upgrades, "warrior-smash"\)/);
+  assert.match(source, /const ricochetLevel = upgradeLevel\(sourcePaddle\.upgrades, "archer-ricochet"\)/);
+  assert.match(source, /const fireballLevel = upgradeLevel\(sourcePaddle\.upgrades, "mage-fireball"\)/);
+  assert.match(source, /const activateHitSkill =/);
+  assert.match(source, /activateHitSkill\("archer-rapid"/);
+  assert.match(source, /activateHitSkill\("mage-black-hole"/);
   assert.match(source, /game\.upgrades\.push\(rewardId\)/);
   assert.match(source, /ULTIMATE ACQUIRED/);
   assert.match(source, /ultimateCatalog\.map/);
@@ -717,7 +718,7 @@ test("separates impact shockwave damage from fireball damage over time", async (
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const skills = await readFile(new URL("../app/skill-config.ts", import.meta.url), "utf8");
   const benchmark = await readFile(new URL("../app/benchmark-headless.ts", import.meta.url), "utf8");
-  assert.match(skills, /"warrior-shockwave"[\s\S]*"다음 충돌 시 주변 즉발 피해"/);
+  assert.match(skills, /"warrior-shockwave"[\s\S]*"주변 즉발 피해"/);
   assert.match(skills, /"mage-fireball"[\s\S]*"주변 점화 · 회복 차단"/);
   assert.match(skills, /legacyDestructionTrigger/);
   assert.match(source, /triggerImpactShockwave\(brick, ball, shockwaveLevel\)/);
@@ -736,17 +737,13 @@ test("separates impact shockwave damage from fireball damage over time", async (
   assert.match(benchmark, /skill\.id === "mage-fireball"/);
 });
 
-test("enlarges skill counters and pulses the paddle when a skill charges", async () => {
+test("removes reflection counters and keeps permanent skill icons on the paddle", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /const cellWidth = 48/);
-  assert.match(source, /const cellHeight = 24/);
-  assert.match(source, /const perRow = Math\.min\(10, entries\.length\)/);
-  assert.match(source, /ctx\.font = "900 13px/);
-  assert.match(source, /ctx\.font = "900 11px monospace"/);
-  assert.match(source, /paddleCounter\.chargePulse = 1\.2/);
-  assert.match(source, /nearest\.ratio < 0\.75/);
-  assert.match(source, /const drawPaddleChargeAura =/);
-  assert.match(source, /playerChargeVisual\?\.color \?\? PLAYER_BALL_COLOR/);
+  assert.match(source, /const COUNTED_SKILL_IDS: UpgradeId\[\] = \[\]/);
+  assert.match(source, /const drawSkillPanel =/);
+  assert.match(source, /모든 스킬은 획득 즉시 영구 적용/);
+  assert.doesNotMatch(source, /paddleCounter\.chargePulse = 1\.2/);
+  assert.doesNotMatch(source, /paddleCounter\.skillReflections\[id\]/);
 });
 
 test("expires temporary arrows by time and renders per-skill visual feedback away from the paddle", async () => {
@@ -756,8 +753,8 @@ test("expires temporary arrows by time and renders per-skill visual feedback awa
   assert.match(source, /temporaryTime: number/);
   assert.match(source, /ball\.temporaryTime = Math\.max\(0, ball\.temporaryTime - dt\)/);
   assert.doesNotMatch(source, /temporaryHits/);
-  assert.match(source, /drawCounterRail\(W \/ 2, H - 6, "player"/);
-  assert.match(source, /const consumedClassSkills =/);
+  assert.match(source, /const COUNTED_SKILL_IDS: UpgradeId\[\] = \[\]/);
+  assert.match(source, /const impactClassSkills =/);
   assert.match(source, /classSkillColor\(id\)/);
   assert.match(config, /export const SKILL_COLORS/);
   assert.match(lab, /const skillStyle =/);
@@ -958,9 +955,9 @@ test("evolves every normal class skill at level three", async () => {
   assert.match(source, /const waveQueue: Brick\[\] = \[origin\]/);
   assert.match(source, /const evolvedChain = Math\.max\(ricochetLevel, lightningLevel\) >= 3/);
   assert.match(source, /upgradeLevel\(firePaddle\.upgrades, "mage-fireball"\) >= 3/);
-  assert.match(source, /weakpointLevel >= 3 \? 4 : 3/);
-  assert.match(source, /executeLevel >= 3 \? 0\.4 : 0\.25/);
-  assert.match(source, /wellLife = level >= 3 \? 6 : 3\.5/);
+  assert.match(source, /skillValue\("archer-weakpoint", weakpointLevel\)/);
+  assert.match(source, /skillValue\("warrior-execute", executeLevel\) \/ 100/);
+  assert.match(source, /skillValue\("mage-black-hole", level\)/);
   assert.match(lab, /LV3 진화 규칙/);
 });
 

@@ -59,7 +59,7 @@ function seededRandom(seed: number) {
 }
 
 function lateWaveHpMultiplier(wave: number) {
-  return wave >= 16 ? 1.5 : wave >= 11 ? 1.25 : 1;
+  return wave >= 16 ? 2.5 : wave >= 11 ? 1.9 : wave >= 6 ? 1.45 : wave >= 4 ? 1.15 : 1;
 }
 
 function levelOf(upgrades: UpgradeId[], id: UpgradeId) {
@@ -83,13 +83,19 @@ function chooseSkill(pool: SkillConfig[], upgrades: UpgradeId[], policy: Headles
 
 function skillPower(skill: SkillConfig, level: number, upgrades: UpgradeId[] = []) {
   const categoryPower: Record<SkillCategory, number> = { warrior: 1.08, archer: 1.12, mage: 1.14, common: 0.55 };
-  const trigger = Math.max(1, Number(skill.levels[Math.min(2, Math.max(0, level - 1))]) || 6);
-  const cadence = skill.category === "common" ? 0.35 : Math.min(1.3, 5 / trigger);
+  const value = Math.max(0, Number(skill.levels[Math.min(2, Math.max(0, level - 1))]) || 0);
+  const valueScale = skill.unit === "DMG" ? value * 0.22
+    : skill.unit === "배" ? Math.max(0, value - 1) * 0.55
+    : skill.unit === "%" ? value * 0.015
+    : skill.unit === "px" ? value * 0.003
+    : skill.unit === "개" || skill.unit === "발" ? value * 0.08
+    : value * 0.05;
+  const cadence = skill.category === "common" ? 0.35 : skill.ultimate ? 0.72 : 1;
   const impactModel = skill.id === "warrior-shockwave" ? 1.1 : skill.id === "mage-fireball" ? 1.25 : 1;
   const evolutionMultiplier = level >= 3 && skill.evolution ? 1.55 : 1;
   const sameClassBuild = upgrades.filter((id) => DEFAULT_SKILLS.some((entry) => entry.id === id && !entry.ultimate && entry.category === skill.category)).length;
   const ultimateBuildMultiplier = skill.ultimate ? 1 + Math.min(0.75, sameClassBuild * 0.08) : 1;
-  return categoryPower[skill.category] * level * cadence * impactModel * evolutionMultiplier * ultimateBuildMultiplier;
+  return categoryPower[skill.category] * (level * 0.55 + valueScale) * cadence * impactModel * evolutionMultiplier * ultimateBuildMultiplier;
 }
 
 function normalWaveStats(wave: number, balance: BalanceConfig) {
@@ -112,7 +118,7 @@ function normalWaveStats(wave: number, balance: BalanceConfig) {
 
 function bossWaveStats(wave: number, balance: BalanceConfig) {
   const stage = wave >= 20 ? 2 : 1;
-  const multiplier = stage >= 2 ? 1.3 : 0.95;
+  const multiplier = stage >= 2 ? 1.8 : 1.25;
   const hp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage) * multiplier);
   return { count: 1, damageable: 1, hp };
 }
@@ -195,7 +201,8 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
       if (!level) continue;
       const share = skillPower(skill, level, upgrades) / Math.max(1, 2.05 * Math.sqrt(balls) + skillBonus);
       const damage = Math.round(damageDone * share);
-      const activations = skill.category === "common" ? 0 : Math.max(1, Math.round(waveElapsed / Math.max(2, skill.levels[Math.min(2, level - 1)])));
+      const activationInterval = skill.ultimate ? 5 : skill.trigger.includes("자동") ? 2.5 : 1.2;
+      const activations = skill.category === "common" ? 0 : Math.max(1, Math.round(waveElapsed / activationInterval));
       const previous = metrics[skill.id] ?? { activations: 0, damage: 0, kills: 0 };
       metrics[skill.id] = { activations: previous.activations + activations, damage: previous.damage + damage, kills: previous.kills + Math.round(destroyed * share) };
     }
