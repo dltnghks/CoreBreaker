@@ -280,7 +280,8 @@ test("renders beam links and clears wave-scoped skill state", async () => {
   assert.match(source, /function clearBallEnchantments/);
   assert.match(source, /clearBallEnchantments\(ball, game\.upgrades\)/);
   assert.match(source, /const clearWaveScopedSkillState/);
-  assert.match(source, /game\.balls\.forEach\(clearBallEnchantments\)/);
+  assert.match(source, /game\.balls\.forEach\(\(ball\) => clearBallEnchantments\(ball, game\.upgrades\)\)/);
+  assert.match(source, /if \(!Array\.isArray\(upgrades\)\) return 0/);
   assert.match(source, /game\.paddleCounters\[id\] = newPaddleCounter\(\)/);
   assert.match(source, /game\.bossActive = false;\s+clearWaveScopedSkillState\(\)/);
 });

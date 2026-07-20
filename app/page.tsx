@@ -387,6 +387,7 @@ function ghostPaddleWidth(ghost: GhostRecord) {
 }
 
 function upgradeLevel(upgrades: UpgradeId[], id: UpgradeId) {
+  if (!Array.isArray(upgrades)) return 0;
   return Math.min(4, upgrades.filter((upgrade) => upgrade === id).length);
 }
 
@@ -2545,7 +2546,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       });
     };
     const clearWaveScopedSkillState = () => {
-      game.balls.forEach(clearBallEnchantments);
+      game.balls.forEach((ball) => clearBallEnchantments(ball, game.upgrades));
       Object.keys(game.paddleCounters).forEach((id) => { game.paddleCounters[id] = newPaddleCounter(); });
       game.paddleCounters.player ??= newPaddleCounter();
     };
