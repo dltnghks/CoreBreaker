@@ -5,7 +5,7 @@ import { GameAudio } from "./game-audio";
 import { DEFAULT_SKILLS, ENCHANT_MODE_LABELS, levelValue, NORMAL_SKILLS, normalizeSkillConfigs, SKILL_COLORS, SKILL_MECHANIC_LABELS, SKILL_STORAGE_KEY, skillConfigMap, ULTIMATE_SKILLS, type ClassSkillId, type SkillCategory, type SkillConfig, type SkillMechanic, type UpgradeId } from "./skill-config";
 import { BALANCE_STORAGE_KEY, BOT_LIVE_STORAGE_KEY, BOT_RESULTS_STORAGE_KEY, DEFAULT_BALANCE_CONFIG, DEFAULT_SKILL_BENCH_CONFIG, DEFAULT_SKILL_BENCH_PROGRESS, normalizeBalanceConfig, normalizeSkillBenchConfig, normalizeSkillBenchProgress, SKILL_BENCH_PROGRESS_KEY, SKILL_BENCH_STORAGE_KEY, type BalanceConfig, type BotWaveSample, type SkillBenchConfig, type SkillBenchProgress } from "./balance-config";
 import { BENCHMARK_STORAGE_KEY, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConfig, type BenchmarkConfig } from "./benchmark-config";
-import { MAX_WAVE, waveDefinition } from "./wave-config";
+import { applyWaveDefinitions, getActiveWaveDefinitions, MAX_WAVE, WAVE_STORAGE_KEY, waveDefinition } from "./wave-config";
 import { PARALLEL_BENCHMARK_RULESET, type HeadlessBenchmarkRequest, type HeadlessBenchmarkResult } from "./benchmark-headless";
 import { clearBenchmarkResults, getBenchmarkResults, putBenchmarkResults } from "./benchmark-result-store";
 
@@ -718,7 +718,7 @@ function makeBrickRow(row: number, wave = 1, ghostCount = 0, balance = DEFAULT_B
 
 function makeWaveBricks(waveNumber: number, balance = DEFAULT_BALANCE_CONFIG): Brick[] {
   const definition = waveDefinition(waveNumber);
-  if (definition.boss) return makeBossBricks(definition.boss === "final" ? 2 : 1, 0, balance);
+  if (definition.boss) return makeBossBricks(definition.boss === "final" ? 2 : 1, 0, balance, definition.hpMultiplier);
   const cols = 12;
   const gap = 7;
   const margin = 36;
@@ -737,7 +737,7 @@ function makeWaveBricks(waveNumber: number, balance = DEFAULT_BALANCE_CONFIG): B
       : cell === "r" ? "reflector"
       : "standard";
     const hpBonus = cell === "h" ? 1 + Math.floor((waveNumber - 1) / 8) : cell === "c" ? 2 : 0;
-    const maxHp = Math.ceil((baseHp + hpBonus) * lateWaveHpMultiplier(waveNumber));
+    const maxHp = Math.ceil((baseHp + hpBonus) * lateWaveHpMultiplier(waveNumber) * definition.hpMultiplier);
     return [{
       x: margin + col * (width + gap), y: BRICK_ROW_Y + rowIndex * BRICK_ROW_STEP, w: width, h: 24,
       hp: maxHp, maxHp, hue: 178 + waveNumber * 9 + col * 2, alive: true, kind: "normal" as const,
@@ -747,7 +747,7 @@ function makeWaveBricks(waveNumber: number, balance = DEFAULT_BALANCE_CONFIG): B
   }));
 }
 
-function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfig): Brick[] {
+function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfig, waveHpMultiplier = 1): Brick[] {
   const cols = 4;
   const rows = 3;
   const cellWidth = 104;
@@ -757,7 +757,7 @@ function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfi
   const startX = (W - width) / 2;
   const startY = 94;
   const bossHpMultiplier = stage >= 2 ? 1.8 : 1.25;
-  const coreHp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage + ghostCount * 10) * bossHpMultiplier);
+  const coreHp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage + ghostCount * 10) * bossHpMultiplier * waveHpMultiplier);
   return [{
     x: startX, y: startY, w: width, h: height,
     hp: coreHp, maxHp: coreHp,
@@ -1081,6 +1081,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
+    try {
+      const savedWaves = localStorage.getItem(WAVE_STORAGE_KEY);
+      if (savedWaves) applyWaveDefinitions(JSON.parse(savedWaves));
+    } catch { /* Invalid saved drafts never replace the canonical defaults. */ }
     const syncFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener("fullscreenchange", syncFullscreen);
     return () => document.removeEventListener("fullscreenchange", syncFullscreen);
@@ -5000,6 +5004,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         balanceConfig: { ...balanceConfigRef.current },
         benchmarkConfig: { ...benchmarkConfigRef.current },
         skills: activeSkillConfigsRef.current.map((skill) => ({ ...skill, levels: [...skill.levels] as [number, number, number] })),
+        waveDefinitions: getActiveWaveDefinitions(),
       };
       worker.postMessage(request);
     };
@@ -5270,6 +5275,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         <div className="header-rule" />
         <a className="lab-link" href={benchmarkMode ? "/" : "/benchmark"}>{benchmarkMode ? "GAMEPLAY" : "BENCHMARK"}</a>
         <a className="lab-link" href="/skill-lab">SKILL LAB</a>
+        <a className="lab-link" href="/stage-lab">STAGE LAB</a>
         <button className="sound-toggle" type="button" aria-pressed={!soundEnabled} onClick={toggleSound}>{soundEnabled ? "SOUND ON" : "SOUND OFF"}</button>
         <div className="session-status"><span className={mode === "playing" ? "live-dot active" : "live-dot"} />{mode === "playing" ? "SESSION LIVE" : "SYSTEM READY"}</div>
       </header>

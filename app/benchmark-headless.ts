@@ -1,7 +1,7 @@
 import { DEFAULT_SKILLS, type SkillConfig, type SkillCategory, type UpgradeId } from "./skill-config";
 import { DEFAULT_BALANCE_CONFIG, type BalanceConfig, type BotWaveSample } from "./balance-config";
 import { DEFAULT_BENCHMARK_CONFIG, type BenchmarkConfig } from "./benchmark-config";
-import { waveDefinition } from "./wave-config";
+import { WAVE_DEFINITIONS, waveDefinitionFrom, type WaveDefinition } from "./wave-config";
 
 export type HeadlessBotPolicy = "balanced" | "survival" | "random";
 export const PARALLEL_BENCHMARK_RULESET = "parallel-v9" as const;
@@ -16,6 +16,7 @@ export type HeadlessBenchmarkRequest = {
   balanceConfig?: BalanceConfig;
   benchmarkConfig?: BenchmarkConfig;
   skills?: SkillConfig[];
+  waveDefinitions?: WaveDefinition[];
 };
 
 export type HeadlessBenchmarkResult = {
@@ -103,8 +104,7 @@ function skillPower(skill: SkillConfig, level: number, upgrades: UpgradeId[] = [
   return categoryPower[skill.category] * (level * 0.55 + valueScale) * cadence * impactModel * evolutionMultiplier * ultimateBuildMultiplier;
 }
 
-function normalWaveStats(wave: number, balance: BalanceConfig) {
-  const definition = waveDefinition(wave);
+function normalWaveStats(wave: number, balance: BalanceConfig, definition: WaveDefinition) {
   const baseHp = 1 + Math.floor((wave - 1) / Math.max(1, Math.round(balance.baseHpWaveStep)));
   let count = 0;
   let damageable = 0;
@@ -115,16 +115,16 @@ function normalWaveStats(wave: number, balance: BalanceConfig) {
     if (cell === "x") continue;
     damageable += 1;
     const bonus = cell === "h" ? 1 + Math.floor((wave - 1) / 8) : cell === "c" ? 2 : 0;
-    hp += Math.ceil((baseHp + bonus) * lateWaveHpMultiplier(wave));
+    hp += Math.ceil((baseHp + bonus) * lateWaveHpMultiplier(wave) * definition.hpMultiplier);
     if (cell === "g") hp += 1;
   }
   return { count, damageable, hp };
 }
 
-function bossWaveStats(wave: number, balance: BalanceConfig) {
+function bossWaveStats(wave: number, balance: BalanceConfig, definition: WaveDefinition) {
   const stage = wave >= 20 ? 2 : 1;
   const multiplier = stage >= 2 ? 1.8 : 1.25;
-  const hp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage) * multiplier);
+  const hp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage) * multiplier * definition.hpMultiplier);
   return { count: 1, damageable: 1, hp };
 }
 
@@ -149,6 +149,7 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
   const balance = { ...DEFAULT_BALANCE_CONFIG, ...request.balanceConfig };
   const benchmark = { ...DEFAULT_BENCHMARK_CONFIG, ...request.benchmarkConfig } as BenchmarkConfig;
   const skills = request.skills?.length ? request.skills : DEFAULT_SKILLS;
+  const waveDefinitions = request.waveDefinitions?.length === WAVE_DEFINITIONS.length ? request.waveDefinitions : WAVE_DEFINITIONS;
   const normalSkills = skills.filter((skill) => !skill.ultimate);
   const ultimateSkills = skills.filter((skill) => skill.ultimate);
   const upgrades: UpgradeId[] = [];
@@ -176,8 +177,8 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
 
   for (let wave = 1; wave <= benchmark.targetWave && coreHp > 0; wave += 1) {
     reachedWave = wave;
-    const definition = waveDefinition(wave);
-    const stage = definition.boss ? bossWaveStats(wave, balance) : normalWaveStats(wave, balance);
+    const definition = waveDefinitionFrom(waveDefinitions, wave);
+    const stage = definition.boss ? bossWaveStats(wave, balance, definition) : normalWaveStats(wave, balance, definition);
     const baseBalls = 1;
     const temporaryBalls = !definition.boss && [3, 6, 9].includes(((wave - 1) % 10) + 1) ? 1 : 0;
     const balls = baseBalls + temporaryBalls;

@@ -235,12 +235,12 @@ test("uses stationary 4x3 bosses with reinforcement bricks", async () => {
 test("defines 20 fixed brick patterns with bosses at waves 10 and 20", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const waves = await readFile(new URL("../app/wave-config.ts", import.meta.url), "utf8");
-  assert.match(source, /import \{ MAX_WAVE, waveDefinition \}/);
+  assert.match(source, /MAX_WAVE, WAVE_STORAGE_KEY, waveDefinition/);
   assert.match(source, /makeWaveBricks\(waveNumber/);
   assert.doesNotMatch(waves, /timeLimit|WAVE_TIME_LIMIT/);
   assert.match(waves, /wave\(10, "MID BOSS/);
   assert.match(waves, /wave\(20, "FINAL BOSS/);
-  const patternRows = [...waves.matchAll(/"([.nhgexcr]+)"/g)].map((match) => match[1]);
+  const patternRows = [...waves.matchAll(/"([.nhgexcr]{12})"/g)].map((match) => match[1]);
   assert.ok(patternRows.length > 40);
   patternRows.forEach((row) => assert.equal(row.length, 12));
 });
@@ -260,6 +260,31 @@ test("opens side gaps in the wave 7 reflector wall", async () => {
   const waves = await readFile(new URL("../app/wave-config.ts", import.meta.url), "utf8");
   assert.match(waves, /wave\(7, "TWIN GATES"[^\n]+"rr\.\.nnnn\.\.rr"/);
   assert.doesNotMatch(waves, /"rrrrnnnnrrrr"/);
+});
+
+test("introduces the first reflector bricks on the lowest row", async () => {
+  const waves = await readFile(new URL("../app/wave-config.ts", import.meta.url), "utf8");
+  assert.match(waves, /wave\(3, "BOUNCE GATE", \["\.\.nnnnnnnn\.\.", "\.nnn\.\.\.\.nnn\.", "\.\.rr\.\.\.\.rr\.\."\]\)/);
+});
+
+test("edits and persists the canonical 20-wave definitions in Stage Lab", async () => {
+  const waves = await readFile(new URL("../app/wave-config.ts", import.meta.url), "utf8");
+  const game = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const stageLab = await readFile(new URL("../app/stage-lab/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/stage-lab/stage-lab.module.css", import.meta.url), "utf8");
+  assert.match(waves, /export const WAVE_STORAGE_KEY/);
+  assert.match(waves, /export function normalizeWaveDefinitions/);
+  assert.match(waves, /export function applyWaveDefinitions/);
+  assert.match(waves, /hpMultiplier: number/);
+  assert.match(game, /applyWaveDefinitions\(JSON\.parse\(savedWaves\)\)/);
+  assert.match(game, /waveDefinitions: getActiveWaveDefinitions\(\)/);
+  assert.match(stageLab, /localStorage\.setItem\(WAVE_STORAGE_KEY/);
+  assert.match(stageLab, /applyWaveDefinitions\(normalized\)/);
+  assert.match(stageLab, /resetWaveDefinitions\(\)/);
+  assert.match(stageLab, /JSON 가져오기/);
+  assert.match(stageLab, /JSON 내보내기/);
+  assert.match(stageLab, /저장·게임 적용/);
+  assert.match(styles, /grid-template-columns:repeat\(12/);
 });
 
 test("ends a wave only after every damageable brick is cleared", async () => {
@@ -590,7 +615,8 @@ test("runs benchmark telemetry through a parallel headless worker pool", async (
   assert.match(source, /navigator\.hardwareConcurrency/);
   assert.match(source, /Math\.min\(8, targetRuns/);
   assert.match(source, /worker\.terminate\(\)/);
-  assert.match(engine, /waveDefinition\(wave\)/);
+  assert.match(engine, /waveDefinitionFrom\(waveDefinitions, wave\)/);
+  assert.match(source, /waveDefinitions: getActiveWaveDefinitions\(\)/);
   assert.match(engine, /request\.skills\?\.length \? request\.skills : DEFAULT_SKILLS/);
   assert.match(worker, /runHeadlessBenchmark\(event\.data\)/);
   assert.match(source, /updateBenchmarkRuns/);
