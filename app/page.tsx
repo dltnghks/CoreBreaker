@@ -1162,7 +1162,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   }, []);
   const [botPolicy, setBotPolicy] = useState<BotPolicy>("balanced");
   const [botSpeed, setBotSpeed] = useState<BotSpeed>(1);
-  const [benchmarkRunMode, setBenchmarkRunMode] = useState<BenchmarkRunMode>("parallel");
+  const [benchmarkRunMode, setBenchmarkRunMode] = useState<BenchmarkRunMode>("watch");
   const [botTargetRuns, setBotTargetRuns] = useState(5);
   const [botRunning, setBotRunning] = useState(false);
   const [botCompletedRuns, setBotCompletedRuns] = useState(0);

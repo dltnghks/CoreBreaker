@@ -677,6 +677,7 @@ test("offers a visible real-physics watch run beside the headless benchmark", as
   assert.match(html, /WATCH RUN/);
   assert.match(html, /실제 화면 관찰/);
   assert.match(source, /type BenchmarkRunMode = "parallel" \| "watch"/);
+  assert.match(source, /useState<BenchmarkRunMode>\("watch"\)/);
   assert.match(source, /benchmarkRunMode === "watch"/);
   assert.match(source, /WATCH RUN START/);
   assert.match(source, /\[1, 2, 4, 8\]\.map/);
