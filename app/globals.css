@@ -152,3 +152,7 @@ body{background:radial-gradient(circle at 18% -15%,rgba(115,184,195,.11),transpa
 :fullscreen body{overflow:hidden}:fullscreen .gameplay-shell{max-width:none;width:100vw;height:100vh;padding:12px;display:grid;place-items:center}:fullscreen .gameplay-shell .workspace{width:100%;margin:0}:fullscreen .gameplay-shell .game-frame{width:min(calc(100vw - 24px),calc((100vh - 24px)*1.5));max-height:calc(100vh - 24px)}
 
 @media(max-width:900px){.gameplay-shell .game-frame{width:100%;max-height:none}.gameplay-shell .hud-core{min-width:220px}.gameplay-shell .hud-wave{min-width:190px}}
+
+/* Minimal lower-left core counter */
+.hud-core,.gameplay-shell .hud-core{left:14px;right:auto;bottom:14px;min-width:0;width:auto;min-height:34px;padding:4px 8px;transform:none;clip-path:polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)}
+.hud-core i,.gameplay-shell .hud-core i{width:23px;height:23px;font-size:13px}.hud-core>span,.gameplay-shell .hud-core>span{flex:0;color:#8c7d5a;font:900 11px monospace}.hud-core>strong,.gameplay-shell .hud-core>strong{color:#f1d78f;font:900 15px monospace}.hud-core.core-critical>span,.hud-core.core-critical>strong{color:#ff6b87}

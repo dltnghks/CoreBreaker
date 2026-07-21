@@ -440,7 +440,7 @@ test("uses clear-driven waves without a time limit and keeps skill-specific comb
   assert.match(source, /drawMagnetLinks/);
 });
 
-test("propagates paddle debuffs and reports barriers in the in-game HUD", async () => {
+test("propagates paddle debuffs and keeps barrier state accessible in the in-game HUD", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /blastVulnerability/);
   assert.match(source, /applyDebuffs\(near, sourcePaddle\)/);
@@ -449,11 +449,20 @@ test("propagates paddle debuffs and reports barriers in the in-game HUD", async 
   assert.match(source, /emitEffect\("blast"/);
   assert.match(source, /barriers: game\.paddleBarriers\.player/);
   assert.match(source, /hud-badge hud-core/);
-  assert.match(source, /className="core-meter"/);
   assert.match(source, /mode === "lobby" \|\| mode === "initialskills"/);
-  assert.match(source, /SHIELD ×\{hud\.barriers\}/);
+  assert.match(source, /보호막 \$\{hud\.barriers\}개/);
   assert.doesNotMatch(source, /barrierSummary|CORE LINE/);
   assert.match(source, /EXP ×/);
+});
+
+test("renders core health as a lower-left icon and remaining number without a bar", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(source, /<i aria-hidden="true">◆<\/i><span aria-hidden="true">×<\/span><strong>\{hud\.coreHp\}<\/strong>/);
+  assert.doesNotMatch(source, /className="core-meter"/);
+  assert.doesNotMatch(source, /CORE INTEGRITY/);
+  assert.match(styles, /Minimal lower-left core counter/);
+  assert.match(styles, /\.hud-core,\.gameplay-shell \.hud-core\{left:14px;right:auto;bottom:14px/);
 });
 
 test.skip("converts legacy line clears into enchant waves and randomizes nearby link targets", async () => {
@@ -493,7 +502,7 @@ test("keeps ball bodies unified and distinguishes power and skills with effects"
   assert.match(source, /const SKILL_ICONS/);
   assert.match(source, /const drawSkillPanel/);
   assert.match(source, /ATK/);
-  assert.match(source, /SHIELD ×\{hud\.barriers\}/);
+  assert.match(source, /보호막 \$\{hud\.barriers\}개/);
 });
 
 test.skip("adds legacy paddle-owned multiball survival skills", async () => {
