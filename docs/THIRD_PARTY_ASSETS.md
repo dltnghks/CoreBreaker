@@ -1,5 +1,9 @@
 # Third-party assets
 
+> Last audited: 2026-07-21
+>
+> Runtime usage: combat VFX rendered from `app/page.tsx`; procedural Canvas effects remain as loading/error fallbacks.
+
 ## Ring Explosion
 
 - File: `public/assets/vfx/ring-explosion.png`
@@ -41,3 +45,11 @@ Attribution is not required by CC0, but the source is retained here for provenan
 - License: CC0 1.0 Universal
 - License URL: https://creativecommons.org/publicdomain/zero/1.0/
 - Changes: Selected and renamed two 6-frame strips. Fireball rotates with ball velocity; sparks remain screen-aligned.
+
+## Usage policy
+
+- Every imported asset must retain its original title, creator, source URL, license, and local filename in this document.
+- New assets must be license-compatible with redistribution in the playable web build.
+- CC0 assets may be tinted, scaled, rotated, frame-cropped, or composited at runtime.
+- Gameplay must remain readable if an image fails to load; procedural fallback effects are required for critical hit, explosion, and skill feedback.
+- Asset changes that materially alter the visual language must also update `docs/GAME_DESIGN.md`.
