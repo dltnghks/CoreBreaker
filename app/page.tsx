@@ -8,6 +8,7 @@ import { BENCHMARK_STORAGE_KEY, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConf
 import { applyWaveDefinitions, getActiveWaveDefinitions, MAX_WAVE, WAVE_STORAGE_KEY, waveDefinition } from "./wave-config";
 import { PARALLEL_BENCHMARK_RULESET, type HeadlessBenchmarkRequest, type HeadlessBenchmarkResult } from "./benchmark-headless";
 import { clearBenchmarkResults, getBenchmarkResults, putBenchmarkResults } from "./benchmark-result-store";
+import { createBotPolicyState, decideBotControls, POLICY_VERSION, type BotPolicyState } from "./bot-policy";
 
 type PayloadId = "pierce" | "blast" | "glass" | "link";
 type ItemKind = "multiball" | "auto-barrier" | "core-repair" | "cooldown-reset";
@@ -23,7 +24,7 @@ type SkillSelectionSource = "start" | "wave" | "boss";
 type SkillSelectionEvent = { wave: number; skillId: UpgradeId; level: number; source: SkillSelectionSource };
 type SkillRunMetric = { activations: number; damage: number; kills: number };
 type BenchmarkRuleset = "live-v1" | "live-v2" | "watch-v1" | "parallel-v1" | typeof PARALLEL_BENCHMARK_RULESET;
-type BotRunResult = BotMetrics & { id: string; run: number; policy: BotPolicy; speed: BotSpeed; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; startingSkills: UpgradeId[]; skillHistory: SkillSelectionEvent[]; ultimates: UpgradeId[]; skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig | null; benchmarkRuleset?: BenchmarkRuleset | null; waveSamples: BotWaveSample[]; evaluationComplete: boolean; skillBench: SkillBenchVariant | null };
+type BotRunResult = BotMetrics & { id: string; run: number; policy: BotPolicy; policyVersion?: string; engineVersion?: string; engineParity?: string; speed: BotSpeed; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; startingSkills: UpgradeId[]; skillHistory: SkillSelectionEvent[]; ultimates: UpgradeId[]; skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig | null; benchmarkRuleset?: BenchmarkRuleset | null; waveSamples: BotWaveSample[]; evaluationComplete: boolean; skillBench: SkillBenchVariant | null };
 
 type Upgrade = {
   id: UpgradeId;
@@ -1084,6 +1085,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const pointerXRef = useRef(W / 2);
   const pointerYRef = useRef(H / 3);
   const botPaddleTargetXRef = useRef(W / 2);
+  const botMoveRef = useRef<-1 | 0 | 1>(0);
+  const botPolicyStateRef = useRef<BotPolicyState>(createBotPolicyState(1));
   const keyboardRef = useRef({ left: false, right: false });
   const runningRef = useRef(false);
   const levelUpRef = useRef(false);
@@ -1759,25 +1762,16 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
     }
     if (botActiveRef.current) {
-      const aimPoint = botAimPoint(game.bricks, game.paddleX, PLAYER_PADDLE_Y, Math.floor(game.rowTimer / BOT_REFLECTOR_AIM_PHASE_SECONDS));
-      pointerXRef.current = aimPoint.x;
-      pointerYRef.current = aimPoint.y;
-      const falling = [...game.balls].filter((ball) => ball.owner === "player" && ball.vy > 0).sort((a, b) => b.y - a.y)[0];
-      const usefulItem = [...game.items].filter((item) => item.alive).sort((a, b) => b.y - a.y)[0];
-      if (falling) {
-        const travelTime = Math.max(0, (PLAYER_PADDLE_Y - falling.y) / Math.max(1, falling.vy));
-        let predictedX = falling.x + falling.vx * travelTime;
-        while (predictedX < 0 || predictedX > W) predictedX = predictedX < 0 ? -predictedX : W * 2 - predictedX;
-        botPaddleTargetXRef.current = predictedX;
-      } else if (usefulItem) {
-        botPaddleTargetXRef.current = usefulItem.x;
-      } else {
-        botPaddleTargetXRef.current = game.balls[0]?.x ?? W / 2;
-      }
+      const moveSpeedMultiplier = 1 + skillValue("common-move-speed", upgradeLevel(game.upgrades, "common-move-speed")) / 100;
+      const controls = decideBotControls({ elapsed: game.elapsed, paddleX: game.paddleX, paddleWidth: effectivePaddleWidth(game.paddleWidth, game.upgrades), paddleSpeed: PADDLE_KEYBOARD_SPEED * moveSpeedMultiplier, balls: game.balls.filter((ball) => ball.owner === "player"), bricks: game.bricks, items: game.items }, botPolicyStateRef.current, dt);
+      pointerXRef.current = controls.aimX;
+      pointerYRef.current = controls.aimY;
+      botMoveRef.current = controls.move;
     }
     const previousPaddleX = game.paddleX;
     if (botActiveRef.current) {
-      game.paddleX += (botPaddleTargetXRef.current - game.paddleX) * Math.min(1, dt * 14);
+      const moveSpeedMultiplier = 1 + skillValue("common-move-speed", upgradeLevel(game.upgrades, "common-move-speed")) / 100;
+      game.paddleX += botMoveRef.current * PADDLE_KEYBOARD_SPEED * moveSpeedMultiplier * dt;
     } else {
       const movement = Number(keyboardRef.current.right) - Number(keyboardRef.current.left);
       const moveSpeedMultiplier = 1 + skillValue("common-move-speed", upgradeLevel(game.upgrades, "common-move-speed")) / 100;
@@ -4887,8 +4881,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const variantsPerSkill = bench.environment === "original" ? 1 : 4;
     const perSkillRuns = bench.runsPerVariant * variantsPerSkill;
     const withinSkillRun = perSkillRuns > 0 ? botCompletedRunsRef.current % perSkillRuns : 0;
-    const benchSeed = asBot && botSkillBenchActiveRef.current ? 73001 + (withinSkillRun % bench.runsPerVariant) : undefined;
+    const benchSeed = asBot ? botSkillBenchActiveRef.current ? 73001 + (withinSkillRun % bench.runsPerVariant) : 104729 + botCompletedRunsRef.current : undefined;
     configureRunRandom(benchSeed);
+    if (asBot) botPolicyStateRef.current = createBotPolicyState((benchSeed ?? 1) ^ 0x9e3779b9);
     const game = initialGame(activeGhosts, balanceConfigRef.current);
     if (asBot && botSkillBenchActiveRef.current) {
       const skillIndex = Math.floor(botCompletedRunsRef.current / perSkillRuns);
