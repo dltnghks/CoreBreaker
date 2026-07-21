@@ -168,7 +168,7 @@ export default function SkillLab() {
           <label>발동 조건<input value={selected.trigger} onChange={(event) => updateSelected({ trigger: event.target.value })} /></label>
           <label>수치가 의미하는 효과<input value={selected.effect} onChange={(event) => updateSelected({ effect: event.target.value })} /></label>
           <label>게임 내 상세 설명<textarea rows={5} value={selected.description} onChange={(event) => updateSelected({ description: event.target.value })} /></label>
-          {selected.evolution && <label>LV3 진화 규칙<textarea rows={3} value={selected.evolution} onChange={(event) => updateSelected({ evolution: event.target.value })} /></label>}
+          {selected.evolution && <label>LV3 달성 후 1회 추가 선택 진화<textarea rows={3} value={selected.evolution} onChange={(event) => updateSelected({ evolution: event.target.value })} /></label>}
           <div className={styles.levelGrid}>
             {selected.levels.map((value, index) => <label key={index}>LV{index + 1}<input type="number" step="0.1" value={value} onChange={(event) => updateLevel(index, Number(event.target.value))} /></label>)}
           </div>
