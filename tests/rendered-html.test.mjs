@@ -74,6 +74,7 @@ test("ramps ball speed by wave elapsed time and resolves circular brick collisio
   const html = await response.text();
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const benchmark = await readFile(new URL("../app/benchmark-headless.ts", import.meta.url), "utf8");
+  const engine = await readFile(new URL("../app/canonical-engine.ts", import.meta.url), "utf8");
   assert.match(html, /SPEED[\s\S]*100[\s\S]*%/);
   assert.match(source, /OVERDRIVE_RATE_PER_SECOND = 0\.01/);
   assert.match(source, /MAX_OVERDRIVE_LEVEL = 50/);
@@ -85,8 +86,9 @@ test("ramps ball speed by wave elapsed time and resolves circular brick collisio
   assert.match(source, /function circleRectangleCollision/);
   assert.match(source, /function separateAndReflectBall/);
   assert.match(source, /collision\.penetration \+ 0\.1/);
-  assert.match(benchmark, /function overdriveAdjustedDuration/);
-  assert.match(benchmark, /const overdriveRisk = Math\.floor\(overdriveLevelAt\(waveElapsed\) \/ 10\) \* 0\.012/);
+  assert.match(benchmark, /stepCanonicalEngine\(state, controlProvider\(state, step\), FIXED_STEP_SECONDS\)/);
+  assert.match(engine, /export function overdriveLevelAt/);
+  assert.match(engine, /const overdrive = overdriveMultiplier\(overdriveLevelAt\(state\.waveElapsed\)\)/);
 });
 
 test("guarantees a minimum vertical angle after every reflection", async () => {
@@ -401,7 +403,7 @@ test("selects rewards before preparing the next wave and uses one animated trans
   assert.doesNotMatch(source, /selected\.length < 2/);
   assert.doesNotMatch(source, /const secondPool = pickUpgradeChoices/);
   const headless = await readFile(new URL("../app/benchmark-headless.ts", import.meta.url), "utf8");
-  assert.equal((headless.match(/grant\(chooseSkill\(normalSkills, upgrades, request\.policy, random\), 1, "start"\)/g) ?? []).length, 1);
+  assert.equal((headless.match(/grantCanonicalSkill\(state, start\.id, "start"\)/g) ?? []).length, 1);
   assert.match(source, /game\.pendingWave = completedWave \+ 1/);
   assert.doesNotMatch(source, /startWave\(completedWave \+ 1\)/);
   assert.match(source, /const enterPendingWave = useCallback/);
@@ -610,12 +612,13 @@ test("runs a no-ghost playtest bot and persists balance metrics", async () => {
 
 test("aims the visible benchmark bot at live hittable bricks independently of paddle interception", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /if \(!brick\.alive \|\| !isDamageableBrick\(brick\)\) return false/);
-  assert.match(source, /brick\.trait === "reflector"[\s\S]*brick\.traitLockTime <= 0[\s\S]*originY > brick\.y \+ brick\.h/);
-  assert.match(source, /const aimPoint = botAimPoint\(game\.bricks, game\.paddleX, PLAYER_PADDLE_Y, Math\.floor\(game\.rowTimer \/ BOT_REFLECTOR_AIM_PHASE_SECONDS\)\)/);
-  assert.match(source, /pointerXRef\.current = aimPoint\.x;\s*pointerYRef\.current = aimPoint\.y/);
-  assert.match(source, /botPaddleTargetXRef\.current = predictedX/);
-  assert.match(source, /game\.paddleX \+= \(botPaddleTargetXRef\.current - game\.paddleX\)/);
+  const policy = await readFile(new URL("../app/bot-policy.ts", import.meta.url), "utf8");
+  assert.match(policy, /predictLandingX/);
+  assert.match(policy, /brick\.trait !== "indestructible"/);
+  assert.match(policy, /target\.trait === "reflector"/);
+  assert.match(source, /const controls = decideBotControls/);
+  assert.match(source, /pointerXRef\.current = controls\.aimX;\s*pointerYRef\.current = controls\.aimY/);
+  assert.match(source, /game\.paddleX \+= botMoveRef\.current \* PADDLE_KEYBOARD_SPEED/);
   assert.match(source, /const aim = paddleAimDirection\(contactX, paddle\.y, pointerXRef\.current, pointerYRef\.current\)/);
   assert.match(source, /if \(asBot\) parkBallsAbovePaddle\(game, openingAim\.x, openingAim\.y\)/);
   assert.doesNotMatch(source, /pointerXRef\.current = predictedX/);
@@ -650,7 +653,8 @@ test("runs benchmark telemetry through a parallel headless worker pool", async (
   assert.match(source, /navigator\.hardwareConcurrency/);
   assert.match(source, /Math\.min\(8, targetRuns/);
   assert.match(source, /worker\.terminate\(\)/);
-  assert.match(engine, /waveDefinitionFrom\(waveDefinitions, wave\)/);
+  assert.match(engine, /createCanonicalState/);
+  assert.match(engine, /stepCanonicalEngine/);
   assert.match(source, /waveDefinitions: getActiveWaveDefinitions\(\)/);
   assert.match(engine, /request\.skills\?\.length \? request\.skills : DEFAULT_SKILLS/);
   assert.match(worker, /runHeadlessBenchmark\(event\.data\)/);
@@ -681,6 +685,12 @@ test("offers a visible real-physics watch run beside the headless benchmark", as
   assert.match(source, /LIVE BOT · \{botSpeed\}× · W\{hud\.wave\}/);
   assert.match(styles, /\.benchmark-mode-switch/);
   assert.match(styles, /\.watch-run-badge/);
+});
+
+test("labels visible benchmark records as exact live-runtime runs", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /engineVersion: benchmarkWatchRef\.current \? "live-game-runtime-v1"/);
+  assert.match(source, /engineParity: benchmarkWatchRef\.current \? "exact-live-runtime"/);
 });
 
 test("finishes bot evaluations at the wave 20 final boss", async () => {
@@ -984,9 +994,8 @@ test("separates impact shockwave damage from fireball damage over time", async (
   assert.match(source, /near\.burnTime = Math\.max\(near\.burnTime, 2 \+ level\)/);
   assert.match(source, /recordSkillImpact\("mage-fireball"/);
   assert.match(source, /BURN \$\{Math\.max\(0, Math\.ceil\(brick\.burnTime\)\)\}s/);
-  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "parallel-v9"/);
-  assert.match(benchmark, /skill\.id === "warrior-shockwave"/);
-  assert.match(benchmark, /skill\.id === "mage-fireball"/);
+  assert.match(benchmark, /PARALLEL_BENCHMARK_RULESET = "canonical-parity-v1"/);
+  assert.match(benchmark, /stepCanonicalEngine/);
 });
 
 test("keeps selected skill icons only in the left loadout HUD", async () => {
@@ -1280,6 +1289,6 @@ test("turns ultimates into build amplifiers", async () => {
   assert.match(source, /target\.traitLockTime = Math\.max\(target\.traitLockTime, 4 \+ level\)/);
   assert.match(source, /const meteorCount = 1 \+ Math\.floor\(afflictedCount \/ 4\)/);
   assert.match(source, /ball\.skillCharges\["warrior-berserker"\] = level/);
-  assert.match(benchmark, /const evolutionMultiplier = level >= 3 && skill\.evolution \? 1\.55 : 1/);
-  assert.match(benchmark, /const ultimateBuildMultiplier/);
+  assert.match(benchmark, /grantCanonicalSkill\(state, reward\.id/);
+  assert.doesNotMatch(benchmark, /skillPower|damagePerSecond|lossChance/);
 });
