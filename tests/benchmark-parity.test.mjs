@@ -30,6 +30,7 @@ test("headless benchmark is deterministic for a seed and persists parity version
   assert.equal(first.policyVersion, policy.POLICY_VERSION);
   assert.equal(first.engineVersion, engine.ENGINE_VERSION);
   assert.equal(first.engineParity, engine.ENGINE_PARITY);
+  assert.equal(first.seed, request.seed);
 });
 
 test("small seeded pilot keeps canonical benchmark metadata and finite outcomes", () => {
@@ -51,16 +52,14 @@ test("small seeded pilot keeps canonical benchmark metadata and finite outcomes"
   }
 });
 
-test("predictive policy completes or actively banks a reflector-only opening", () => {
+test("predictive policy never selects reflector or indestructible bricks as targets", () => {
   const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
-  definitions[0] = { ...definitions[0], pattern: ["....rrrr...."] };
+  definitions[0] = { ...definitions[0], pattern: ["...xrrrrx..."] };
   const state = engine.createCanonicalState({ seed: 551, targetWave: 1, waves: definitions });
   const bot = policy.createBotPolicyState(551);
-  for (let step = 0; step < 120 * 45 && !state.complete && !state.gameOver; step++) {
-    const controls = policy.decideBotControls({ elapsed: state.elapsed, paddleX: state.paddleX, paddleWidth: state.paddleWidth, paddleSpeed: engine.PADDLE_SPEED, balls: state.balls, bricks: state.bricks, items: state.items }, bot, engine.FIXED_STEP_SECONDS);
-    engine.stepCanonicalEngine(state, controls, engine.FIXED_STEP_SECONDS);
-  }
-  assert.ok(state.complete || bot.bankPhase > 0, "reflector policy must clear or escape a protected-face stall");
+  const controls = policy.decideBotControls({ elapsed: state.elapsed, paddleX: state.paddleX, paddleWidth: state.paddleWidth, paddleSpeed: engine.PADDLE_SPEED, balls: state.balls, bricks: state.bricks, items: state.items }, bot, engine.FIXED_STEP_SECONDS);
+  assert.equal(bot.lastTargetKey, "none");
+  assert.equal(controls.aimX, engine.GAME_WIDTH / 2);
 });
 
 test("bot policy exposes controls only and cannot mutate observed game state", () => {
@@ -69,4 +68,39 @@ test("bot policy exposes controls only and cannot mutate observed game state", (
   const controls = policy.decideBotControls({ elapsed: state.elapsed, paddleX: state.paddleX, paddleWidth: state.paddleWidth, paddleSpeed: engine.PADDLE_SPEED, balls: state.balls, bricks: state.bricks, items: state.items }, policy.createBotPolicyState(44), engine.FIXED_STEP_SECONDS);
   assert.deepEqual(engine.canonicalSnapshot(state), before);
   assert.deepEqual(Object.keys(controls).sort(), ["aimX", "aimY", "move"]);
+});
+
+test("guard changes into a standard brick after one direct ball hit", () => {
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  definitions[0] = { ...definitions[0], pattern: [".....g......"] };
+  const state = engine.createCanonicalState({ seed: 91, targetWave: 1, waves: definitions });
+  const guard = state.bricks[0];
+  const ball = state.balls[0];
+  ball.x = guard.x + guard.w / 2;
+  ball.y = guard.y + guard.h + ball.radius - 1;
+  ball.vx = 0;
+  ball.vy = -320;
+  const hpBefore = guard.hp;
+  engine.stepCanonicalEngine(state, { move: 0, aimX: engine.GAME_WIDTH / 2, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  assert.equal(guard.guardReady, false);
+  assert.equal(guard.trait, "standard");
+  assert.equal(guard.hp, hpBefore);
+});
+
+test("skill level stops at three and evolution is recorded on the fourth pick", () => {
+  const state = engine.createCanonicalState({ seed: 92, targetWave: 1 });
+  assert.equal(engine.grantCanonicalSkill(state, "mage-fireball", "start"), true);
+  assert.equal(engine.grantCanonicalSkill(state, "mage-fireball", "wave"), true);
+  assert.equal(engine.grantCanonicalSkill(state, "mage-fireball", "wave"), true);
+  assert.equal(engine.grantCanonicalSkill(state, "mage-fireball", "wave"), true);
+  assert.deepEqual(state.skillHistory.map((event) => [event.level, Boolean(event.evolved)]), [[1, false], [2, false], [3, false], [3, true]]);
+  assert.equal(engine.grantCanonicalSkill(state, "mage-fireball", "wave"), false);
+});
+
+test("indestructible bricks never carry item drops", () => {
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  definitions[0] = { ...definitions[0], pattern: ["xxxxxxxxxxxx"] };
+  const state = engine.createCanonicalState({ seed: 93, targetWave: 1, waves: definitions });
+  assert.ok(state.bricks.length > 0);
+  assert.ok(state.bricks.every((brick) => brick.trait === "indestructible" && brick.drop === null));
 });
