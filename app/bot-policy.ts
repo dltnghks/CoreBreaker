@@ -37,14 +37,14 @@ function bankAim(target: PolicyBrick, originX: number, phase: number) {
 }
 
 export function decideBotControls(observation: BotObservation, state: BotPolicyState, dt: number): CanonicalControls {
-  const alive = observation.bricks.filter((brick) => brick.alive && brick.trait !== "indestructible");
+  const alive = observation.bricks.filter((brick) => brick.alive && brick.trait !== "indestructible" && brick.trait !== "reflector");
   if (alive.length === state.lastAlive) state.stalledFor += dt; else { state.stalledFor = 0; state.lastAlive = alive.length; }
   if (state.stalledFor > 3.5) { state.bankPhase++; state.stalledFor = 0; }
   const falling = observation.balls.filter((ball) => ball.vy > 0).sort((a, b) => b.y - a.y)[0];
   const target = [...alive].sort((a, b) => priority(b) - priority(a) || (a.id ?? 0) - (b.id ?? 0))[0];
   let aimX = target ? target.x + target.w / 2 : GAME_WIDTH / 2;
   let aimY = target ? target.y + target.h / 2 : 80;
-  if (target && (target.trait === "reflector" || directPathBlocked(target, observation.bricks, observation.paddleX) || state.bankPhase % 3 !== 0 && state.stalledFor > 2)) {
+  if (target && (directPathBlocked(target, observation.bricks, observation.paddleX) || state.bankPhase % 3 !== 0 && state.stalledFor > 2)) {
     const bank = bankAim(target, observation.paddleX, state.bankPhase);
     aimX = bank.x; aimY = bank.y;
   }
