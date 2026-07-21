@@ -511,8 +511,8 @@ test("runs a no-ghost playtest bot and persists balance metrics", async () => {
   const balanceConfig = await readFile(new URL("../app/balance-config.ts", import.meta.url), "utf8");
   assert.match(source, /const activeGhosts: GhostRecord\[\] = \[\]/);
   assert.match(source, /function chooseBotUpgrade/);
-  assert.match(source, /let desiredHit = Math\.max\(-0\.72/);
-  assert.match(source, /predictedX - desiredHit \* game\.paddleWidth \/ 2/);
+  assert.match(source, /function chooseBotAimTarget/);
+  assert.match(source, /function botAimPoint/);
   assert.match(source, /botActiveRef\.current/);
   assert.match(source, /game\.botMetrics\.maxBalls/);
   assert.match(source, /game\.botMetrics\.ballLosses/);
@@ -529,6 +529,19 @@ test("runs a no-ghost playtest bot and persists balance metrics", async () => {
   assert.match(source, /recordBotWaveSample/);
   assert.match(source, /waveSamples: botSkillBenchVariantRef\.current \? \[\] : \[\.\.\.game\.botWaveSamples\]/);
   assert.match(source, /EXPORT JSON/);
+});
+
+test("aims the visible benchmark bot at live hittable bricks independently of paddle interception", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /if \(!brick\.alive \|\| !isDamageableBrick\(brick\)\) return false/);
+  assert.match(source, /brick\.trait === "reflector"[\s\S]*brick\.traitLockTime <= 0[\s\S]*originY > brick\.y \+ brick\.h/);
+  assert.match(source, /const aimPoint = botAimPoint\(game\.bricks, game\.paddleX, PLAYER_PADDLE_Y\)/);
+  assert.match(source, /pointerXRef\.current = aimPoint\.x;\s*pointerYRef\.current = aimPoint\.y/);
+  assert.match(source, /botPaddleTargetXRef\.current = predictedX/);
+  assert.match(source, /game\.paddleX \+= \(botPaddleTargetXRef\.current - game\.paddleX\)/);
+  assert.match(source, /const aim = paddleAimDirection\(contactX, paddle\.y, pointerXRef\.current, pointerYRef\.current\)/);
+  assert.match(source, /if \(asBot\) parkBallsAbovePaddle\(game, openingAim\.x, openingAim\.y\)/);
+  assert.doesNotMatch(source, /pointerXRef\.current = predictedX/);
 });
 
 test("runs benchmark telemetry through a parallel headless worker pool", async () => {

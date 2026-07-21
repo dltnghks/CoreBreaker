@@ -575,6 +575,58 @@ function isDamageableBrick(brick: Brick) {
   return brick.trait !== "indestructible";
 }
 
+function isBotAimableBrick(brick: Brick, originY: number) {
+  if (!brick.alive || !isDamageableBrick(brick)) return false;
+  const protectedReflectorFace = brick.trait === "reflector"
+    && brick.traitLockTime <= 0
+    && originY > brick.y + brick.h;
+  return !protectedReflectorFace;
+}
+
+function chooseBotAimTarget(bricks: Brick[], originX: number, originY: number) {
+  const traitPriority: Record<Exclude<BrickTrait, "indestructible">, number> = {
+    healer: 0,
+    explosive: 1,
+    guard: 2,
+    standard: 3,
+    reflector: 4,
+  };
+  return bricks
+    .filter((brick) => isBotAimableBrick(brick, originY))
+    .sort((a, b) => {
+      const bossDifference = Number(b.kind === "boss-core") - Number(a.kind === "boss-core");
+      if (bossDifference !== 0) return bossDifference;
+      const traitDifference = traitPriority[a.trait as Exclude<BrickTrait, "indestructible">]
+        - traitPriority[b.trait as Exclude<BrickTrait, "indestructible">];
+      if (traitDifference !== 0) return traitDifference;
+      if (a.y !== b.y) return b.y - a.y;
+      const aCenter = a.x + a.w / 2;
+      const bCenter = b.x + b.w / 2;
+      const distanceDifference = Math.abs(aCenter - originX) - Math.abs(bCenter - originX);
+      return distanceDifference !== 0 ? distanceDifference : aCenter - bCenter;
+    })[0] ?? null;
+}
+
+function botAimPoint(bricks: Brick[], originX: number, originY: number) {
+  const target = chooseBotAimTarget(bricks, originX, originY);
+  if (target) return { x: target.x + target.w / 2, y: target.y + target.h / 2, target };
+
+  // If only protected reflector faces remain, shoot through a deterministic side gap
+  // instead of repeatedly feeding the ball into an immune underside.
+  const reflector = bricks
+    .filter((brick) => brick.alive && brick.trait === "reflector")
+    .sort((a, b) => b.y - a.y || a.x - b.x)[0];
+  if (reflector) {
+    const leftGap = reflector.x;
+    const rightGap = W - (reflector.x + reflector.w);
+    const x = leftGap >= rightGap
+      ? Math.max(18, reflector.x - 18)
+      : Math.min(W - 18, reflector.x + reflector.w + 18);
+    return { x, y: reflector.y + reflector.h / 2, target: null };
+  }
+  return { x: W / 2, y: BRICK_ROW_Y, target: null };
+}
+
 function newPaddleCounter(): PaddleCounter {
   return { reflections: 0, barrierReflections: 0, missileReflections: 0, safetyTimer: 0, gravityTimer: 0, directKills: 0, pierceKills: 0, feverMilestone: 0, lastShotTimer: 0, combo: 0, comboTimer: 0, skillCooldowns: {} };
 }
@@ -933,6 +985,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const activeGhostsRef = useRef<GhostRecord[]>([]);
   const pointerXRef = useRef(W / 2);
   const pointerYRef = useRef(H / 3);
+  const botPaddleTargetXRef = useRef(W / 2);
   const keyboardRef = useRef({ left: false, right: false });
   const runningRef = useRef(false);
   const levelUpRef = useRef(false);
@@ -1274,6 +1327,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
     const startNextWave = () => {
       const bossActive = prepareWave(game, nextWave, balanceConfigRef.current, pointerXRef.current, pointerYRef.current);
+      if (botActiveRef.current) {
+        const aimPoint = botAimPoint(game.bricks, game.paddleX, PLAYER_PADDLE_Y);
+        pointerXRef.current = aimPoint.x;
+        pointerYRef.current = aimPoint.y;
+        botPaddleTargetXRef.current = game.paddleX;
+        parkBallsAbovePaddle(game, aimPoint.x, aimPoint.y);
+      }
       if (bossActive) {
         audioRef.current?.play("boss", game.bossStage);
         setImpactFeedback(game, 9, "#ff6b87", 0.42, 0.22);
@@ -1605,30 +1665,25 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
     }
     if (botActiveRef.current) {
+      const aimPoint = botAimPoint(game.bricks, game.paddleX, PLAYER_PADDLE_Y);
+      pointerXRef.current = aimPoint.x;
+      pointerYRef.current = aimPoint.y;
       const falling = [...game.balls].filter((ball) => ball.owner === "player" && ball.vy > 0).sort((a, b) => b.y - a.y)[0];
       const usefulItem = [...game.items].filter((item) => item.alive).sort((a, b) => b.y - a.y)[0];
       if (falling) {
         const travelTime = Math.max(0, (PLAYER_PADDLE_Y - falling.y) / Math.max(1, falling.vy));
         let predictedX = falling.x + falling.vx * travelTime;
         while (predictedX < 0 || predictedX > W) predictedX = predictedX < 0 ? -predictedX : W * 2 - predictedX;
-        const aimCandidates = game.bricks.filter((brick) => brick.alive && isDamageableBrick(brick)).sort((a, b) => b.y - a.y).slice(0, 6);
-        const aimTarget = aimCandidates[Math.floor(game.elapsed / 2.5) % Math.max(1, aimCandidates.length)];
-        const targetX = aimTarget ? aimTarget.x + aimTarget.w / 2 : W / 2;
-        pointerYRef.current = aimTarget ? aimTarget.y + aimTarget.h / 2 : BRICK_ROW_Y;
-        const targetBias = Math.max(-0.5, Math.min(0.5, (targetX - predictedX) / (W * 0.42)));
-        const sweepBias = Math.sin(game.elapsed * 1.35 + falling.x * 0.018) * 0.42;
-        let desiredHit = Math.max(-0.72, Math.min(0.72, targetBias + sweepBias));
-        if (Math.abs(desiredHit) < 0.24) desiredHit = desiredHit < 0 ? -0.24 : 0.24;
-        pointerXRef.current = Math.max(game.paddleWidth / 2, Math.min(W - game.paddleWidth / 2, predictedX - desiredHit * game.paddleWidth / 2));
+        botPaddleTargetXRef.current = predictedX;
       } else if (usefulItem) {
-        pointerXRef.current = usefulItem.x;
+        botPaddleTargetXRef.current = usefulItem.x;
       } else {
-        pointerXRef.current = game.balls[0]?.x ?? W / 2;
+        botPaddleTargetXRef.current = game.balls[0]?.x ?? W / 2;
       }
     }
     const previousPaddleX = game.paddleX;
     if (botActiveRef.current) {
-      game.paddleX += (pointerXRef.current - game.paddleX) * Math.min(1, dt * 14);
+      game.paddleX += (botPaddleTargetXRef.current - game.paddleX) * Math.min(1, dt * 14);
     } else {
       const movement = Number(keyboardRef.current.right) - Number(keyboardRef.current.left);
       const moveSpeedMultiplier = 1 + skillValue("common-move-speed", upgradeLevel(game.upgrades, "common-move-speed")) / 100;
@@ -4828,8 +4883,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
     }
     gameRef.current = game;
-    pointerXRef.current = W / 2;
-    pointerYRef.current = H / 3;
+    const openingAim = asBot ? botAimPoint(game.bricks, game.paddleX, PLAYER_PADDLE_Y) : { x: W / 2, y: H / 3 };
+    pointerXRef.current = openingAim.x;
+    pointerYRef.current = openingAim.y;
+    botPaddleTargetXRef.current = game.paddleX;
+    if (asBot) parkBallsAbovePaddle(game, openingAim.x, openingAim.y);
     keyboardRef.current.left = false;
     keyboardRef.current.right = false;
     lastRef.current = performance.now();
