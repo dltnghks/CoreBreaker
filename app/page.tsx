@@ -71,6 +71,9 @@ type Ball = {
   missileHitCooldown: number;
   gravityRescueCooldown: number;
   gravityBaseSpeed: number | null;
+  explosionBaseSpeed: number | null;
+  explosionBoostRatio: number;
+  explosionBoostTime: number;
   canTriggerSkills: boolean;
   skillGeneration: number;
   skillCharges: Partial<Record<ClassSkillId, number>>;
@@ -251,6 +254,9 @@ const MAX_ACTIVE_FLASHES = 120;
 const PLAYER_BALL_COLOR = "#fff27a";
 const WAVE_MULTIBALL_COLOR = "#9aa3b2";
 const BARRIER_COLOR = "#58a6ff";
+const EXPLOSION_BOOST_DURATION = 1.25;
+const EXPLOSION_BOOST_MULTIPLIER = 1.18;
+const EXPLOSION_BOOST_MAX_BONUS = 110;
 let environmentRandom = () => Math.random();
 let decisionRandom = () => Math.random();
 let effectRandom = () => Math.random();
@@ -261,6 +267,41 @@ function overdriveLevelAt(seconds: number) {
 
 function overdriveMultiplier(level: number) {
   return 1 + Math.max(0, Math.min(MAX_OVERDRIVE_LEVEL, level)) * OVERDRIVE_RATE_PER_SECOND;
+}
+
+function scaleBallSpeed(ball: Ball, targetSpeed: number) {
+  const currentSpeed = Math.max(1, Math.hypot(ball.vx, ball.vy));
+  ball.vx *= targetSpeed / currentSpeed;
+  ball.vy *= targetSpeed / currentSpeed;
+}
+
+function clearExplosionSpeedBoost(ball: Ball) {
+  if (ball.explosionBaseSpeed === null || ball.explosionBoostRatio <= 1) {
+    ball.explosionBaseSpeed = null;
+    ball.explosionBoostRatio = 1;
+    ball.explosionBoostTime = 0;
+    return;
+  }
+  if (ball.gravityBaseSpeed !== null) {
+    scaleBallSpeed(ball, Math.max(1, Math.hypot(ball.vx, ball.vy)) / ball.explosionBoostRatio);
+    ball.gravityBaseSpeed = ball.explosionBaseSpeed;
+  } else {
+    scaleBallSpeed(ball, ball.explosionBaseSpeed);
+  }
+  ball.explosionBaseSpeed = null;
+  ball.explosionBoostRatio = 1;
+  ball.explosionBoostTime = 0;
+}
+
+function triggerExplosionSpeedBoost(ball: Ball) {
+  const alreadyBoosted = ball.explosionBoostTime > 0 && ball.explosionBaseSpeed !== null;
+  const baseSpeed = alreadyBoosted ? ball.explosionBaseSpeed! : ball.gravityBaseSpeed ?? Math.max(1, Math.hypot(ball.vx, ball.vy));
+  const boostedSpeed = Math.max(baseSpeed * EXPLOSION_BOOST_MULTIPLIER, Math.min(470, baseSpeed + EXPLOSION_BOOST_MAX_BONUS));
+  ball.explosionBaseSpeed = baseSpeed;
+  ball.explosionBoostRatio = boostedSpeed / baseSpeed;
+  ball.explosionBoostTime = EXPLOSION_BOOST_DURATION;
+  if (ball.gravityBaseSpeed !== null) ball.gravityBaseSpeed = boostedSpeed;
+  return boostedSpeed;
 }
 
 function pushPooledParticle(game: GameState, values: Particle) {
@@ -535,6 +576,7 @@ function syncBallPayloadDisplay(ball: Ball, upgrades: UpgradeId[] = []) {
 }
 
 function clearBallEnchantments(ball: Ball, upgrades: UpgradeId[] = []) {
+  clearExplosionSpeedBoost(ball);
   ball.pierce = 0;
   ball.maxPierce = 0;
   ball.blast = 0;
@@ -548,6 +590,9 @@ function clearBallEnchantments(ball: Ball, upgrades: UpgradeId[] = []) {
   ball.missileHitCooldown = 0;
   ball.gravityRescueCooldown = 0;
   ball.gravityBaseSpeed = null;
+  ball.explosionBaseSpeed = null;
+  ball.explosionBoostRatio = 1;
+  ball.explosionBoostTime = 0;
   ball.skillCharges = {};
   ball.skillCooldowns = {};
   ball.visualSkill = null;
@@ -822,7 +867,7 @@ function makeInitialBricks(ghostCount: number, balance: BalanceConfig): Brick[] 
 
 function makePlayerBall(upgrades: UpgradeId[], x = W / 2): Ball {
   const speed = 1 + upgrades.filter((u) => u === "speed").length * 0.12;
-  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8 + skillValue("common-ball-size", upgradeLevel(upgrades, "common-ball-size")), owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, gravityBaseSpeed: null, canTriggerSkills: true, skillGeneration: 0, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false };
+  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8 + skillValue("common-ball-size", upgradeLevel(upgrades, "common-ball-size")), owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, gravityBaseSpeed: null, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0, canTriggerSkills: true, skillGeneration: 0, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false };
   syncBallPayloadDisplay(ball, upgrades);
   return ball;
 }
@@ -1650,7 +1695,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.bossMultiballsRemaining ??= 0;
     game.bossPending ??= false;
     game.itemBarrierTime ??= 0;
-    game.balls.forEach((ball) => { ball.sourcePaddleId ??= "player"; ball.attackPower ??= 1; ball.missileTime ??= 0; ball.missileHitCooldown ??= 0; ball.gravityBaseSpeed ??= null; ball.canTriggerSkills ??= true; ball.skillGeneration ??= 0; ball.skillCharges ??= {}; ball.skillCooldowns ??= {}; ball.visualSkill ??= null; ball.temporaryTime ??= 0; ball.waveBonus ??= false; });
+    game.balls.forEach((ball) => { ball.sourcePaddleId ??= "player"; ball.attackPower ??= 1; ball.missileTime ??= 0; ball.missileHitCooldown ??= 0; ball.gravityBaseSpeed ??= null; ball.explosionBaseSpeed ??= null; ball.explosionBoostRatio ??= 1; ball.explosionBoostTime ??= 0; ball.canTriggerSkills ??= true; ball.skillGeneration ??= 0; ball.skillCharges ??= {}; ball.skillCooldowns ??= {}; ball.visualSkill ??= null; ball.temporaryTime ??= 0; ball.waveBonus ??= false; });
     game.shakeStrength ??= 0;
     game.shakeTime ??= 0;
     game.shakeDuration ??= 0;
@@ -1687,6 +1732,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ball.vx *= speedRatio;
         ball.vy *= speedRatio;
         if (ball.gravityBaseSpeed !== null) ball.gravityBaseSpeed *= speedRatio;
+        if (ball.explosionBaseSpeed !== null) ball.explosionBaseSpeed *= speedRatio;
       });
       game.overdriveLevel = nextOverdriveLevel;
       const crossedEffectMilestone = Math.floor(nextOverdriveLevel / OVERDRIVE_EFFECT_INTERVAL) > Math.floor(previousOverdriveLevel / OVERDRIVE_EFFECT_INTERVAL);
@@ -2037,7 +2083,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const pushX = ball.x - blastX;
         const pushY = ball.y - blastY;
         const pushLength = Math.max(1, Math.hypot(pushX, pushY));
-        const launchSpeed = Math.max(470, Math.hypot(ball.vx, ball.vy) * 1.18);
+        const launchSpeed = triggerExplosionSpeedBoost(ball);
         ball.vx = pushX / pushLength * launchSpeed;
         ball.vy = pushY / pushLength * launchSpeed;
         game.flashes.push({ text: "EXPLOSIVE // BALL LAUNCHED", x: blastX, y: blastY - 18, life: 0.9, color: "#ffb15c" });
@@ -2285,6 +2331,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             missileHitCooldown: 0,
             gravityRescueCooldown: 0,
             gravityBaseSpeed: null,
+            explosionBaseSpeed: null,
+            explosionBoostRatio: 1,
+            explosionBoostTime: 0,
             canTriggerSkills: true,
             skillGeneration: 0,
             skillCharges: {},
@@ -2331,6 +2380,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ball.payloads ??= {};
       ball.payloadLevel ??= 0;
       ball.skillCooldowns ??= {};
+      if (ball.explosionBoostTime > 0) {
+        ball.explosionBoostTime = Math.max(0, ball.explosionBoostTime - dt);
+        if (ball.explosionBoostTime <= 0) clearExplosionSpeedBoost(ball);
+      }
       Object.keys(ball.skillCooldowns).forEach((id) => {
         const skillId = id as ClassSkillId;
         ball.skillCooldowns[skillId] = Math.max(0, (ball.skillCooldowns[skillId] ?? 0) - dt);
@@ -2478,6 +2531,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               skillCharges: {},
               skillCooldowns: {},
               gravityBaseSpeed: null,
+              explosionBaseSpeed: null,
+              explosionBoostRatio: 1,
+              explosionBoostTime: 0,
               canTriggerSkills: false,
               skillGeneration: ball.skillGeneration + 1,
               visualSkill: skillId,
@@ -2873,6 +2929,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               skillCharges: inheritsSkills ? { ...ball.skillCharges } : {},
               skillCooldowns: inheritedCooldowns,
               gravityBaseSpeed: null,
+              explosionBaseSpeed: null,
+              explosionBoostRatio: 1,
+              explosionBoostTime: 0,
               canTriggerSkills: inheritsSkills,
               skillGeneration,
               x: ball.x + offset,

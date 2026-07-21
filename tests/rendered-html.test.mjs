@@ -361,6 +361,22 @@ test("adds six stage brick traits with distinct combat rules and readable visual
   assert.doesNotMatch(source, /"shield"/);
 });
 
+test("restores temporary explosion speed without stacking across repeated blasts", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /const EXPLOSION_BOOST_DURATION = 1\.25/);
+  assert.match(source, /explosionBaseSpeed: number \| null/);
+  assert.match(source, /function triggerExplosionSpeedBoost\(ball: Ball\)/);
+  assert.match(source, /const alreadyBoosted = ball\.explosionBoostTime > 0/);
+  assert.match(source, /const baseSpeed = alreadyBoosted \? ball\.explosionBaseSpeed!/);
+  assert.match(source, /ball\.explosionBoostTime = EXPLOSION_BOOST_DURATION/);
+  assert.match(source, /function clearExplosionSpeedBoost\(ball: Ball\)/);
+  assert.match(source, /ball\.gravityBaseSpeed = ball\.explosionBaseSpeed/);
+  assert.match(source, /if \(ball\.explosionBaseSpeed !== null\) ball\.explosionBaseSpeed \*= speedRatio/);
+  assert.match(source, /if \(ball\.explosionBoostTime <= 0\) clearExplosionSpeedBoost\(ball\)/);
+  assert.match(source, /const launchSpeed = triggerExplosionSpeedBoost\(ball\)/);
+  assert.doesNotMatch(source, /Math\.max\(470, Math\.hypot\(ball\.vx, ball\.vy\) \* 1\.18\)/);
+});
+
 test("renders beam links and clears wave-scoped skill state", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /if \(effect\.kind === "beam"\)/);
