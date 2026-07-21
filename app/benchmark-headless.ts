@@ -173,7 +173,6 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
     history.push({ wave, skillId: skill.id, level: nextLevel, source });
   };
   grant(chooseSkill(normalSkills, upgrades, request.policy, random), 1, "start");
-  grant(chooseSkill(normalSkills, upgrades, request.policy, random), 1, "start");
 
   for (let wave = 1; wave <= benchmark.targetWave && coreHp > 0; wave += 1) {
     reachedWave = wave;

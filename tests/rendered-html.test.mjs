@@ -358,6 +358,8 @@ test("selects rewards before preparing the next wave and uses one animated trans
   assert.match(source, /LOADOUT SETUP \/\/ 1 STARTING SKILL/);
   assert.doesNotMatch(source, /selected\.length < 2/);
   assert.doesNotMatch(source, /const secondPool = pickUpgradeChoices/);
+  const headless = await readFile(new URL("../app/benchmark-headless.ts", import.meta.url), "utf8");
+  assert.equal((headless.match(/grant\(chooseSkill\(normalSkills, upgrades, request\.policy, random\), 1, "start"\)/g) ?? []).length, 1);
   assert.match(source, /game\.pendingWave = completedWave \+ 1/);
   assert.doesNotMatch(source, /startWave\(completedWave \+ 1\)/);
   assert.match(source, /const enterPendingWave = useCallback/);
