@@ -964,6 +964,7 @@ function formatScore(value: number) {
 }
 
 function hudFromGame(game: GameState) {
+  const skillLevels = [...new Set(game.upgrades)].map((id) => ({ id, level: upgradeLevel(game.upgrades, id) }));
   return {
     score: game.score, time: game.elapsed, level: game.level,
     combo: game.combo, bricks: game.bricksBroken, balls: game.balls.filter((ball) => ball.owner === "player").length,
@@ -971,6 +972,7 @@ function hudFromGame(game: GameState) {
     overdriveLevel: game.overdriveLevel, overdriveMultiplier: overdriveMultiplier(game.overdriveLevel),
     bossActive: game.bossActive, bossPending: game.bossPending, nextBossWave: game.nextBossWave, bossTimeRemaining: Math.max(0, game.bossTimeRemaining),
     waveName: waveDefinition(game.wave).name, aliveBricks: game.bricks.filter((brick) => brick.alive).length,
+    skillLevels,
   };
 }
 
@@ -1069,9 +1071,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const [mode, setMode] = useState<"lobby" | "initialskills" | "playing" | "levelup" | "bossreward" | "waveclear" | "transition" | "result">("lobby");
   const [transitionWave, setTransitionWave] = useState<number | null>(null);
   const [clearedWave, setClearedWave] = useState<{ wave: number; boss: boolean } | null>(null);
-  const [hud, setHud] = useState({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, barriers: 0, overdriveLevel: 0, overdriveMultiplier: 1, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0 });
+  const [hud, setHud] = useState({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, barriers: 0, overdriveLevel: 0, overdriveMultiplier: 1, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0, skillLevels: [] as { id: UpgradeId; level: number }[] });
   const [choices, setChoices] = useState<UpgradeChoice[]>([]);
-  const [initialSelectedIds, setInitialSelectedIds] = useState<UpgradeId[]>([]);
   const [rerollsLeft, setRerollsLeft] = useState(1);
   const [result, setResult] = useState<GameState | null>(null);
   const [savedMessage, setSavedMessage] = useState("");
@@ -1613,7 +1614,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const game = gameRef.current;
     if (!game) return;
     applyUpgrade(upgrade, 0, false, "start");
-    setInitialSelectedIds([upgrade.id]);
     parkBallsAbovePaddle(game, pointerXRef.current, pointerYRef.current);
     levelUpRef.current = false;
     runningRef.current = true;
@@ -4930,7 +4930,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     keyboardRef.current.left = false;
     keyboardRef.current.right = false;
     lastRef.current = performance.now();
-    setInitialSelectedIds([]);
     setSavedMessage("");
     setHud(hudFromGame(game));
     if (!asBot) {
@@ -5300,6 +5299,14 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             <div className="hud-badge hud-score" aria-label={`점수 ${formatScore(hud.score)}`}><i aria-hidden="true">✦</i><span><small>SCORE</small><strong>{formatScore(hud.score)}</strong></span></div>
             <div className={hud.coreHp <= 3 ? "hud-badge hud-core core-critical" : "hud-badge hud-core"} aria-label={`코어 체력 ${hud.coreHp}/${hud.maxCoreHp}`}><i aria-hidden="true">◆</i><span><small>CORE INTEGRITY</small><strong>{hud.coreHp}/{hud.maxCoreHp}</strong>{hud.barriers > 0 && <em>SHIELD ×{hud.barriers}</em>}</span><b className="core-meter" aria-hidden="true"><span style={{ "--core-ratio": `${Math.max(0, Math.min(100, hud.coreHp / Math.max(1, hud.maxCoreHp) * 100))}%` } as React.CSSProperties}></span></b></div>
             <div className={hud.overdriveLevel > 0 ? "hud-badge hud-speed active" : "hud-badge hud-speed"} aria-label={`공 속도 ${Math.round(hud.overdriveMultiplier * 100)}퍼센트`}><i aria-hidden="true">»</i><span><small>SPEED</small><strong>{Math.round(hud.overdriveMultiplier * 100)}%</strong><em>{hud.overdriveLevel < MAX_OVERDRIVE_LEVEL ? "+1%/s" : "MAX"}</em></span></div>
+            <div className="skill-loadout-hud" aria-label="보유 스킬">
+              {hud.skillLevels.map(({ id, level }) => {
+                const skill = upgradeCatalog.find((entry) => entry.id === id);
+                const evolved = level >= 3 && Boolean(activeSkillMap[id]?.evolution);
+                const category = skill?.category ?? "common";
+                return <div key={id} className={`skill-loadout-entry class-${category}${evolved ? " evolved" : ""}`} style={{ "--skill-color": category === "common" ? "#8f98a7" : skill?.color ?? "#8f98a7" } as React.CSSProperties} aria-label={`${skill?.name ?? id} 레벨 ${level}${evolved ? ", 진화 완료" : ""}`} title={`${skill?.name ?? id} · Lv${level}${evolved ? " · 진화" : ""}`}><i aria-hidden="true">{SKILL_ICONS[id] ?? "•"}</i><span aria-hidden="true">×</span><strong>{level}</strong>{evolved && <b aria-hidden="true">✦</b>}</div>;
+              })}
+            </div>
             <div className="drop-legend" aria-label="아이템 블록 표시 안내">
               {ITEM_KINDS.map((kind) => <span key={kind} style={{ "--drop-color": ITEM_DATA[kind].color } as React.CSSProperties}><b>{ITEM_DATA[kind].symbol}</b>{ITEM_DATA[kind].label}</span>)}
             </div>

@@ -190,6 +190,19 @@ test("shows level values in separate colors and renders skill icons", async () =
   assert.match(css, /\.upgrade-card:hover \.upgrade-tooltip/);
 });
 
+test("shows compact left-side skill levels and highlights level-three evolutions", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(source, /skillLevels: \[\] as \{ id: UpgradeId; level: number \}\[\]/);
+  assert.match(source, /className="skill-loadout-hud"/);
+  assert.match(source, /level >= 3 && Boolean\(activeSkillMap\[id\]\?\.evolution\)/);
+  assert.match(source, /<span aria-hidden="true">×<\/span><strong>\{level\}<\/strong>/);
+  assert.match(styles, /\.skill-loadout-hud\{position:absolute;z-index:5;top:66px;left:14px/);
+  assert.match(styles, /\.skill-loadout-entry\.evolved:before/);
+  assert.match(styles, /@keyframes evolved-skill-orbit/);
+  assert.match(styles, /\.skill-loadout-entry\.class-common/);
+});
+
 test("adds synthesized game audio and a persistent mute control", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const audio = await readFile(new URL("../app/game-audio.ts", import.meta.url), "utf8");
