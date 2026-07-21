@@ -216,6 +216,7 @@ const ITEM_BARRIER_Y = H - 18;
 const MIN_AIM_VERTICAL_DISTANCE = 52;
 const AIM_LIMIT_GUIDE_LENGTH = 100;
 const AIM_LINE_LENGTH = 170;
+const BOT_REFLECTOR_AIM_PHASE_SECONDS = 4;
 
 function paddleAimDirection(fromX: number, fromY: number, targetX: number, targetY: number) {
   const deltaX = targetX - fromX;
@@ -607,22 +608,72 @@ function chooseBotAimTarget(bricks: Brick[], originX: number, originY: number) {
     })[0] ?? null;
 }
 
-function botAimPoint(bricks: Brick[], originX: number, originY: number) {
-  const target = chooseBotAimTarget(bricks, originX, originY);
-  if (target) return { x: target.x + target.w / 2, y: target.y + target.h / 2, target };
+function protectedReflectorBlockingAim(bricks: Brick[], originX: number, originY: number, targetX: number, targetY: number) {
+  const verticalTravel = targetY - originY;
+  if (verticalTravel >= 0) return null;
+  return bricks
+    .filter((brick) => brick.alive && brick.trait === "reflector" && brick.traitLockTime <= 0)
+    .filter((brick) => {
+      const protectedFaceY = brick.y + brick.h;
+      if (protectedFaceY >= originY || protectedFaceY <= targetY) return false;
+      const contactTime = (protectedFaceY - originY) / verticalTravel;
+      const contactX = originX + (targetX - originX) * contactTime;
+      return contactX >= brick.x - 8 && contactX <= brick.x + brick.w + 8;
+    })
+    .sort((a, b) => b.y + b.h - (a.y + a.h))[0] ?? null;
+}
 
-  // If only protected reflector faces remain, shoot through a deterministic side gap
-  // instead of repeatedly feeding the ball into an immune underside.
-  const reflector = bricks
+function reflectorWeakSideBankAim(reflector: Brick, originX: number, originY: number, phase: number) {
+  const targetY = reflector.y + reflector.h / 2;
+  const approaches = [
+    { wallX: 0, weakSideX: reflector.x - 7 },
+    { wallX: W, weakSideX: reflector.x + reflector.w + 7 },
+  ].map(({ wallX, weakSideX }) => {
+    const mirroredTargetX = wallX === 0 ? -weakSideX : W * 2 - weakSideX;
+    const deltaX = mirroredTargetX - originX;
+    const deltaY = targetY - originY;
+    const distance = Math.max(1, Math.hypot(deltaX, deltaY));
+    const horizontalRatio = Math.abs(deltaX) / distance;
+    const wallTime = Math.abs(deltaX) > 0.001 ? (wallX - originX) / deltaX : -1;
+    const wallY = originY + deltaY * wallTime;
+    const validBank = wallTime > 0 && wallTime < 1 && wallY > targetY && wallY < originY;
+    return {
+      x: wallX,
+      y: Math.max(0, Math.min(H, wallY)),
+      validBank,
+      constraintPenalty: Math.max(0, horizontalRatio - MAX_PADDLE_REBOUND_RATIO),
+    };
+  });
+  const feasible = approaches.filter((approach) => approach.validBank && approach.constraintPenalty <= 0.0001);
+  if (feasible.length > 0) return feasible[phase % feasible.length];
+  const valid = approaches.filter((approach) => approach.validBank);
+  if (valid.length > 0) return valid[phase % valid.length];
+  return approaches.sort((a, b) => {
+    if (a.validBank !== b.validBank) return Number(b.validBank) - Number(a.validBank);
+    return a.constraintPenalty - b.constraintPenalty || a.x - b.x;
+  })[phase % approaches.length];
+}
+
+function botAimPoint(bricks: Brick[], originX: number, originY: number, phase = 0) {
+  const target = chooseBotAimTarget(bricks, originX, originY);
+  if (target) {
+    const targetX = target.x + target.w / 2;
+    const targetY = target.y + target.h / 2;
+    const blockingReflector = protectedReflectorBlockingAim(bricks, originX, originY, targetX, targetY);
+    if (!blockingReflector) return { x: targetX, y: targetY, target };
+    const bank = reflectorWeakSideBankAim(blockingReflector, originX, originY, phase);
+    return { x: bank.x, y: bank.y, target: blockingReflector };
+  }
+
+  // Rotate through remaining reflectors and their weak sides so a constrained bank
+  // shot cannot settle into one protected-underside loop forever.
+  const reflectors = bricks
     .filter((brick) => brick.alive && brick.trait === "reflector")
-    .sort((a, b) => b.y - a.y || a.x - b.x)[0];
-  if (reflector) {
-    const leftGap = reflector.x;
-    const rightGap = W - (reflector.x + reflector.w);
-    const x = leftGap >= rightGap
-      ? Math.max(18, reflector.x - 18)
-      : Math.min(W - 18, reflector.x + reflector.w + 18);
-    return { x, y: reflector.y + reflector.h / 2, target: null };
+    .sort((a, b) => b.y - a.y || a.x - b.x);
+  if (reflectors.length > 0) {
+    const reflector = reflectors[Math.floor(phase / 2) % reflectors.length];
+    const bank = reflectorWeakSideBankAim(reflector, originX, originY, phase);
+    return { x: bank.x, y: bank.y, target: reflector };
   }
   return { x: W / 2, y: BRICK_ROW_Y, target: null };
 }
@@ -1328,7 +1379,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const startNextWave = () => {
       const bossActive = prepareWave(game, nextWave, balanceConfigRef.current, pointerXRef.current, pointerYRef.current);
       if (botActiveRef.current) {
-        const aimPoint = botAimPoint(game.bricks, game.paddleX, PLAYER_PADDLE_Y);
+        const aimPoint = botAimPoint(game.bricks, game.paddleX, PLAYER_PADDLE_Y, Math.floor(game.rowTimer / BOT_REFLECTOR_AIM_PHASE_SECONDS));
         pointerXRef.current = aimPoint.x;
         pointerYRef.current = aimPoint.y;
         botPaddleTargetXRef.current = game.paddleX;
@@ -1665,7 +1716,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
     }
     if (botActiveRef.current) {
-      const aimPoint = botAimPoint(game.bricks, game.paddleX, PLAYER_PADDLE_Y);
+      const aimPoint = botAimPoint(game.bricks, game.paddleX, PLAYER_PADDLE_Y, Math.floor(game.rowTimer / BOT_REFLECTOR_AIM_PHASE_SECONDS));
       pointerXRef.current = aimPoint.x;
       pointerYRef.current = aimPoint.y;
       const falling = [...game.balls].filter((ball) => ball.owner === "player" && ball.vy > 0).sort((a, b) => b.y - a.y)[0];

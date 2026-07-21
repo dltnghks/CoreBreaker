@@ -535,13 +535,27 @@ test("aims the visible benchmark bot at live hittable bricks independently of pa
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /if \(!brick\.alive \|\| !isDamageableBrick\(brick\)\) return false/);
   assert.match(source, /brick\.trait === "reflector"[\s\S]*brick\.traitLockTime <= 0[\s\S]*originY > brick\.y \+ brick\.h/);
-  assert.match(source, /const aimPoint = botAimPoint\(game\.bricks, game\.paddleX, PLAYER_PADDLE_Y\)/);
+  assert.match(source, /const aimPoint = botAimPoint\(game\.bricks, game\.paddleX, PLAYER_PADDLE_Y, Math\.floor\(game\.rowTimer \/ BOT_REFLECTOR_AIM_PHASE_SECONDS\)\)/);
   assert.match(source, /pointerXRef\.current = aimPoint\.x;\s*pointerYRef\.current = aimPoint\.y/);
   assert.match(source, /botPaddleTargetXRef\.current = predictedX/);
   assert.match(source, /game\.paddleX \+= \(botPaddleTargetXRef\.current - game\.paddleX\)/);
   assert.match(source, /const aim = paddleAimDirection\(contactX, paddle\.y, pointerXRef\.current, pointerYRef\.current\)/);
   assert.match(source, /if \(asBot\) parkBallsAbovePaddle\(game, openingAim\.x, openingAim\.y\)/);
   assert.doesNotMatch(source, /pointerXRef\.current = predictedX/);
+});
+
+test("banks around protected reflector undersides and rotates weak-side attempts", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /const BOT_REFLECTOR_AIM_PHASE_SECONDS = 4/);
+  assert.match(source, /function protectedReflectorBlockingAim/);
+  assert.match(source, /const contactTime = \(protectedFaceY - originY\) \/ verticalTravel/);
+  assert.match(source, /contactX >= brick\.x - 8 && contactX <= brick\.x \+ brick\.w \+ 8/);
+  assert.match(source, /function reflectorWeakSideBankAim/);
+  assert.match(source, /mirroredTargetX = wallX === 0 \? -weakSideX : W \* 2 - weakSideX/);
+  assert.match(source, /constraintPenalty: Math\.max\(0, horizontalRatio - MAX_PADDLE_REBOUND_RATIO\)/);
+  assert.match(source, /const reflector = reflectors\[Math\.floor\(phase \/ 2\) % reflectors\.length\]/);
+  assert.match(source, /Math\.floor\(game\.rowTimer \/ BOT_REFLECTOR_AIM_PHASE_SECONDS\)/);
+  assert.doesNotMatch(source, /leftGap >= rightGap/);
 });
 
 test("runs benchmark telemetry through a parallel headless worker pool", async () => {
