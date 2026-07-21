@@ -1613,20 +1613,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const game = gameRef.current;
     if (!game) return;
     applyUpgrade(upgrade, 0, false, "start");
-    const selected = [...initialSelectedIds, upgrade.id];
-    setInitialSelectedIds(selected);
-    if (selected.length < 2) {
-      const next = pickUpgradeChoices(game.upgrades, upgradeCatalogRef.current, false, selected);
-      setChoices(priceUpgradeChoices(next, false));
-      audioRef.current?.play("level-up", 1.15);
-      return;
-    }
+    setInitialSelectedIds([upgrade.id]);
     parkBallsAbovePaddle(game, pointerXRef.current, pointerYRef.current);
     levelUpRef.current = false;
     runningRef.current = true;
     setMode("playing");
     lastRef.current = performance.now();
-  }, [applyUpgrade, initialSelectedIds]);
+  }, [applyUpgrade]);
 
   const updateGame = useCallback((dt: number) => {
     const game = gameRef.current;
@@ -4925,11 +4918,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         };
         const first = chooseBotUpgrade(pickUpgradeChoices(game.upgrades, upgradeCatalogRef.current, false), game.upgrades, botPolicyRef.current);
         grantBotStartingSkill(first.id);
-        const secondPool = pickUpgradeChoices(game.upgrades, upgradeCatalogRef.current, false, [first.id]);
-        if (secondPool.length > 0) {
-          const second = chooseBotUpgrade(secondPool, game.upgrades, botPolicyRef.current);
-          grantBotStartingSkill(second.id);
-        }
         game.balls.forEach((ball) => syncBallPayloadDisplay(ball, game.upgrades));
       }
     }
@@ -5331,8 +5319,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
             {mode === "initialskills" && (
               <div className="overlay level-overlay initial-skill-overlay">
-                <p className="overlay-kicker">LOADOUT SETUP // {initialSelectedIds.length}/2 SELECTED</p>
-                <h2>시작 스킬 2개를 선택하세요</h2>
+                <p className="overlay-kicker">LOADOUT SETUP // 1 STARTING SKILL</p>
+                <h2>시작 스킬 1개를 선택하세요</h2>
                 <div className="upgrade-grid">
                   {choices.map(({ upgrade }, index) => {
                     const config = activeSkillMap[upgrade.id]!;
@@ -5343,7 +5331,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                         <span className="upgrade-icon" aria-hidden="true">{SKILL_ICONS[upgrade.id]}</span>
                         <strong>{upgrade.name}</strong>
                         <div className="upgrade-level-values"><span className="next"><small>START</small><b>{config.levels[0]}{config.unit}</b>{config.cooldown[0] > 0 && <i>CD {config.cooldown[0]}s</i>}</span></div>
-                        <em>{initialSelectedIds.length === 0 ? "FIRST PICK" : "SECOND PICK"}</em>
+                        <em>SELECT &amp; START</em>
                         <div className="upgrade-tooltip" role="tooltip"><span>발동 조건</span><b>{config.trigger}</b><p><SkillDescriptionText text={config.description} /></p></div>
                       </button>
                     );

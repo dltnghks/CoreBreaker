@@ -342,7 +342,9 @@ test("selects rewards before preparing the next wave and uses one animated trans
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(source, /"initialskills"/);
   assert.match(source, /STARTING SKILL/);
-  assert.match(source, /selected\.length < 2/);
+  assert.match(source, /LOADOUT SETUP \/\/ 1 STARTING SKILL/);
+  assert.doesNotMatch(source, /selected\.length < 2/);
+  assert.doesNotMatch(source, /const secondPool = pickUpgradeChoices/);
   assert.match(source, /game\.pendingWave = completedWave \+ 1/);
   assert.doesNotMatch(source, /startWave\(completedWave \+ 1\)/);
   assert.match(source, /const enterPendingWave = useCallback/);
