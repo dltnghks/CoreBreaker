@@ -3861,57 +3861,42 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ctx.fillRect(x - width / 2, y, width * Math.max(0.2, visual.intensity), 4);
       ctx.restore();
     };
-    const drawSkillPanel = (x: number, y: number, width: number, upgrades: UpgradeId[], ownerColor: string, alpha = 1) => {
-      const owned = [...upgradeCatalogRef.current, ...DEFAULT_ULTIMATE_UPGRADES]
-        .map((upgrade) => ({ ...upgrade, level: upgradeLevel(upgrades, upgrade.id) }))
-        .filter((upgrade) => upgrade.level > 0);
-      const rows = owned.length > 10 ? 2 : 1;
-      const perRow = Math.max(1, Math.ceil(owned.length / rows));
-      const rowHeight = 11;
-      const panelHeight = rows * rowHeight + 4;
+    const drawPaddleBody = (x: number, y: number, width: number, color: string, alpha = 1, coreHealth: number | null = null) => {
+      const height = 18;
       ctx.save();
       ctx.globalAlpha = alpha;
-      ctx.shadowColor = ownerColor;
-      ctx.shadowBlur = 14;
-      ctx.fillStyle = "rgba(4,8,20,.92)";
-      ctx.fillRect(x - width / 2, y, width, panelHeight);
-      ctx.strokeStyle = ownerColor;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 12;
+      const bodyGradient = ctx.createLinearGradient(x, y, x, y + height);
+      bodyGradient.addColorStop(0, "rgba(235,242,255,.3)");
+      bodyGradient.addColorStop(0.2, color);
+      bodyGradient.addColorStop(1, "rgba(5,9,17,.96)");
+      ctx.fillStyle = bodyGradient;
+      ctx.beginPath();
+      ctx.roundRect(x - width / 2, y, width, height, 5);
+      ctx.fill();
+      ctx.strokeStyle = color;
       ctx.lineWidth = 2;
-      ctx.strokeRect(x - width / 2, y, width, panelHeight);
+      ctx.stroke();
       ctx.shadowBlur = 0;
-      if (owned.length === 0) {
-        ctx.fillStyle = ownerColor;
-        ctx.fillRect(x - width / 2 + 5, y + 4, width - 10, 3);
-      } else {
-        const slot = Math.min(20, (width - 8) / perRow);
-        owned.forEach((upgrade, index) => {
-          const row = Math.floor(index / perRow);
-          const col = index % perRow;
-          const rowCount = Math.min(perRow, owned.length - row * perRow);
-          const rowWidth = rowCount * slot;
-          const iconX = x - rowWidth / 2 + col * slot;
-          const iconY = y + 2 + row * rowHeight;
-          const iconSize = Math.max(7, Math.min(10, slot - 2));
-          const centerX = iconX + slot / 2;
-          const centerY = iconY + iconSize / 2;
-          ctx.globalAlpha = alpha * 0.9;
-          ctx.fillStyle = upgrade.color;
-          ctx.beginPath();
-          ctx.roundRect(centerX - iconSize / 2, iconY, iconSize, iconSize, 2);
-          ctx.fill();
-          ctx.globalAlpha = alpha;
-          ctx.fillStyle = "#07101b";
-          ctx.font = `900 ${iconSize < 9 ? 6 : 7}px "Arial Unicode MS",sans-serif`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText(SKILL_ICONS[upgrade.id] ?? "•", centerX, centerY + 0.5);
-          if (upgrade.level > 1 && slot >= 12) {
-            ctx.fillStyle = "#ecf2ff";
-            ctx.font = "900 5px monospace";
-            ctx.textAlign = "right";
-            ctx.fillText(String(upgrade.level), centerX + iconSize / 2 + 2, centerY + 3);
-          }
-        });
+      ctx.fillStyle = "rgba(255,255,255,.42)";
+      ctx.fillRect(x - width / 2 + 7, y + 3, Math.max(0, width - 14), 2);
+      if (coreHealth !== null) {
+        const healthText = `◆ ${Math.max(0, coreHealth)}`;
+        let fontSize = 13;
+        ctx.font = `900 ${fontSize}px monospace`;
+        while (fontSize > 9 && ctx.measureText(healthText).width > width - 12) {
+          fontSize -= 1;
+          ctx.font = `900 ${fontSize}px monospace`;
+        }
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.lineJoin = "round";
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "rgba(3,6,12,.94)";
+        ctx.fillStyle = coreHealth <= 3 ? "#ff8ca3" : "#fff4c2";
+        ctx.strokeText(healthText, x, y + height / 2 + 1);
+        ctx.fillText(healthText, x, y + height / 2 + 1);
       }
       ctx.restore();
     };
@@ -3921,6 +3906,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const width = Math.min(280, ghostPaddleWidth(ghost) + (emergencyDanger ? skillValue("emergency-wide", upgradeLevel(ghost.upgrades, "emergency-wide")) : 0));
       const color = GHOST_COLORS[index % GHOST_COLORS.length];
       const chargeVisual = paddleChargeVisual(`ghost-${index}`, ghost.upgrades);
+      drawPaddleBody(x, y, width, color, 0.74);
       drawPaddleChargeAura(x, y, width, chargeVisual, 0.74);
       ctx.fillStyle = color;
       ctx.font = "800 9px monospace";
@@ -3930,6 +3916,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
     const playerDrawWidth = Math.min(280, game.paddleWidth + skillValue("common-wide", upgradeLevel(game.upgrades, "common-wide")) + (emergencyDanger ? skillValue("emergency-wide", upgradeLevel(game.upgrades, "emergency-wide")) : 0));
     const playerChargeVisual = paddleChargeVisual("player", game.upgrades);
+    drawPaddleBody(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, PLAYER_BALL_COLOR, 1, game.coreHp);
     drawPaddleChargeAura(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, playerChargeVisual);
     if (!botActiveRef.current) {
       const aim = paddleAimDirection(game.paddleX, PLAYER_PADDLE_Y, pointerXRef.current, pointerYRef.current);
@@ -5306,14 +5293,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               onPointerMove={(e) => onPointerMove(e.clientX, e.clientY)}
               onPointerDown={(e) => onPointerMove(e.clientX, e.clientY)}
             />
+            <output className="sr-only" aria-live="polite" aria-atomic="true">코어 체력 {hud.coreHp}/{hud.maxCoreHp}{hud.barriers > 0 ? `, 보호막 ${hud.barriers}개` : ""}</output>
             <div className="hud-badge hud-time" aria-label={`플레이 시간 ${hud.time.toFixed(1)}초`}><i aria-hidden="true">◷</i><span><small>TIME</small><strong>{hud.time.toFixed(1)}s</strong></span></div>
             <div className="hud-badge hud-wave" aria-label={`웨이브 ${hud.wave}/${MAX_WAVE}, ${hud.waveName}, 블록 ${hud.aliveBricks}개 남음`}><i aria-hidden="true">⚑</i><span><small>WAVE {hud.wave}/{MAX_WAVE}</small><strong>{hud.waveName}</strong><em>{hud.aliveBricks} LEFT</em></span></div>
             <div className="hud-badge hud-score" aria-label={`점수 ${formatScore(hud.score)}`}><i aria-hidden="true">✦</i><span><small>SCORE</small><strong>{formatScore(hud.score)}</strong></span></div>
-            <div className={hud.coreHp <= 3 ? "hud-badge hud-core core-critical" : "hud-badge hud-core"} aria-label={`코어 체력 ${hud.coreHp}/${hud.maxCoreHp}${hud.barriers > 0 ? `, 보호막 ${hud.barriers}개` : ""}`} title={`CORE ${hud.coreHp}/${hud.maxCoreHp}`}>
-              <div className="core-health-icons" aria-hidden="true">
-                {Array.from({ length: Math.max(0, hud.coreHp) }, (_, index) => <b className="core-health-icon" key={`core-${index}`}>◆</b>)}
-              </div>
-            </div>
             <div className={hud.overdriveLevel > 0 ? "hud-badge hud-speed active" : "hud-badge hud-speed"} aria-label={`공 속도 ${Math.round(hud.overdriveMultiplier * 100)}퍼센트`}><i aria-hidden="true">»</i><span><small>SPEED</small><strong>{Math.round(hud.overdriveMultiplier * 100)}%</strong><em>{hud.overdriveLevel < MAX_OVERDRIVE_LEVEL ? "+1%/s" : "MAX"}</em></span></div>
             <div className="skill-loadout-hud" aria-label="보유 스킬">
               {hud.skillLevels.map(({ id, level }) => {

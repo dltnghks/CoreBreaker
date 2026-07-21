@@ -465,26 +465,28 @@ test("propagates paddle debuffs and keeps barrier state accessible in the in-gam
   assert.match(source, /applyDebuffs\(brick, sourcePaddle\)/);
   assert.match(source, /emitEffect\("blast"/);
   assert.match(source, /barriers: game\.paddleBarriers\.player/);
-  assert.match(source, /hud-badge hud-core/);
+  assert.match(source, /<output className="sr-only" aria-live="polite" aria-atomic="true">코어 체력/);
   assert.match(source, /mode === "lobby" \|\| mode === "initialskills"/);
   assert.match(source, /보호막 \$\{hud\.barriers\}개/);
   assert.doesNotMatch(source, /barrierSummary|CORE LINE/);
   assert.match(source, /EXP ×/);
 });
 
-test("renders one wrapping lower-left core icon per remaining health", async () => {
+test("renders compact core health inside only the player paddle", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  assert.match(source, /className="core-health-icons" aria-hidden="true"/);
-  assert.match(source, /Array\.from\(\{ length: Math\.max\(0, hud\.coreHp\) \}/);
-  assert.match(source, /className="core-health-icon"/);
-  assert.match(source, /aria-label=\{`코어 체력 \$\{hud\.coreHp\}\/\$\{hud\.maxCoreHp\}/);
-  assert.doesNotMatch(source, /<span aria-hidden="true">×<\/span><strong>\{hud\.coreHp\}<\/strong>/);
+  assert.match(source, /const drawPaddleBody = \(x: number, y: number, width: number, color: string, alpha = 1, coreHealth: number \| null = null\)/);
+  assert.match(source, /const healthText = `◆ \$\{Math\.max\(0, coreHealth\)\}`/);
+  assert.match(source, /ctx\.measureText\(healthText\)\.width > width - 12/);
+  assert.match(source, /ctx\.strokeText\(healthText, x, y \+ height \/ 2 \+ 1\)/);
+  assert.match(source, /drawPaddleBody\(game\.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, PLAYER_BALL_COLOR, 1, game\.coreHp\)/);
+  assert.match(source, /drawPaddleBody\(x, y, width, color, 0\.74\)/);
+  assert.doesNotMatch(source, /drawPaddleBody\(x, y, width, color, 0\.74, game\.coreHp\)/);
+  assert.match(source, /<output className="sr-only" aria-live="polite" aria-atomic="true">코어 체력 \{hud\.coreHp\}\/\{hud\.maxCoreHp\}/);
+  assert.doesNotMatch(source, /hud-badge hud-core|core-health-icons|core-health-icon/);
   assert.doesNotMatch(source, /className="core-meter"/);
-  assert.doesNotMatch(source, /CORE INTEGRITY/);
-  assert.match(styles, /Compact lower-left core inventory/);
-  assert.match(styles, /\.hud-core,\.gameplay-shell \.hud-core\{left:14px;right:auto;bottom:14px/);
-  assert.match(styles, /\.core-health-icons\{display:flex;flex-wrap:wrap/);
+  assert.doesNotMatch(styles, /hud-core|core-health|core-meter/);
+  assert.match(styles, /\.sr-only\{position:absolute!important;width:1px!important/);
 });
 
 test.skip("converts legacy line clears into enchant waves and randomizes nearby link targets", async () => {
