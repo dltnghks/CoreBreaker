@@ -199,7 +199,8 @@ test("shows compact left-side skill levels and highlights level-three evolutions
   assert.match(source, /<span aria-hidden="true">×<\/span><strong>\{level\}<\/strong>/);
   assert.match(styles, /\.skill-loadout-hud\{position:absolute;z-index:5;top:66px;left:14px/);
   assert.match(styles, /\.skill-loadout-entry\.evolved:before/);
-  assert.match(styles, /@keyframes evolved-skill-orbit/);
+  assert.match(styles, /\.skill-loadout-entry\.evolved:before\{border-style:solid;animation:none/);
+  assert.match(styles, /@media\(prefers-reduced-motion:reduce\)\{\.skill-loadout-entry\.evolved,\.skill-loadout-entry>b\{animation:none\}\}/);
   assert.match(styles, /\.skill-loadout-entry\.class-common/);
 });
 
@@ -471,14 +472,19 @@ test("propagates paddle debuffs and keeps barrier state accessible in the in-gam
   assert.match(source, /EXP ×/);
 });
 
-test("renders core health as a lower-left icon and remaining number without a bar", async () => {
+test("renders one wrapping lower-left core icon per remaining health", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  assert.match(source, /<i aria-hidden="true">◆<\/i><span aria-hidden="true">×<\/span><strong>\{hud\.coreHp\}<\/strong>/);
+  assert.match(source, /className="core-health-icons" aria-hidden="true"/);
+  assert.match(source, /Array\.from\(\{ length: Math\.max\(0, hud\.coreHp\) \}/);
+  assert.match(source, /className="core-health-icon"/);
+  assert.match(source, /aria-label=\{`코어 체력 \$\{hud\.coreHp\}\/\$\{hud\.maxCoreHp\}/);
+  assert.doesNotMatch(source, /<span aria-hidden="true">×<\/span><strong>\{hud\.coreHp\}<\/strong>/);
   assert.doesNotMatch(source, /className="core-meter"/);
   assert.doesNotMatch(source, /CORE INTEGRITY/);
-  assert.match(styles, /Minimal lower-left core counter/);
+  assert.match(styles, /Compact lower-left core inventory/);
   assert.match(styles, /\.hud-core,\.gameplay-shell \.hud-core\{left:14px;right:auto;bottom:14px/);
+  assert.match(styles, /\.core-health-icons\{display:flex;flex-wrap:wrap/);
 });
 
 test.skip("converts legacy line clears into enchant waves and randomizes nearby link targets", async () => {
@@ -516,7 +522,9 @@ test("keeps ball bodies unified and distinguishes power and skills with effects"
   assert.match(source, /visualSkill: skillId/);
   assert.match(source, /const activeClassCharges = ballCooldownEntries/);
   assert.match(source, /const SKILL_ICONS/);
-  assert.match(source, /const drawSkillPanel/);
+  assert.match(source, /className="skill-loadout-hud"/);
+  assert.doesNotMatch(source, /drawSkillPanel\(game\.paddleX/);
+  assert.doesNotMatch(source, /drawSkillPanel\(x, y, width/);
   assert.match(source, /ATK/);
   assert.match(source, /보호막 \$\{hud\.barriers\}개/);
 });
@@ -979,10 +987,13 @@ test("separates impact shockwave damage from fireball damage over time", async (
   assert.match(benchmark, /skill\.id === "mage-fireball"/);
 });
 
-test("removes reflection counters and keeps permanent skill icons on the paddle", async () => {
+test("keeps selected skill icons only in the left loadout HUD", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const COUNTED_SKILL_IDS: UpgradeId\[\] = \[\]/);
-  assert.match(source, /const drawSkillPanel =/);
+  assert.match(source, /className="skill-loadout-hud"/);
+  assert.doesNotMatch(source, /drawSkillPanel\(game\.paddleX/);
+  assert.doesNotMatch(source, /drawSkillPanel\(x, y, width/);
+  assert.doesNotMatch(source, /drawCounterRail\(/);
   assert.match(source, /스킬은 공마다 독립 쿨타임으로 발동/);
   assert.doesNotMatch(source, /paddleCounter\.chargePulse = 1\.2/);
   assert.doesNotMatch(source, /paddleCounter\.skillReflections\[id\]/);

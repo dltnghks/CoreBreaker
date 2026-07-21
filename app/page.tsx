@@ -3838,55 +3838,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         .filter(({ level }) => level > 0)
         .map(({ id, level }) => ({ id, ...countedProgress(id, level, counter) }));
     };
-    const drawCounterRail = (x: number, y: number, ownerId: string, upgrades: UpgradeId[], alpha = 1) => {
-      const entries = countedEntriesFor(ownerId, upgrades);
-      if (entries.length === 0) return;
-      const cellWidth = 48;
-      const cellHeight = 24;
-      const perRow = Math.min(10, entries.length);
-      const rows = Math.ceil(entries.length / perRow);
-      const railWidth = perRow * cellWidth + 8;
-      const railHeight = rows * cellHeight + 6;
-      const railY = y - railHeight;
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = "rgba(4,8,20,.9)";
-      ctx.fillRect(x - railWidth / 2, railY, railWidth, railHeight);
-      ctx.strokeStyle = "rgba(185,205,235,.2)";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x - railWidth / 2, railY, railWidth, railHeight);
-      entries.forEach((entry, index) => {
-        const row = Math.floor(index / perRow);
-        const col = index % perRow;
-        const rowCount = Math.min(perRow, entries.length - row * perRow);
-        const rowWidth = rowCount * cellWidth;
-        const left = x - rowWidth / 2 + col * cellWidth;
-        const top = railY + 3 + row * cellHeight;
-        const ratio = entry.current / entry.goal;
-        const config = activeSkillMap[entry.id];
-        const color = config?.color ?? "#ffffff";
-        if (ratio >= 0.8) {
-          ctx.shadowColor = color;
-          ctx.shadowBlur = 14 + Math.sin(game.elapsed * 9) * 4;
-        }
-        ctx.fillStyle = color;
-        ctx.globalAlpha = alpha * 0.16;
-        ctx.fillRect(left + 2, top, cellWidth - 4, cellHeight - 4);
-        ctx.globalAlpha = alpha;
-        ctx.fillRect(left + 2, top + cellHeight - 7, (cellWidth - 4) * ratio, 4);
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = color;
-        ctx.font = "900 13px \"Arial Unicode MS\",sans-serif";
-        ctx.textAlign = "left";
-        ctx.textBaseline = "middle";
-        ctx.fillText(SKILL_ICONS[entry.id] ?? "•", left + 6, top + 9);
-        ctx.fillStyle = ratio >= 0.8 ? "#ffffff" : "#d4deed";
-        ctx.font = "900 11px monospace";
-        ctx.textAlign = "right";
-        ctx.fillText(`${entry.current}/${entry.goal}`, left + cellWidth - 5, top + 9);
-      });
-      ctx.restore();
-    };
     const paddleChargeVisual = (ownerId: string, upgrades: UpgradeId[]) => {
       const counter = game.paddleCounters[ownerId] ?? newPaddleCounter();
       if ((counter.chargePulse ?? 0) > 0) return { color: counter.chargeColor ?? PLAYER_BALL_COLOR, intensity: 1, pulse: counter.chargePulse / 1.2 };
@@ -3969,9 +3920,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const y = ghostPaddleY();
       const width = Math.min(280, ghostPaddleWidth(ghost) + (emergencyDanger ? skillValue("emergency-wide", upgradeLevel(ghost.upgrades, "emergency-wide")) : 0));
       const color = GHOST_COLORS[index % GHOST_COLORS.length];
-      drawCounterRail(x, y, `ghost-${index}`, ghost.upgrades, 0.74);
       const chargeVisual = paddleChargeVisual(`ghost-${index}`, ghost.upgrades);
-      drawSkillPanel(x, y, width, ghost.upgrades, chargeVisual?.color ?? color, 0.74);
       drawPaddleChargeAura(x, y, width, chargeVisual, 0.74);
       ctx.fillStyle = color;
       ctx.font = "800 9px monospace";
@@ -3981,8 +3930,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
     const playerDrawWidth = Math.min(280, game.paddleWidth + skillValue("common-wide", upgradeLevel(game.upgrades, "common-wide")) + (emergencyDanger ? skillValue("emergency-wide", upgradeLevel(game.upgrades, "emergency-wide")) : 0));
     const playerChargeVisual = paddleChargeVisual("player", game.upgrades);
-    drawCounterRail(W / 2, H - 6, "player", game.upgrades);
-    drawSkillPanel(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, game.upgrades, playerChargeVisual?.color ?? PLAYER_BALL_COLOR);
     drawPaddleChargeAura(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, playerChargeVisual);
     if (!botActiveRef.current) {
       const aim = paddleAimDirection(game.paddleX, PLAYER_PADDLE_Y, pointerXRef.current, pointerYRef.current);
@@ -5362,7 +5309,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             <div className="hud-badge hud-time" aria-label={`플레이 시간 ${hud.time.toFixed(1)}초`}><i aria-hidden="true">◷</i><span><small>TIME</small><strong>{hud.time.toFixed(1)}s</strong></span></div>
             <div className="hud-badge hud-wave" aria-label={`웨이브 ${hud.wave}/${MAX_WAVE}, ${hud.waveName}, 블록 ${hud.aliveBricks}개 남음`}><i aria-hidden="true">⚑</i><span><small>WAVE {hud.wave}/{MAX_WAVE}</small><strong>{hud.waveName}</strong><em>{hud.aliveBricks} LEFT</em></span></div>
             <div className="hud-badge hud-score" aria-label={`점수 ${formatScore(hud.score)}`}><i aria-hidden="true">✦</i><span><small>SCORE</small><strong>{formatScore(hud.score)}</strong></span></div>
-            <div className={hud.coreHp <= 3 ? "hud-badge hud-core core-critical" : "hud-badge hud-core"} aria-label={`코어 체력 ${hud.coreHp}/${hud.maxCoreHp}${hud.barriers > 0 ? `, 보호막 ${hud.barriers}개` : ""}`} title={`CORE ${hud.coreHp}/${hud.maxCoreHp}`}><i aria-hidden="true">◆</i><span aria-hidden="true">×</span><strong>{hud.coreHp}</strong></div>
+            <div className={hud.coreHp <= 3 ? "hud-badge hud-core core-critical" : "hud-badge hud-core"} aria-label={`코어 체력 ${hud.coreHp}/${hud.maxCoreHp}${hud.barriers > 0 ? `, 보호막 ${hud.barriers}개` : ""}`} title={`CORE ${hud.coreHp}/${hud.maxCoreHp}`}>
+              <div className="core-health-icons" aria-hidden="true">
+                {Array.from({ length: Math.max(0, hud.coreHp) }, (_, index) => <b className="core-health-icon" key={`core-${index}`}>◆</b>)}
+              </div>
+            </div>
             <div className={hud.overdriveLevel > 0 ? "hud-badge hud-speed active" : "hud-badge hud-speed"} aria-label={`공 속도 ${Math.round(hud.overdriveMultiplier * 100)}퍼센트`}><i aria-hidden="true">»</i><span><small>SPEED</small><strong>{Math.round(hud.overdriveMultiplier * 100)}%</strong><em>{hud.overdriveLevel < MAX_OVERDRIVE_LEVEL ? "+1%/s" : "MAX"}</em></span></div>
             <div className="skill-loadout-hud" aria-label="보유 스킬">
               {hud.skillLevels.map(({ id, level }) => {
