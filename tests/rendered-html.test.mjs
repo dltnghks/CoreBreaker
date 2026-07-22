@@ -24,7 +24,7 @@ test("server-renders the Core Breaker playtest", async () => {
   assert.match(html, /20 WAVES\. ONE BALL\. BREAK THROUGH\./);
   assert.match(html, /MULTI BALL/);
   assert.match(html, /CORE/);
-  assert.match(html, /공을 놓치면 CORE 1을 잃고 새 공으로 즉시 이어집니다/);
+  assert.match(html, /새 공은 100% 속도에서 5초 동안 현재 속도로 복귀합니다/);
   assert.doesNotMatch(html, /플레이테스트 봇/);
   assert.match(html, /href="\/benchmark"/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|react-loading-skeleton/);
@@ -41,12 +41,19 @@ test("uses a restrained techno-fantasy UI palette and layered panels", async () 
   assert.match(labStyles, /linear-gradient\(180deg,#080a12,#05060d 72%\)/);
 });
 
-test("moves the paddle with A and D while the pointer aims rebounds", async () => {
+test("moves with A and D while mouse and arrow keys exclusively control rebound aim", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /PADDLE_KEYBOARD_SPEED = 460/);
+  assert.match(source, /KEYBOARD_AIM_RATIO_SPEED = 1\.2/);
   assert.match(source, /window\.addEventListener\("keydown", onKeyDown\)/);
-  assert.match(source, /key !== "a" && key !== "d"/);
+  assert.match(source, /key === "arrowleft" \|\| key === "arrowright"/);
   assert.match(source, /Number\(keyboardRef\.current\.right\) - Number\(keyboardRef\.current\.left\)/);
+  assert.match(source, /aimInputModeRef = useRef<"mouse" \| "keyboard">\("mouse"\)/);
+  assert.match(source, /pressed && !wasPressed && aimInputModeRef\.current !== "keyboard"/);
+  assert.match(source, /aimInputModeRef\.current = "keyboard"/);
+  assert.match(source, /else if \(aimInputModeRef\.current === "keyboard"\)/);
+  assert.match(source, /keyboardAimRef\.current\.horizontalRatio \+ aimMovement \* KEYBOARD_AIM_RATIO_SPEED \* dt/);
+  assert.match(source, /aimInputModeRef\.current = "mouse";\s*pointerXRef\.current/);
   assert.match(source, /pointerYRef/);
   assert.match(source, /function paddleAimDirection/);
   assert.match(source, /horizontalRatio = Math\.max\(-MAX_PADDLE_REBOUND_RATIO/);
@@ -65,7 +72,7 @@ test("moves the paddle with A and D while the pointer aims rebounds", async () =
   assert.match(source, /const reboundSpeed = .*Math\.hypot\(ball\.vx, ball\.vy\)/);
   assert.match(source, /parkBallsAbovePaddle\(game, targetX, targetY\)/);
   assert.match(source, /prepareWave\(game, nextWave, balanceConfigRef\.current, pointerXRef\.current, pointerYRef\.current\)/);
-  assert.match(source, /MOVE <kbd>A<\/kbd><kbd>D<\/kbd> · AIM \/ MOUSE/);
+  assert.match(source, /MOVE <kbd>A<\/kbd><kbd>D<\/kbd> · AIM \/ MOUSE OR <kbd>←<\/kbd><kbd>→<\/kbd>/);
   assert.doesNotMatch(source, /PADDLE_ENGLISH_FACTOR|paddle\.velocity/);
 });
 
@@ -335,7 +342,7 @@ test("renders every destructible brick health as large outlined white text", asy
   assert.match(source, /ctx\.font = "900 44px monospace"/);
 });
 
-test("adds six stage brick traits with distinct combat rules and readable visual keys", async () => {
+test("adds six stage brick traits with distinct combat rules and shape-based visuals", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(source, /type BrickTrait = "standard" \| "guard" \| "explosive" \| "indestructible" \| "healer" \| "reflector"/);
@@ -361,14 +368,11 @@ test("adds six stage brick traits with distinct combat rules and readable visual
   assert.match(source, /ctx\.lineWidth = reflectorThreatened \? 4 : 3/);
   assert.match(source, /const hpBaselineY = brick\.y \+ brick\.h \/ 2 \+ 6/);
   assert.match(source, /reflectorLineY/);
-  assert.match(source, /const BRICK_TRAIT_DATA/);
-  assert.match(source, /description: "공 직접 공격 1회 무시"/);
-  assert.match(source, /description: "파괴 불가 · 아이템 없음"/);
-  assert.match(source, /description: "파괴 시 주변 피해 · 공 밀어냄"/);
-  assert.match(source, /description: "3초마다 주변 체력 \+1"/);
-  assert.match(source, /aria-label="특수 블록 기능 안내"/);
-  assert.match(source, /traitData\.glyph/);
-  assert.match(styles, /\.brick-key-strip/);
+  assert.match(source, /const BRICK_TRAIT_COLORS/);
+  assert.doesNotMatch(source, /const BRICK_TRAIT_DATA|traitData\.glyph/);
+  assert.doesNotMatch(source, /aria-label="특수 블록 기능 안내"|BLOCK KEY/);
+  assert.doesNotMatch(source, /glyph: "(?:방|폭|불|회|반)"/);
+  assert.doesNotMatch(styles, /\.brick-key-strip/);
   assert.doesNotMatch(source, /"shield"/);
 });
 
@@ -478,7 +482,7 @@ test("propagates paddle debuffs and keeps barrier state accessible in the in-gam
   assert.match(source, /emitEffect\("blast"/);
   assert.match(source, /barriers: game\.paddleBarriers\.player/);
   assert.match(source, /<output className="sr-only" aria-live="polite" aria-atomic="true">코어 체력/);
-  assert.match(source, /mode === "lobby" \|\| mode === "initialskills"/);
+  assert.doesNotMatch(source, /aria-label="특수 블록 기능 안내"/);
   assert.match(source, /보호막 \$\{hud\.barriers\}개/);
   assert.doesNotMatch(source, /barrierSummary|CORE LINE/);
   assert.match(source, /EXP ×/);
