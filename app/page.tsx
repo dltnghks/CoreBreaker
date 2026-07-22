@@ -8,7 +8,7 @@ import { BENCHMARK_STORAGE_KEY, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConf
 import { applyWaveDefinitions, getActiveWaveDefinitions, MAX_WAVE, WAVE_STORAGE_KEY, waveDefinition } from "./wave-config";
 import { PARALLEL_BENCHMARK_RULESET, type HeadlessBenchmarkRequest, type HeadlessBenchmarkResult } from "./benchmark-headless";
 import { clearBenchmarkResults, getBenchmarkResults, putBenchmarkResults } from "./benchmark-result-store";
-import { createBotPolicyState, decideBotControls, POLICY_VERSION, type BotPolicyState } from "./bot-policy";
+import { createBotPolicyState, decideBotControls, POLICY_VERSION, reflectorBankAim, type BotPolicyState } from "./bot-policy";
 
 type PayloadId = "pierce" | "blast" | "glass" | "link";
 type ItemKind = "multiball" | "auto-barrier" | "core-repair" | "cooldown-reset";
@@ -688,35 +688,8 @@ function protectedReflectorBlockingAim(bricks: Brick[], originX: number, originY
     .sort((a, b) => b.y + b.h - (a.y + a.h))[0] ?? null;
 }
 
-function reflectorWeakSideBankAim(reflector: Brick, originX: number, originY: number, phase: number) {
-  const targetY = reflector.y + reflector.h / 2;
-  const approaches = [
-    { wallX: 0, weakSideX: reflector.x - 7 },
-    { wallX: W, weakSideX: reflector.x + reflector.w + 7 },
-  ].map(({ wallX, weakSideX }) => {
-    const mirroredTargetX = wallX === 0 ? -weakSideX : W * 2 - weakSideX;
-    const deltaX = mirroredTargetX - originX;
-    const deltaY = targetY - originY;
-    const distance = Math.max(1, Math.hypot(deltaX, deltaY));
-    const horizontalRatio = Math.abs(deltaX) / distance;
-    const wallTime = Math.abs(deltaX) > 0.001 ? (wallX - originX) / deltaX : -1;
-    const wallY = originY + deltaY * wallTime;
-    const validBank = wallTime > 0 && wallTime < 1 && wallY > targetY && wallY < originY;
-    return {
-      x: wallX,
-      y: Math.max(0, Math.min(H, wallY)),
-      validBank,
-      constraintPenalty: Math.max(0, horizontalRatio - MAX_PADDLE_REBOUND_RATIO),
-    };
-  });
-  const feasible = approaches.filter((approach) => approach.validBank && approach.constraintPenalty <= 0.0001);
-  if (feasible.length > 0) return feasible[phase % feasible.length];
-  const valid = approaches.filter((approach) => approach.validBank);
-  if (valid.length > 0) return valid[phase % valid.length];
-  return approaches.sort((a, b) => {
-    if (a.validBank !== b.validBank) return Number(b.validBank) - Number(a.validBank);
-    return a.constraintPenalty - b.constraintPenalty || a.x - b.x;
-  })[phase % approaches.length];
+function reflectorWeakSideBankAim(reflector: Brick, originX: number, phase: number, reflectors: Brick[]) {
+  return reflectorBankAim(reflector, originX, phase, reflectors);
 }
 
 function botAimPoint(bricks: Brick[], originX: number, originY: number, phase = 0) {
@@ -726,7 +699,7 @@ function botAimPoint(bricks: Brick[], originX: number, originY: number, phase = 
     const targetY = target.y + target.h / 2;
     const blockingReflector = protectedReflectorBlockingAim(bricks, originX, originY, targetX, targetY);
     if (!blockingReflector) return { x: targetX, y: targetY, target };
-    const bank = reflectorWeakSideBankAim(blockingReflector, originX, originY, phase);
+    const bank = reflectorWeakSideBankAim(target, originX, phase, bricks.filter((brick) => brick.alive && brick.trait === "reflector"));
     return { x: bank.x, y: bank.y, target: blockingReflector };
   }
 
@@ -737,7 +710,7 @@ function botAimPoint(bricks: Brick[], originX: number, originY: number, phase = 
     .sort((a, b) => b.y - a.y || a.x - b.x);
   if (reflectors.length > 0) {
     const reflector = reflectors[Math.floor(phase / 2) % reflectors.length];
-    const bank = reflectorWeakSideBankAim(reflector, originX, originY, phase);
+    const bank = reflectorWeakSideBankAim(reflector, originX, phase, reflectors);
     return { x: bank.x, y: bank.y, target: reflector };
   }
   return { x: W / 2, y: BRICK_ROW_Y, target: null };
@@ -1067,7 +1040,9 @@ function pickUpgradeChoices(existing: UpgradeId[], catalog: Upgrade[], ballEcono
   const weighted = catalog
     .filter((upgrade) => !excluded.includes(upgrade.id))
     .filter((upgrade) => skillPickCount(existing, upgrade.id) < (activeSkillMap[upgrade.id]?.evolution ? 4 : 3))
-    .sort(() => decisionRandom() - 0.5);
+    .map((upgrade) => ({ upgrade, offerRoll: decisionRandom() }))
+    .sort((a, b) => a.offerRoll - b.offerRoll || a.upgrade.id.localeCompare(b.upgrade.id))
+    .map(({ upgrade }) => upgrade);
   if (weighted.length <= 3) return weighted;
   const newOnes = weighted.filter((u) => !existing.includes(u.id));
   const repeats = weighted.filter((u) => existing.includes(u.id));
@@ -1085,10 +1060,12 @@ function chooseBotUpgrade(choices: Upgrade[], existing: UpgradeId[], policy: Bot
     survival: { warrior: 5, archer: 2, mage: 4, common: 3.5 },
     random: {},
   };
-  return [...choices].sort((a, b) => {
-    const score = (upgrade: Upgrade) => (categoryWeight[policy][upgrade.category] ?? 0) + (existing.includes(upgrade.id) ? 1.5 : 3) + decisionRandom();
-    return score(b) - score(a);
-  })[0];
+  return choices
+    .map((upgrade) => ({
+      upgrade,
+      score: (categoryWeight[policy][upgrade.category] ?? 0) + (existing.includes(upgrade.id) ? 0.35 : 1.2) + decisionRandom() * 1.75,
+    }))
+    .sort((a, b) => b.score - a.score || a.upgrade.id.localeCompare(b.upgrade.id))[0].upgrade;
 }
 
 export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean }) {
@@ -3342,7 +3319,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         if (wasBoss) {
           if (botActiveRef.current) {
             if (!botSkillBenchActiveRef.current || skillBenchConfigRef.current.environment === "ecosystem") {
-              applyBossReward(botPolicyRef.current === "survival" ? "mage-elemental-storm" : "archer-arrow-rain");
+              const ultimateChoices = createUpgradeCatalog(activeSkillConfigsRef.current.filter((skill) => skill.ultimate))
+                .filter((upgrade) => !game.bossRewards.includes(upgrade.id as BossRewardId));
+              const selectedUltimate = ultimateChoices.length
+                ? chooseBotUpgrade(ultimateChoices, game.upgrades, botPolicyRef.current)
+                : undefined;
+              if (selectedUltimate) applyBossReward(selectedUltimate.id as BossRewardId);
+              else enterPendingWave(game);
             } else {
               enterPendingWave(game);
             }

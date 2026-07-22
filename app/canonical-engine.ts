@@ -4,7 +4,7 @@ import { WAVE_DEFINITIONS, waveDefinitionFrom, type WaveDefinition } from "./wav
 
 export const ENGINE_VERSION = "canonical-fixed-step-v1" as const;
 export const ENGINE_PARITY = "fixed-step-canonical-rules" as const;
-export const POLICY_VERSION = "predictive-controls-v2-reflector-bank" as const;
+export const POLICY_VERSION = "predictive-controls-v3-reflector-top-bank" as const;
 export const FIXED_STEP_SECONDS = 1 / 120;
 export const GAME_WIDTH = 900;
 export const GAME_HEIGHT = 600;

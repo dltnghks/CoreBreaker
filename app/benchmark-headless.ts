@@ -15,13 +15,24 @@ export type HeadlessBenchmarkResult = {
 };
 
 function pickCount(upgrades: UpgradeId[], id: UpgradeId) { return upgrades.filter((entry) => entry === id).length; }
-function chooseSkill(state: CanonicalState, policy: HeadlessBotPolicy, ultimate: boolean) {
-  const available = state.skills.filter((skill) => Boolean(skill.ultimate) === ultimate && pickCount(state.upgrades, skill.id) < (skill.evolution ? 4 : 3));
+export function chooseBenchmarkSkill(state: CanonicalState, policy: HeadlessBotPolicy, ultimate: boolean) {
+  const available = state.skills.filter((skill) => Boolean(skill.ultimate) === ultimate
+    && pickCount(state.upgrades, skill.id) < (skill.evolution ? 4 : 3)
+    && (!ultimate || !state.upgrades.includes(skill.id)));
   if (!available.length) return null;
-  const offered = [...available].sort((a, b) => ((a.id.charCodeAt(0) * 31 + state.seed + state.wave) % 97) - ((b.id.charCodeAt(0) * 31 + state.seed + state.wave) % 97)).slice(0, 3);
+  const offered = available
+    .map((skill) => ({ skill, offerRoll: state.random() }))
+    .sort((a, b) => a.offerRoll - b.offerRoll || a.skill.id.localeCompare(b.skill.id))
+    .slice(0, 3)
+    .map(({ skill }) => skill);
   if (policy === "random") return offered[Math.floor(state.random() * offered.length)];
   const weights: Record<Exclude<HeadlessBotPolicy, "random">, Record<SkillCategory, number>> = { balanced: { warrior: 3, archer: 3, mage: 3, common: 2.5 }, survival: { warrior: 5, archer: 2, mage: 4, common: 3.5 } };
-  return offered.sort((a, b) => (weights[policy][b.category] + (state.upgrades.includes(b.id) ? 2 : 3)) - (weights[policy][a.category] + (state.upgrades.includes(a.id) ? 2 : 3)) || a.id.localeCompare(b.id))[0];
+  return offered
+    .map((skill) => ({
+      skill,
+      score: weights[policy][skill.category] + (state.upgrades.includes(skill.id) ? 0.35 : 1.2) + state.random() * 1.75,
+    }))
+    .sort((a, b) => b.score - a.score || a.skill.id.localeCompare(b.skill.id))[0].skill;
 }
 
 function observation(state: CanonicalState): BotObservation {
@@ -31,7 +42,7 @@ function observation(state: CanonicalState): BotObservation {
 export function runCanonicalControlledSimulation(request: HeadlessBenchmarkRequest, controlProvider: (state: CanonicalState, step: number) => ReturnType<typeof decideBotControls>) {
   const benchmark = { ...DEFAULT_BENCHMARK_CONFIG, ...request.benchmarkConfig } as BenchmarkConfig;
   const state = createCanonicalState({ seed: request.seed, targetWave: benchmark.targetWave, balance: { ...DEFAULT_BALANCE_CONFIG, ...request.balanceConfig }, skills: request.skills?.length ? request.skills : DEFAULT_SKILLS, waves: request.waveDefinitions?.length === WAVE_DEFINITIONS.length ? request.waveDefinitions : WAVE_DEFINITIONS });
-  const start = chooseSkill(state, request.policy, false);
+  const start = chooseBenchmarkSkill(state, request.policy, false);
   if (start) grantCanonicalSkill(state, start.id, "start");
   let previousWave = state.wave;
   const maxSteps = Math.ceil((request.maxSimulatedSeconds ?? 1800) / FIXED_STEP_SECONDS);
@@ -39,7 +50,7 @@ export function runCanonicalControlledSimulation(request: HeadlessBenchmarkReque
     stepCanonicalEngine(state, controlProvider(state, step), FIXED_STEP_SECONDS);
     if (state.wave !== previousWave) {
       const completedDefinition = state.waves[previousWave - 1];
-      const reward = chooseSkill(state, request.policy, Boolean(completedDefinition?.boss));
+      const reward = chooseBenchmarkSkill(state, request.policy, Boolean(completedDefinition?.boss));
       if (reward) grantCanonicalSkill(state, reward.id, completedDefinition?.boss ? "boss" : "wave");
       previousWave = state.wave;
     }
