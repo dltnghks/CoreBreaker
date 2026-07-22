@@ -48,6 +48,7 @@ export type CanonicalState = {
   items: CanonicalItem[];
   gravityWells: CanonicalGravityWell[];
   upgrades: UpgradeId[];
+  bossEnhancements: Partial<Record<UpgradeId, number>>;
   skillHistory: CanonicalSkillEvent[];
   skillMetrics: Partial<Record<UpgradeId, { activations: number; damage: number; kills: number }>>;
   waveMetrics: CanonicalWaveMetric[];
@@ -105,7 +106,13 @@ function skill(state: CanonicalState, id: UpgradeId) { return state.skills.find(
 function evolved(state: CanonicalState, id: UpgradeId) { return Boolean(skill(state, id)?.evolution) && pickCount(state, id) >= 4; }
 function skillValue(state: CanonicalState, id: UpgradeId) {
   const level = levelOf(state, id);
-  return level ? Number(skill(state, id)?.levels[level - 1] ?? 0) : 0;
+  const base = level ? Number(skill(state, id)?.levels[level - 1] ?? 0) : 0;
+  if (!base) return 0;
+  const config = skill(state, id);
+  const enhancement = state.bossEnhancements[id] ?? 0;
+  if (!config || enhancement <= 0) return base;
+  const step = Math.max(config.direction === "down" ? 0.2 : 1, Math.abs(config.levels[2] - config.levels[1]));
+  return config.direction === "down" ? Math.max(0.2, base - enhancement * step) : base + enhancement * step;
 }
 function lateWaveHpMultiplier(wave: number) { return wave >= 16 ? 2.5 : wave >= 11 ? 1.9 : wave >= 6 ? 1.45 : wave >= 4 ? 1.15 : 1; }
 
@@ -123,11 +130,11 @@ function buildWave(state: CanonicalState, wave: number) {
   const definition = waveDefinitionFrom(state.waves, wave);
   state.nextBrickId = 1;
   if (definition.boss) {
-    const stage = definition.boss === "final" ? 2 : 1;
-    const hpMultiplier = stage >= 2 ? 1.8 : 1.25;
+    const stage = definition.boss === "final" ? 4 : definition.boss === "late" ? 3 : definition.boss === "mid" ? 2 : 1;
+    const hpMultiplier = [1, 1.25, 1.55, 1.9, 2.25][stage];
     const hp = Math.round((state.balance.bossBaseHp + stage * state.balance.bossHpPerStage) * hpMultiplier * definition.hpMultiplier);
     state.bricks = [makeBrick(state, (GAME_WIDTH - 416) / 2, 94, 416, 102, hp, "standard", "boss-core", "multiball")];
-    state.bossAttackTimer = 5;
+    state.bossAttackTimer = Math.max(3.2, 6.2 - stage * 0.65);
     state.bossPattern = 0;
     return;
   }
@@ -275,10 +282,10 @@ function completeWave(state: CanonicalState) {
 }
 
 export function createCanonicalState(options: { seed: number; targetWave?: number; balance?: BalanceConfig; skills?: SkillConfig[]; waves?: WaveDefinition[] }): CanonicalState {
-  const state = {
+  const state: CanonicalState = {
     seed: options.seed, random: seededRandom(options.seed), balance: { ...DEFAULT_BALANCE_CONFIG, ...options.balance }, skills: options.skills?.length ? options.skills : DEFAULT_SKILLS, waves: options.waves?.length === WAVE_DEFINITIONS.length ? options.waves : WAVE_DEFINITIONS, targetWave: options.targetWave ?? 20,
-    wave: 1, waveElapsed: 0, elapsed: 0, paddleX: GAME_WIDTH / 2, paddleWidth: BASE_PADDLE_WIDTH, balls: [], bricks: [], items: [], gravityWells: [], upgrades: [], skillHistory: [], skillMetrics: {}, waveMetrics: [], coreHp: 8, maxCoreHp: 8, score: 0, bricksBroken: 0, combo: 0, maxCombo: 0, ballLosses: 0, maxBalls: 1, totalDamage: 0, lastDamageElapsed: 0, reflectorBlockedHits: 0, barrierTime: 0, bossAttackTimer: 0, bossPattern: 0, nextBrickId: 1, complete: false, gameOver: false,
-  } satisfies CanonicalState;
+    wave: 1, waveElapsed: 0, elapsed: 0, paddleX: GAME_WIDTH / 2, paddleWidth: BASE_PADDLE_WIDTH, balls: [], bricks: [], items: [], gravityWells: [], upgrades: [], bossEnhancements: {}, skillHistory: [], skillMetrics: {}, waveMetrics: [], coreHp: 8, maxCoreHp: 8, score: 0, bricksBroken: 0, combo: 0, maxCombo: 0, ballLosses: 0, maxBalls: 1, totalDamage: 0, lastDamageElapsed: 0, reflectorBlockedHits: 0, barrierTime: 0, bossAttackTimer: 0, bossPattern: 0, nextBrickId: 1, complete: false, gameOver: false,
+  };
   buildWave(state, 1);
   state.balls = [makeBall(state)];
   return state;
@@ -299,6 +306,13 @@ export function grantCanonicalSkill(state: CanonicalState, skillId: UpgradeId, s
     state.coreHp += gain;
   }
   state.paddleWidth = Math.min(280, BASE_PADDLE_WIDTH + skillValue(state, "common-wide"));
+  return true;
+}
+
+export function grantCanonicalEnhancement(state: CanonicalState, skillId: UpgradeId) {
+  if (!state.upgrades.includes(skillId)) return false;
+  state.bossEnhancements[skillId] = (state.bossEnhancements[skillId] ?? 0) + 1;
+  state.skillHistory.push({ wave: state.wave, skillId, level: levelOf(state, skillId), source: "boss" });
   return true;
 }
 

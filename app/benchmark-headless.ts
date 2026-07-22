@@ -1,7 +1,7 @@
 import { DEFAULT_BALANCE_CONFIG, type BalanceConfig } from "./balance-config";
 import { DEFAULT_BENCHMARK_CONFIG, type BenchmarkConfig } from "./benchmark-config";
 import { createBotPolicyState, decideBotControls, POLICY_VERSION, type BotObservation } from "./bot-policy";
-import { ENGINE_PARITY, ENGINE_VERSION, FIXED_STEP_SECONDS, PADDLE_SPEED, canonicalSnapshot, createCanonicalState, grantCanonicalSkill, stepCanonicalEngine, type CanonicalState } from "./canonical-engine";
+import { ENGINE_PARITY, ENGINE_VERSION, FIXED_STEP_SECONDS, PADDLE_SPEED, canonicalSnapshot, createCanonicalState, grantCanonicalEnhancement, grantCanonicalSkill, stepCanonicalEngine, type CanonicalState } from "./canonical-engine";
 import { DEFAULT_SKILLS, type SkillCategory, type SkillConfig, type UpgradeId } from "./skill-config";
 import { WAVE_DEFINITIONS, type WaveDefinition } from "./wave-config";
 
@@ -29,7 +29,7 @@ export type HeadlessTimeoutDiagnostic = {
 export type HeadlessBenchmarkRequest = { run: number; seed: number; sessionId?: string; policy: HeadlessBotPolicy; balanceConfig?: BalanceConfig; benchmarkConfig?: BenchmarkConfig; skills?: SkillConfig[]; waveDefinitions?: WaveDefinition[]; maxSimulatedSeconds?: number };
 export type HeadlessBenchmarkResult = {
   id: string; run: number; seed: number; policy: HeadlessBotPolicy; policyVersion: typeof POLICY_VERSION; engineVersion: typeof ENGINE_VERSION; engineParity: typeof ENGINE_PARITY; speed: 8; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; startingSkills: UpgradeId[];
-  skillHistory: CanonicalState["skillHistory"]; ultimates: UpgradeId[]; skillMetrics: CanonicalState["skillMetrics"]; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig; benchmarkRuleset: typeof PARALLEL_BENCHMARK_RULESET; waveSamples: CanonicalState["waveMetrics"]; evaluationComplete: boolean; terminationReason: HeadlessTerminationReason; timeoutDiagnostic: HeadlessTimeoutDiagnostic | null; skillBench: null; maxBalls: number; ballLosses: number; missileActivations: number; safetySaves: number; gravityRescues: number; finalSnapshot: ReturnType<typeof canonicalSnapshot>;
+  skillHistory: CanonicalState["skillHistory"]; ultimates: UpgradeId[]; bossEnhancements: CanonicalState["bossEnhancements"]; skillMetrics: CanonicalState["skillMetrics"]; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig; benchmarkRuleset: typeof PARALLEL_BENCHMARK_RULESET; waveSamples: CanonicalState["waveMetrics"]; evaluationComplete: boolean; terminationReason: HeadlessTerminationReason; timeoutDiagnostic: HeadlessTimeoutDiagnostic | null; skillBench: null; maxBalls: number; ballLosses: number; missileActivations: number; safetySaves: number; gravityRescues: number; finalSnapshot: ReturnType<typeof canonicalSnapshot>;
 };
 
 function pickCount(upgrades: UpgradeId[], id: UpgradeId) { return upgrades.filter((entry) => entry === id).length; }
@@ -53,6 +53,12 @@ export function chooseBenchmarkSkill(state: CanonicalState, policy: HeadlessBotP
     .sort((a, b) => b.score - a.score || a.skill.id.localeCompare(b.skill.id))[0].skill;
 }
 
+export function chooseBenchmarkEnhancement(state: CanonicalState, policy: HeadlessBotPolicy) {
+  const owned = state.skills.filter((skill) => state.upgrades.includes(skill.id) && !skill.ultimate);
+  if (!owned.length) return null;
+  return owned.slice().sort((a, b) => (policy === "random" ? state.random() - 0.5 : (state.bossEnhancements[a.id] ?? 0) - (state.bossEnhancements[b.id] ?? 0)) || a.id.localeCompare(b.id))[0];
+}
+
 function observation(state: CanonicalState): BotObservation {
   return { elapsed: state.elapsed, paddleX: state.paddleX, paddleWidth: state.paddleWidth, paddleSpeed: PADDLE_SPEED, balls: state.balls, bricks: state.bricks, items: state.items };
 }
@@ -68,8 +74,13 @@ export function runCanonicalControlledSimulation(request: HeadlessBenchmarkReque
     stepCanonicalEngine(state, controlProvider(state, step), FIXED_STEP_SECONDS);
     if (state.wave !== previousWave) {
       const completedDefinition = state.waves[previousWave - 1];
-      const reward = chooseBenchmarkSkill(state, request.policy, Boolean(completedDefinition?.boss));
-      if (reward) grantCanonicalSkill(state, reward.id, completedDefinition?.boss ? "boss" : "wave");
+      if (completedDefinition?.boss) {
+        const reward = chooseBenchmarkEnhancement(state, request.policy);
+        if (reward) grantCanonicalEnhancement(state, reward.id);
+      } else {
+        const reward = chooseBenchmarkSkill(state, request.policy, false);
+        if (reward) grantCanonicalSkill(state, reward.id, "wave");
+      }
       previousWave = state.wave;
     }
   }
@@ -153,6 +164,6 @@ export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): Headles
     maxTrajectoryRepeats,
   } : null;
   return {
-    id: `canonical-${request.sessionId ?? "local"}-${request.seed}-${request.run}`, run: request.run, seed: request.seed, policy: request.policy, policyVersion: POLICY_VERSION, engineVersion: ENGINE_VERSION, engineParity: ENGINE_PARITY, speed: 8, elapsed: state.elapsed, wave: state.wave, score: state.score, bricks: state.bricksBroken, maxCombo: state.maxCombo, coreHp: state.coreHp, upgrades: [...state.upgrades], startingSkills: state.skillHistory.filter((event) => event.source === "start").map((event) => event.skillId), skillHistory: state.skillHistory, ultimates: state.skillHistory.filter((event) => event.source === "boss").map((event) => event.skillId), skillMetrics: state.skillMetrics, createdAt: Date.now(), balanceConfig: state.balance, benchmarkConfig: benchmark, benchmarkRuleset: PARALLEL_BENCHMARK_RULESET, waveSamples: state.waveMetrics, evaluationComplete: state.complete && state.coreHp > 0, terminationReason, timeoutDiagnostic, skillBench: null, maxBalls: state.maxBalls, ballLosses: state.ballLosses, missileActivations: state.skillMetrics["archer-rapid"]?.activations ?? 0, safetySaves: state.skillMetrics["warrior-guard"]?.activations ?? 0, gravityRescues: state.skillMetrics["mage-black-hole"]?.activations ?? 0, finalSnapshot: canonicalSnapshot(state),
+    id: `canonical-${request.sessionId ?? "local"}-${request.seed}-${request.run}`, run: request.run, seed: request.seed, policy: request.policy, policyVersion: POLICY_VERSION, engineVersion: ENGINE_VERSION, engineParity: ENGINE_PARITY, speed: 8, elapsed: state.elapsed, wave: state.wave, score: state.score, bricks: state.bricksBroken, maxCombo: state.maxCombo, coreHp: state.coreHp, upgrades: [...state.upgrades], startingSkills: state.skillHistory.filter((event) => event.source === "start").map((event) => event.skillId), skillHistory: state.skillHistory, ultimates: [], bossEnhancements: { ...state.bossEnhancements }, skillMetrics: state.skillMetrics, createdAt: Date.now(), balanceConfig: state.balance, benchmarkConfig: benchmark, benchmarkRuleset: PARALLEL_BENCHMARK_RULESET, waveSamples: state.waveMetrics, evaluationComplete: state.complete && state.coreHp > 0, terminationReason, timeoutDiagnostic, skillBench: null, maxBalls: state.maxBalls, ballLosses: state.ballLosses, missileActivations: state.skillMetrics["archer-rapid"]?.activations ?? 0, safetySaves: state.skillMetrics["warrior-guard"]?.activations ?? 0, gravityRescues: state.skillMetrics["mage-black-hole"]?.activations ?? 0, finalSnapshot: canonicalSnapshot(state),
   };
 }

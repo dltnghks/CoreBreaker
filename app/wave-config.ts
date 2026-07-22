@@ -1,7 +1,7 @@
 export type WaveDefinition = {
   wave: number;
   name: string;
-  boss: "mid" | "final" | null;
+  boss: "early" | "mid" | "late" | "final" | null;
   pattern: string[];
   hpMultiplier: number;
 };
@@ -41,13 +41,16 @@ export const WAVE_DEFINITIONS: WaveDefinition[] = [
 
 export const MAX_WAVE = WAVE_DEFINITIONS.length;
 
-const cloneDefinitions = (definitions: WaveDefinition[]) => definitions.map((definition) => ({ ...definition, pattern: [...definition.pattern] }));
+const BOSS_WAVE_ROLES: Record<number, Exclude<WaveDefinition["boss"], null>> = { 5: "early", 10: "mid", 15: "late", 20: "final" };
+const withBossRole = (definition: WaveDefinition): WaveDefinition => ({ ...definition, boss: BOSS_WAVE_ROLES[definition.wave] ?? definition.boss });
+const cloneDefinitions = (definitions: WaveDefinition[]) => definitions.map((definition) => ({ ...withBossRole(definition), pattern: [...definition.pattern] }));
 let activeWaveDefinitions = cloneDefinitions(WAVE_DEFINITIONS);
 
 export function normalizeWaveDefinitions(value: unknown): WaveDefinition[] {
   const source = Array.isArray(value) ? value : value && typeof value === "object" && Array.isArray((value as { waves?: unknown }).waves) ? (value as { waves: unknown[] }).waves : null;
   if (!source || source.length !== MAX_WAVE) throw new Error(`웨이브 정의는 정확히 ${MAX_WAVE}개여야 합니다.`);
-  return WAVE_DEFINITIONS.map((fallback, index) => {
+  return WAVE_DEFINITIONS.map((_fallback, index) => {
+    const fallback = withBossRole(WAVE_DEFINITIONS[index]);
     const candidate = source[index] as Partial<WaveDefinition> | undefined;
     if (!candidate || candidate.wave !== index + 1) throw new Error(`Wave ${index + 1} 번호가 올바르지 않습니다.`);
     const name = typeof candidate.name === "string" && candidate.name.trim() ? candidate.name.trim().slice(0, 40) : fallback.name;
@@ -80,7 +83,7 @@ export function getActiveWaveDefinitions() {
 }
 
 export function waveDefinitionFrom(definitions: WaveDefinition[], waveNumber: number) {
-  return definitions[Math.max(0, Math.min(MAX_WAVE - 1, waveNumber - 1))] ?? WAVE_DEFINITIONS[0];
+  return withBossRole(definitions[Math.max(0, Math.min(MAX_WAVE - 1, waveNumber - 1))] ?? WAVE_DEFINITIONS[0]);
 }
 
 export function waveDefinition(waveNumber: number) {

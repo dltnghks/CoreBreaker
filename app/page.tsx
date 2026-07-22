@@ -14,7 +14,7 @@ type PayloadId = "pierce" | "blast" | "glass" | "link";
 type ItemKind = "multiball" | "auto-barrier" | "core-repair" | "cooldown-reset";
 type BrickKind = "normal" | "boss-armor" | "boss-core" | "boss-minion";
 type BrickTrait = "standard" | "guard" | "explosive" | "indestructible" | "healer" | "reflector";
-type BossRewardId = ClassSkillId;
+type BossRewardId = UpgradeId;
 type BotPolicy = "balanced" | "survival" | "random";
 type BotSpeed = 1 | 2 | 4 | 8;
 type BenchmarkRunMode = "parallel" | "watch";
@@ -24,7 +24,7 @@ type SkillSelectionSource = "start" | "wave" | "boss";
 type SkillSelectionEvent = { wave: number; skillId: UpgradeId; level: number; source: SkillSelectionSource };
 type SkillRunMetric = { activations: number; damage: number; kills: number };
 type BenchmarkRuleset = "live-v1" | "live-v2" | "watch-v1" | "parallel-v1" | typeof PARALLEL_BENCHMARK_RULESET;
-type BotRunResult = BotMetrics & { id: string; run: number; seed?: number; policy: BotPolicy; policyVersion?: string; engineVersion?: string; engineParity?: string; speed: BotSpeed; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; startingSkills: UpgradeId[]; skillHistory: SkillSelectionEvent[]; ultimates: UpgradeId[]; skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig | null; benchmarkRuleset?: BenchmarkRuleset | null; waveSamples: BotWaveSample[]; evaluationComplete: boolean; terminationReason?: HeadlessTerminationReason; timeoutDiagnostic?: HeadlessTimeoutDiagnostic | null; skillBench: SkillBenchVariant | null };
+type BotRunResult = BotMetrics & { id: string; run: number; seed?: number; policy: BotPolicy; policyVersion?: string; engineVersion?: string; engineParity?: string; speed: BotSpeed; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; startingSkills: UpgradeId[]; skillHistory: SkillSelectionEvent[]; ultimates: UpgradeId[]; bossEnhancements?: Partial<Record<UpgradeId, number>>; skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig | null; benchmarkRuleset?: BenchmarkRuleset | null; waveSamples: BotWaveSample[]; evaluationComplete: boolean; terminationReason?: HeadlessTerminationReason; timeoutDiagnostic?: HeadlessTimeoutDiagnostic | null; skillBench: SkillBenchVariant | null };
 
 type Upgrade = {
   id: UpgradeId;
@@ -142,6 +142,8 @@ type GameState = {
   comboTimer: number;
   bricksBroken: number;
   upgrades: UpgradeId[];
+  skillHistory: SkillSelectionEvent[];
+  skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>;
   paddleTrack: number[];
   particles: Particle[];
   particlePool: Particle[];
@@ -168,6 +170,7 @@ type GameState = {
   bossAttackPattern: number;
   bossMultiballsRemaining: number;
   bossRewards: BossRewardId[];
+  bossEnhancements: Partial<Record<UpgradeId, number>>;
   autoGuard: boolean;
   rowTimer: number;
   rowInterval: number;
@@ -508,11 +511,24 @@ function skillValue(id: UpgradeId, level: number) {
   return level <= 0 || !config ? 0 : levelValue(level, config.levels);
 }
 
-function skillCooldownSeconds(id: ClassSkillId, level: number, upgrades: UpgradeId[]) {
+function enhancedSkillValue(id: UpgradeId, level: number, enhancement = 0) {
+  const base = skillValue(id, level);
+  if (!base || enhancement <= 0) return base;
+  const config = activeSkillMap[id];
+  if (!config) return base;
+  const step = Math.max(config.direction === "down" ? 0.2 : 1, Math.abs(config.levels[2] - config.levels[1]));
+  return config.direction === "down" ? Math.max(0.2, base - enhancement * step) : base + enhancement * step;
+}
+
+function gameSkillValue(game: GameState, id: UpgradeId) {
+  return enhancedSkillValue(id, upgradeLevel(game.upgrades, id), game.bossEnhancements?.[id] ?? 0);
+}
+
+function skillCooldownSeconds(id: ClassSkillId, level: number, upgrades: UpgradeId[], enhancements: Partial<Record<UpgradeId, number>> = {}) {
   if (level <= 0) return 0;
   const base = activeSkillMap[id]?.cooldown[Math.min(2, level - 1)] ?? 0;
   if (base <= 0) return 0;
-  const reduction = Math.min(0.75, skillValue("common-cooldown", upgradeLevel(upgrades, "common-cooldown")) / 100);
+  const reduction = Math.min(0.75, enhancedSkillValue("common-cooldown", upgradeLevel(upgrades, "common-cooldown"), enhancements["common-cooldown"] ?? 0) / 100);
   return Math.max(0.2, base * (1 - reduction));
 }
 
@@ -756,7 +772,7 @@ function makeBrickRow(row: number, wave = 1, ghostCount = 0, balance = DEFAULT_B
 
 function makeWaveBricks(waveNumber: number, balance = DEFAULT_BALANCE_CONFIG): Brick[] {
   const definition = waveDefinition(waveNumber);
-  if (definition.boss) return makeBossBricks(definition.boss === "final" ? 2 : 1, 0, balance, definition.hpMultiplier);
+  if (definition.boss) return makeBossBricks(definition.boss === "final" ? 4 : definition.boss === "late" ? 3 : definition.boss === "mid" ? 2 : 1, 0, balance, definition.hpMultiplier);
   const cols = 12;
   const gap = 7;
   const margin = 36;
@@ -794,7 +810,7 @@ function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfi
   const height = rows * cellHeight;
   const startX = (W - width) / 2;
   const startY = 94;
-  const bossHpMultiplier = stage >= 2 ? 1.8 : 1.25;
+  const bossHpMultiplier = [1, 1.25, 1.55, 1.9, 2.25][Math.min(4, stage)] ?? 1.25;
   const coreHp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage + ghostCount * 10) * bossHpMultiplier * waveHpMultiplier);
   return [{
     x: startX, y: startY, w: width, h: height,
@@ -840,10 +856,10 @@ function makeBossAttackBricks(stage: number, patternIndex: number, forcedMultiba
   const gap = 7;
   const margin = 36;
   const width = (W - margin * 2 - gap * (cols - 1)) / cols;
-  const patterns = stage >= 2 ? [...MID_BOSS_ATTACK_PATTERNS, ...FINAL_BOSS_ATTACK_PATTERNS] : MID_BOSS_ATTACK_PATTERNS;
+  const patterns = stage <= 1 ? MID_BOSS_ATTACK_PATTERNS.slice(0, 2) : stage === 2 ? [...MID_BOSS_ATTACK_PATTERNS, FINAL_BOSS_ATTACK_PATTERNS[0]] : [...MID_BOSS_ATTACK_PATTERNS, ...FINAL_BOSS_ATTACK_PATTERNS];
   const pattern = patterns[patternIndex % patterns.length];
   const bricks = pattern.cells.map(({ col, row, trait }, index) => {
-    const hp = 1 + Math.floor(stage / 2);
+    const hp = [1, 1, 2, 3, 4][Math.min(4, stage)] ?? 1;
     return {
       x: margin + col * (width + gap), y: 214 + row * BRICK_ROW_STEP, w: width, h: 24,
       hp, maxHp: hp, hue: 28, alive: true, kind: "boss-minion" as const,
@@ -938,6 +954,7 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     bossAttackPattern: 0,
     bossMultiballsRemaining: 0,
     bossRewards: [],
+    bossEnhancements: {},
     autoGuard: false,
     rowTimer: rowInterval,
     rowInterval,
@@ -975,8 +992,8 @@ function prepareWave(game: GameState, waveNumber: number, balance: BalanceConfig
   game.pendingWave = null;
   game.bossActive = definition.boss !== null;
   game.bossPending = false;
-  game.bossStage = definition.boss === "final" ? 2 : definition.boss === "mid" ? 1 : game.bossStage;
-  game.nextBossWave = waveNumber < 10 ? 10 : 20;
+  game.bossStage = definition.boss === "final" ? 4 : definition.boss === "late" ? 3 : definition.boss === "mid" ? 2 : definition.boss === "early" ? 1 : game.bossStage;
+  game.nextBossWave = [5, 10, 15, 20].find((bossWave) => bossWave > waveNumber) ?? 20;
   game.bricks = makeWaveBricks(waveNumber, balance);
   game.items = [];
   game.safetyBlocks = [];
@@ -1006,7 +1023,7 @@ function formatScore(value: number) {
 }
 
 function hudFromGame(game: GameState) {
-  const skillLevels = [...new Set(game.upgrades)].map((id) => ({ id, level: upgradeLevel(game.upgrades, id) }));
+  const skillLevels = [...new Set(game.upgrades)].map((id) => ({ id, level: upgradeLevel(game.upgrades, id), enhancement: game.bossEnhancements?.[id] ?? 0 }));
   return {
     score: game.score, time: game.elapsed, level: game.level,
     combo: game.combo, bricks: game.bricksBroken, balls: game.balls.filter((ball) => ball.owner === "player").length,
@@ -1121,7 +1138,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const [mode, setMode] = useState<"lobby" | "initialskills" | "playing" | "levelup" | "bossreward" | "waveclear" | "transition" | "result">("lobby");
   const [transitionWave, setTransitionWave] = useState<number | null>(null);
   const [clearedWave, setClearedWave] = useState<{ wave: number; boss: boolean } | null>(null);
-  const [hud, setHud] = useState({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, barriers: 0, overdriveLevel: 0, overdriveMultiplier: 1, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0, skillLevels: [] as { id: UpgradeId; level: number }[] });
+  const [hud, setHud] = useState({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, barriers: 0, overdriveLevel: 0, overdriveMultiplier: 1, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0, skillLevels: [] as { id: UpgradeId; level: number; enhancement?: number }[] });
   const [choices, setChoices] = useState<UpgradeChoice[]>([]);
   const [rerollsLeft, setRerollsLeft] = useState(1);
   const [result, setResult] = useState<GameState | null>(null);
@@ -1553,19 +1570,30 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const applyBossReward = useCallback((rewardId: BossRewardId) => {
     const game = gameRef.current;
     if (!game) return;
+    if (!game.upgrades.includes(rewardId)) return;
+    const enhancement = (game.bossEnhancements[rewardId] ?? 0) + 1;
+    game.bossEnhancements[rewardId] = enhancement;
     game.bossRewards.push(rewardId);
-    game.upgrades.push(rewardId);
     game.skillHistory.push({ wave: game.wave, skillId: rewardId, level: upgradeLevel(game.upgrades, rewardId), source: "boss" });
-    const skill = activeSkillMap[rewardId] ?? ULTIMATE_SKILLS.find((item) => item.id === rewardId)!;
+    const skill = activeSkillMap[rewardId];
+    if (!skill) return;
     const reward = {
       name: skill.name,
       color: skill.color,
     };
     game.flashes.push({ text: reward.name, x: W / 2, y: H / 2, life: 1.4, color: reward.color });
-    pushPooledEffect(game, { kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 210, life: 1, maxLife: 1, color: reward.color, variant: 0, skillId: rewardId });
-    game.flashes.push({ text: "ULTIMATE ACQUIRED", x: W / 2, y: H / 2 + 42, life: 1.8, color: reward.color });
+    pushPooledEffect(game, { kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 210, life: 1, maxLife: 1, color: reward.color, variant: 0, skillId: rewardId as ClassSkillId });
+    game.flashes.push({ text: `SKILL BOOST +${enhancement}`, x: W / 2, y: H / 2 + 42, life: 1.8, color: "#ffd166" });
+    if (rewardId === "common-xp") {
+      game.maxCoreHp += Math.max(1, enhancedSkillValue(rewardId, upgradeLevel(game.upgrades, rewardId), enhancement) - enhancedSkillValue(rewardId, upgradeLevel(game.upgrades, rewardId), enhancement - 1));
+      game.coreHp = Math.min(game.maxCoreHp, game.coreHp + 1);
+    }
+    if (rewardId === "common-wide") game.paddleWidth = Math.min(260, game.paddleWidth + 10);
+    if (rewardId === "common-ball-size") game.balls.forEach((ball) => { ball.radius = 8 + gameSkillValue(game, "common-ball-size"); });
+    if (rewardId === "common-damage") game.balls.forEach((ball) => syncBallPayloadDisplay(ball, game.upgrades));
     setImpactFeedback(game, 9, reward.color, 0.38, 0.2);
-    audioRef.current?.play("ultimate", 1.6);
+    audioRef.current?.play("skill", 1.6);
+    setHud(hudFromGame(game));
     enterPendingWave(game);
   }, [enterPendingWave]);
 
@@ -2905,6 +2933,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const blastLevel = ball.payloads.blast ?? 0;
         const linkLevel = ball.payloads.link ?? 0;
         const sourcePaddle = paddleFor(ball.sourcePaddleId);
+        const skillValue = (id: UpgradeId, level: number) => enhancedSkillValue(id, level, sourcePaddle.id === "player" ? game.bossEnhancements?.[id] ?? 0 : 0);
         const activatedImpactSkills = new Set<ClassSkillId>();
         const availableBallSkillLevel = (id: ClassSkillId) => {
           if (!ball.canTriggerSkills) return 0;
@@ -2913,7 +2942,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         };
         const consumeBallSkill = (id: ClassSkillId, level: number) => {
           if (level <= 0) return;
-          const cooldown = skillCooldownSeconds(id, level, sourcePaddle.upgrades);
+          const cooldown = skillCooldownSeconds(id, level, sourcePaddle.upgrades, sourcePaddle.id === "player" ? game.bossEnhancements : {});
           const recursiveMultiplier = ball.temporaryTime > 0 && (id === "archer-rapid" || id === "archer-infinite") ? 1 + ball.skillGeneration * 0.5 : 1;
           ball.skillCooldowns[id] = cooldown * recursiveMultiplier;
           activatedImpactSkills.add(id);
@@ -3319,12 +3348,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         if (wasBoss) {
           if (botActiveRef.current) {
             if (!botSkillBenchActiveRef.current || skillBenchConfigRef.current.environment === "ecosystem") {
-              const ultimateChoices = createUpgradeCatalog(activeSkillConfigsRef.current.filter((skill) => skill.ultimate))
-                .filter((upgrade) => !game.bossRewards.includes(upgrade.id as BossRewardId));
-              const selectedUltimate = ultimateChoices.length
-                ? chooseBotUpgrade(ultimateChoices, game.upgrades, botPolicyRef.current)
+              const enhancementChoices = createUpgradeCatalog(activeSkillConfigsRef.current.filter((skill) => game.upgrades.includes(skill.id) && !skill.ultimate));
+              const selectedEnhancement = enhancementChoices.length
+                ? chooseBotUpgrade(enhancementChoices, game.upgrades, botPolicyRef.current)
                 : undefined;
-              if (selectedUltimate) applyBossReward(selectedUltimate.id as BossRewardId);
+              if (selectedEnhancement) applyBossReward(selectedEnhancement.id as BossRewardId);
               else enterPendingWave(game);
             } else {
               enterPendingWave(game);
@@ -5366,6 +5394,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     } satisfies Upgrade;
   });
   const upgradeCounts = (ids: UpgradeId[]) => [...upgradeCatalog, ...ultimateCatalog].map((u) => ({ ...u, count: ids.filter((id) => id === u.id).length })).filter((u) => u.count > 0);
+  const bossEnhancementCatalog = [...new Set(gameRef.current?.upgrades ?? [])].map((id) => {
+    const skill = activeSkillMap[id];
+    if (!skill) return null;
+    const current = gameRef.current?.bossEnhancements?.[id] ?? 0;
+    return { id, name: skill.name, category: skill.category, mechanic: skill.mechanic, tag: `${CLASS_META[skill.category].tag} · SKILL BOOST`, description: skill.description, color: skill.color, enhancement: current + 1 };
+  }).filter((entry): entry is Upgrade & { enhancement: number } => entry !== null);
   const visibleBotResults = benchmarkMode ? botResults.filter((item) => item.benchmarkRuleset === BENCHMARK_RULESET) : botResults;
   const botAverageSurvival = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.elapsed, 0) / visibleBotResults.length : 0;
   const botAverageWave = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.wave, 0) / visibleBotResults.length : 0;
@@ -5473,12 +5507,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             <div className="hud-badge hud-score" aria-label={`점수 ${formatScore(hud.score)}`}><i aria-hidden="true">✦</i><span><small>SCORE</small><strong>{formatScore(hud.score)}</strong></span></div>
             <div className={hud.overdriveLevel > 0 ? "hud-badge hud-speed active" : "hud-badge hud-speed"} aria-label={`공 속도 ${Math.round(hud.overdriveMultiplier * 100)}퍼센트`}><i aria-hidden="true">»</i><span><small>SPEED</small><strong>{Math.round(hud.overdriveMultiplier * 100)}%</strong><em>{hud.overdriveLevel < MAX_OVERDRIVE_LEVEL ? "+1%/s" : "MAX"}</em></span></div>
             <div className="skill-loadout-hud" aria-label="보유 스킬">
-              {hud.skillLevels.map(({ id, level }) => {
+              {hud.skillLevels.map(({ id, level, enhancement = 0 }) => {
                 const skill = upgradeCatalog.find((entry) => entry.id === id);
                 const evolved = isSkillEvolved(gameRef.current?.upgrades ?? [], id);
                 const category = skill?.category ?? "common";
                 const levelState = evolved ? "진화" : level >= 3 ? "최대 강화" : level === 2 ? "강화" : "습득";
-                return <div key={id} className={`skill-loadout-entry class-${category} level-${Math.min(3, level)}${evolved ? " evolved" : ""}`} style={{ "--skill-color": category === "common" ? "#8f98a7" : skill?.color ?? "#8f98a7" } as React.CSSProperties} aria-label={`${skill?.name ?? id}, ${levelState}`} title={`${skill?.name ?? id} · ${levelState}`}><i aria-hidden="true">{SKILL_ICONS[id] ?? "•"}</i>{evolved && <b aria-hidden="true">✦</b>}</div>;
+                return <div key={id} className={`skill-loadout-entry class-${category} level-${Math.min(3, level)}${evolved ? " evolved" : ""}`} style={{ "--skill-color": category === "common" ? "#8f98a7" : skill?.color ?? "#8f98a7" } as React.CSSProperties} aria-label={`${skill?.name ?? id}, ${levelState}`} title={`${skill?.name ?? id} · LEVEL ${level}${enhancement > 0 ? ` · +${enhancement}` : ""}`}><i aria-hidden="true">{SKILL_ICONS[id] ?? "•"}</i>{evolved && <b aria-hidden="true">✦</b>}{enhancement > 0 && <strong className="skill-enhancement-badge">+{enhancement}</strong>}<div className="skill-loadout-tooltip" role="tooltip"><b>{skill?.name ?? id}</b><span>LEVEL {level}{enhancement > 0 ? ` · +${enhancement}` : ""}</span><p><SkillDescriptionText text={skill?.description ?? ""} /></p></div></div>;
               })}
             </div>
             <div className="drop-legend" aria-label="아이템 블록 표시 안내">
@@ -5526,7 +5560,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                 <p className="overlay-kicker">WAVE REWARD // SIGNAL UPGRADE</p>
                 <h2>조합을 선택하세요</h2>
                 <div className="upgrade-grid">
-                  <p className="upgrade-ball-summary">스킬은 공마다 독립 쿨타임으로 발동 · 재사용 가속은 모든 공의 쿨타임 감소 · 궁극기는 보스 보상 전용</p>
+                  <p className="upgrade-ball-summary">스킬은 공마다 독립 쿨타임으로 발동 · 재사용 가속은 모든 공의 쿨타임을 줄입니다.</p>
                   {choices.map(({ upgrade, ballCost }, index) => {
                     const pickCount = skillPickCount(gameRef.current?.upgrades ?? [], upgrade.id);
                     const currentLevel = Math.min(3, pickCount);
@@ -5565,15 +5599,16 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             {mode === "bossreward" && (
               <div className="overlay level-overlay boss-reward-overlay">
                 <p className="overlay-kicker">CORE FORTRESS DESTROYED // BOSS CORE</p>
-                <h2>궁극기를 선택하세요</h2>
+                <h2>보유 스킬을 강화하세요</h2>
                 <div className="upgrade-grid">
-                  {ultimateCatalog.map((reward, index) => (
-                    <button key={reward.id} className={`upgrade-card class-${reward.category}`} onClick={() => applyBossReward(reward.id)} style={{ "--accent": reward.color } as React.CSSProperties}>
+                  {bossEnhancementCatalog.map((reward, index) => (
+                    <button key={reward.id} className={`upgrade-card class-${reward.category} boss-enhancement-card`} onClick={() => applyBossReward(reward.id)} style={{ "--accent": reward.color } as React.CSSProperties}>
                       <span className="upgrade-index">0{index + 1}</span>
                       <span className="upgrade-tag">{reward.tag}</span>
                       <strong>{reward.name}</strong>
+                      <b className="boss-enhancement-value">+{reward.enhancement}</b>
                       <p><SkillDescriptionText text={reward.description} /></p>
-                      <em>LEGENDARY</em>
+                      <em>INSTANT BOOST</em>
                     </button>
                   ))}
                 </div>

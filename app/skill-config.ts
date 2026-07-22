@@ -184,6 +184,19 @@ export const SKILL_EVOLUTIONS: Partial<Record<ClassSkillId, string>> = {
   "mage-mana-blast": "기능이 봉인된 블럭은 직접 공격으로 1의 추가 피해를 받습니다.",
 };
 
+// Common skills also gain a distinct evolution at their fourth pick.
+SKILL_EVOLUTIONS["common-magnet"] = "아이템이 패들에 닿기 전까지 속도가 빨라지고, 화면 전체에서 흡수됩니다.";
+SKILL_EVOLUTIONS["common-luck"] = "멀티볼 아이템이 생성될 때 추가 아이템이 함께 생성됩니다.";
+SKILL_EVOLUTIONS["common-wide"] = "패들의 양 끝이 피해를 한 번 더 받아 공의 반사 기회를 늘립니다.";
+SKILL_EVOLUTIONS["common-move-speed"] = "이동 방향 전환 직후 짧은 가속이 붙습니다.";
+SKILL_EVOLUTIONS["common-xp"] = "웨이브 시작 시 CORE가 1회 추가로 회복됩니다.";
+SKILL_EVOLUTIONS["common-combo"] = "패들에 다시 닿아도 콤보가 완전히 끊기지 않고 일부 유지됩니다.";
+SKILL_EVOLUTIONS["common-ball-size"] = "공이 블록에 닿을 때 작은 충격 범위 피해를 줍니다.";
+SKILL_EVOLUTIONS["common-skill-range"] = "범위 스킬이 가장자리의 블록까지 판정합니다.";
+SKILL_EVOLUTIONS["common-chain"] = "연계가 한 번 더 이어지고, 같은 타격에서 중복 대상을 허용합니다.";
+SKILL_EVOLUTIONS["common-damage"] = "공격이 보호·회복 효과를 받을 때도 기본 피해가 유지됩니다.";
+SKILL_EVOLUTIONS["common-cooldown"] = "스킬 발동 직후 다음 쿨타임이 한 번 더 단축됩니다.";
+
 SKILL_EVOLUTIONS["archer-rapid"] = "임시 화살이 보유한 다른 스킬과 연사·무한 화살을 사용할 수 있습니다. 생성 세대마다 화살 생성 쿨타임이 증가합니다.";
 
 const skill = (
@@ -234,7 +247,7 @@ const passiveSkill = (
   trigger: "획득 즉시 상시 적용",
   effect,
   description,
-  evolution: null,
+  evolution: SKILL_EVOLUTIONS[id] ?? null,
   color: SKILL_COLORS[id],
   unit,
   levels,
@@ -307,7 +320,7 @@ export function normalizeSkillConfigs(saved: unknown): SkillConfig[] {
     const savedCooldown = Array.isArray(savedSkill?.cooldown) && savedSkill.cooldown.length === 3 && savedSkill.cooldown.every((value) => Number.isFinite(Number(value)))
       ? savedSkill.cooldown.map(Number) as [number, number, number]
       : base.cooldown;
-    return { ...base, ...migrated, id: base.id, category: base.category, mechanic: base.mechanic, color: base.color, owner: "ball", ballCost: 0, ultimate: base.ultimate, levels: base.id === "common-xp" || legacyReflectionTrigger ? base.levels : levels, cooldown: legacyReflectionTrigger ? base.cooldown : savedCooldown };
+    return { ...base, ...migrated, id: base.id, category: base.category, mechanic: base.mechanic, color: base.color, owner: "ball", ballCost: 0, ultimate: base.ultimate, evolution: base.evolution, levels: base.id === "common-xp" || legacyReflectionTrigger ? base.levels : levels, cooldown: legacyReflectionTrigger ? base.cooldown : savedCooldown };
   });
 }
 
