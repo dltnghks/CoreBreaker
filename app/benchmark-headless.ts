@@ -7,11 +7,29 @@ import { WAVE_DEFINITIONS, type WaveDefinition } from "./wave-config";
 
 export type HeadlessBotPolicy = "balanced" | "survival" | "random";
 export const PARALLEL_BENCHMARK_RULESET = "canonical-parity-v1" as const;
+export type HeadlessTerminationReason = "complete" | "core-dead" | "timeout";
+export type HeadlessTimeoutDiagnostic = {
+  classification: "reflector-lock" | "trajectory-loop" | "healer-stalemate" | "reinforcement-overrun" | "completion-rule" | "no-damage" | "insufficient-throughput";
+  stuckWave: number;
+  waveElapsed: number;
+  remainingBrickCount: number;
+  remainingHp: number;
+  remainingTraits: Record<string, number>;
+  remainingBricks: Array<{ id: number; trait: string; kind: string; hp: number; maxHp: number; x: number; y: number }>;
+  secondsSinceLastDamage: number;
+  damageLast30Seconds: number;
+  lastTargetKey: string;
+  bankPhase: number;
+  targetChanges: number;
+  reflectorBlockedHits: number;
+  maxTrajectoryRepeats: number;
+};
+
 
 export type HeadlessBenchmarkRequest = { run: number; seed: number; sessionId?: string; policy: HeadlessBotPolicy; balanceConfig?: BalanceConfig; benchmarkConfig?: BenchmarkConfig; skills?: SkillConfig[]; waveDefinitions?: WaveDefinition[]; maxSimulatedSeconds?: number };
 export type HeadlessBenchmarkResult = {
   id: string; run: number; seed: number; policy: HeadlessBotPolicy; policyVersion: typeof POLICY_VERSION; engineVersion: typeof ENGINE_VERSION; engineParity: typeof ENGINE_PARITY; speed: 8; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; startingSkills: UpgradeId[];
-  skillHistory: CanonicalState["skillHistory"]; ultimates: UpgradeId[]; skillMetrics: CanonicalState["skillMetrics"]; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig; benchmarkRuleset: typeof PARALLEL_BENCHMARK_RULESET; waveSamples: CanonicalState["waveMetrics"]; evaluationComplete: boolean; skillBench: null; maxBalls: number; ballLosses: number; missileActivations: number; safetySaves: number; gravityRescues: number; finalSnapshot: ReturnType<typeof canonicalSnapshot>;
+  skillHistory: CanonicalState["skillHistory"]; ultimates: UpgradeId[]; skillMetrics: CanonicalState["skillMetrics"]; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig; benchmarkRuleset: typeof PARALLEL_BENCHMARK_RULESET; waveSamples: CanonicalState["waveMetrics"]; evaluationComplete: boolean; terminationReason: HeadlessTerminationReason; timeoutDiagnostic: HeadlessTimeoutDiagnostic | null; skillBench: null; maxBalls: number; ballLosses: number; missileActivations: number; safetySaves: number; gravityRescues: number; finalSnapshot: ReturnType<typeof canonicalSnapshot>;
 };
 
 function pickCount(upgrades: UpgradeId[], id: UpgradeId) { return upgrades.filter((entry) => entry === id).length; }
@@ -60,9 +78,81 @@ export function runCanonicalControlledSimulation(request: HeadlessBenchmarkReque
 
 export function runHeadlessBenchmark(request: HeadlessBenchmarkRequest): HeadlessBenchmarkResult {
   const policyState = createBotPolicyState(request.seed ^ 0x9e3779b9);
-  const state = runCanonicalControlledSimulation(request, (current) => decideBotControls(observation(current), policyState, FIXED_STEP_SECONDS));
+  let trackedWave = 1;
+  let targetChanges = 0;
+  let previousTargetKey = "";
+  let reflectorBlockedStart = 0;
+  let maxTrajectoryRepeats = 0;
+  let nextTrajectorySample = 0;
+  const trajectoryVisits = new Map<string, number>();
+  const damageHistory: Array<{ elapsed: number; damage: number }> = [{ elapsed: 0, damage: 0 }];
+  const state = runCanonicalControlledSimulation(request, (current, step) => {
+    if (current.wave !== trackedWave) {
+      trackedWave = current.wave;
+      targetChanges = 0;
+      previousTargetKey = "";
+      reflectorBlockedStart = current.reflectorBlockedHits;
+      maxTrajectoryRepeats = 0;
+      trajectoryVisits.clear();
+    }
+    const controls = decideBotControls(observation(current), policyState, FIXED_STEP_SECONDS);
+    if (policyState.lastTargetKey !== previousTargetKey) {
+      if (previousTargetKey) targetChanges++;
+      previousTargetKey = policyState.lastTargetKey;
+    }
+    if (step >= nextTrajectorySample) {
+      nextTrajectorySample = step + Math.round(1 / FIXED_STEP_SECONDS);
+      damageHistory.push({ elapsed: current.elapsed, damage: current.totalDamage });
+      const trajectoryKey = current.balls.map((ball) => `${Math.round(ball.x / 18)}:${Math.round(ball.y / 18)}:${Math.sign(ball.vx)}:${Math.sign(ball.vy)}`).sort().join("|");
+      const visits = (trajectoryVisits.get(trajectoryKey) ?? 0) + 1;
+      trajectoryVisits.set(trajectoryKey, visits);
+      maxTrajectoryRepeats = Math.max(maxTrajectoryRepeats, visits);
+    }
+    return controls;
+  });
   const benchmark = { ...DEFAULT_BENCHMARK_CONFIG, ...request.benchmarkConfig } as BenchmarkConfig;
+  const terminationReason: HeadlessTerminationReason = state.complete ? "complete" : state.gameOver ? "core-dead" : "timeout";
+  const remainingBricks = state.bricks.filter((brick) => brick.alive);
+  const remainingTraits = remainingBricks.reduce<Record<string, number>>((counts, brick) => {
+    counts[brick.trait] = (counts[brick.trait] ?? 0) + 1;
+    return counts;
+  }, {});
+  const damageWindowStart = Math.max(0, state.elapsed - 30);
+  let damageAtWindowStart = 0;
+  for (const sample of damageHistory) {
+    if (sample.elapsed > damageWindowStart) break;
+    damageAtWindowStart = sample.damage;
+  }
+  const damageLast30Seconds = Math.max(0, state.totalDamage - damageAtWindowStart);
+  const waveReflectorBlockedHits = Math.max(0, state.reflectorBlockedHits - reflectorBlockedStart);
+  const damageableRemaining = remainingBricks.filter((brick) => brick.trait !== "indestructible");
+  const hasHealer = remainingBricks.some((brick) => brick.trait === "healer");
+  const bossMinions = remainingBricks.filter((brick) => brick.kind === "boss-minion").length;
+  const classification: HeadlessTimeoutDiagnostic["classification"] =
+    damageableRemaining.length === 0 && remainingBricks.length > 0 ? "completion-rule"
+      : damageLast30Seconds <= 0 && waveReflectorBlockedHits > 0 ? "reflector-lock"
+      : damageLast30Seconds <= 0 && maxTrajectoryRepeats >= 3 ? "trajectory-loop"
+      : hasHealer && damageLast30Seconds <= Math.max(2, remainingTraits.healer ?? 0) ? "healer-stalemate"
+      : bossMinions >= 4 && damageLast30Seconds < bossMinions ? "reinforcement-overrun"
+      : damageLast30Seconds <= 0 ? "no-damage"
+      : "insufficient-throughput";
+  const timeoutDiagnostic: HeadlessTimeoutDiagnostic | null = terminationReason === "timeout" ? {
+    classification,
+    stuckWave: state.wave,
+    waveElapsed: Number(state.waveElapsed.toFixed(3)),
+    remainingBrickCount: remainingBricks.length,
+    remainingHp: Number(remainingBricks.reduce((sum, brick) => sum + Math.max(0, brick.hp), 0).toFixed(3)),
+    remainingTraits,
+    remainingBricks: remainingBricks.map((brick) => ({ id: brick.id, trait: brick.trait, kind: brick.kind, hp: Number(brick.hp.toFixed(3)), maxHp: Number(brick.maxHp.toFixed(3)), x: Number(brick.x.toFixed(1)), y: Number(brick.y.toFixed(1)) })),
+    secondsSinceLastDamage: Number(Math.max(0, state.elapsed - state.lastDamageElapsed).toFixed(3)),
+    damageLast30Seconds: Number(damageLast30Seconds.toFixed(3)),
+    lastTargetKey: policyState.lastTargetKey,
+    bankPhase: policyState.bankPhase,
+    targetChanges,
+    reflectorBlockedHits: waveReflectorBlockedHits,
+    maxTrajectoryRepeats,
+  } : null;
   return {
-    id: `canonical-${request.sessionId ?? "local"}-${request.seed}-${request.run}`, run: request.run, seed: request.seed, policy: request.policy, policyVersion: POLICY_VERSION, engineVersion: ENGINE_VERSION, engineParity: ENGINE_PARITY, speed: 8, elapsed: state.elapsed, wave: state.wave, score: state.score, bricks: state.bricksBroken, maxCombo: state.maxCombo, coreHp: state.coreHp, upgrades: [...state.upgrades], startingSkills: state.skillHistory.filter((event) => event.source === "start").map((event) => event.skillId), skillHistory: state.skillHistory, ultimates: state.skillHistory.filter((event) => event.source === "boss").map((event) => event.skillId), skillMetrics: state.skillMetrics, createdAt: Date.now(), balanceConfig: state.balance, benchmarkConfig: benchmark, benchmarkRuleset: PARALLEL_BENCHMARK_RULESET, waveSamples: state.waveMetrics, evaluationComplete: state.complete && state.coreHp > 0, skillBench: null, maxBalls: state.maxBalls, ballLosses: state.ballLosses, missileActivations: state.skillMetrics["archer-rapid"]?.activations ?? 0, safetySaves: state.skillMetrics["warrior-guard"]?.activations ?? 0, gravityRescues: state.skillMetrics["mage-black-hole"]?.activations ?? 0, finalSnapshot: canonicalSnapshot(state),
+    id: `canonical-${request.sessionId ?? "local"}-${request.seed}-${request.run}`, run: request.run, seed: request.seed, policy: request.policy, policyVersion: POLICY_VERSION, engineVersion: ENGINE_VERSION, engineParity: ENGINE_PARITY, speed: 8, elapsed: state.elapsed, wave: state.wave, score: state.score, bricks: state.bricksBroken, maxCombo: state.maxCombo, coreHp: state.coreHp, upgrades: [...state.upgrades], startingSkills: state.skillHistory.filter((event) => event.source === "start").map((event) => event.skillId), skillHistory: state.skillHistory, ultimates: state.skillHistory.filter((event) => event.source === "boss").map((event) => event.skillId), skillMetrics: state.skillMetrics, createdAt: Date.now(), balanceConfig: state.balance, benchmarkConfig: benchmark, benchmarkRuleset: PARALLEL_BENCHMARK_RULESET, waveSamples: state.waveMetrics, evaluationComplete: state.complete && state.coreHp > 0, terminationReason, timeoutDiagnostic, skillBench: null, maxBalls: state.maxBalls, ballLosses: state.ballLosses, missileActivations: state.skillMetrics["archer-rapid"]?.activations ?? 0, safetySaves: state.skillMetrics["warrior-guard"]?.activations ?? 0, gravityRescues: state.skillMetrics["mage-black-hole"]?.activations ?? 0, finalSnapshot: canonicalSnapshot(state),
   };
 }

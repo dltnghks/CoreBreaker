@@ -59,6 +59,9 @@ export type CanonicalState = {
   maxCombo: number;
   ballLosses: number;
   maxBalls: number;
+  totalDamage: number;
+  lastDamageElapsed: number;
+  reflectorBlockedHits: number;
   barrierTime: number;
   bossAttackTimer: number;
   bossPattern: number;
@@ -154,6 +157,10 @@ function damageBrick(state: CanonicalState, brick: CanonicalBrick, damage: numbe
   if (!brick.alive || brick.trait === "indestructible") return 0;
   if (directBallHit && brick.guardReady) { brick.guardReady = false; brick.trait = "standard"; return 0; }
   const applied = Math.min(brick.hp, Math.max(0, damage));
+  if (applied > 0) {
+    state.totalDamage += applied;
+    state.lastDamageElapsed = state.elapsed;
+  }
   brick.hp -= applied;
   if (brick.hp > 0) return applied;
   brick.alive = false;
@@ -270,7 +277,7 @@ function completeWave(state: CanonicalState) {
 export function createCanonicalState(options: { seed: number; targetWave?: number; balance?: BalanceConfig; skills?: SkillConfig[]; waves?: WaveDefinition[] }): CanonicalState {
   const state = {
     seed: options.seed, random: seededRandom(options.seed), balance: { ...DEFAULT_BALANCE_CONFIG, ...options.balance }, skills: options.skills?.length ? options.skills : DEFAULT_SKILLS, waves: options.waves?.length === WAVE_DEFINITIONS.length ? options.waves : WAVE_DEFINITIONS, targetWave: options.targetWave ?? 20,
-    wave: 1, waveElapsed: 0, elapsed: 0, paddleX: GAME_WIDTH / 2, paddleWidth: BASE_PADDLE_WIDTH, balls: [], bricks: [], items: [], gravityWells: [], upgrades: [], skillHistory: [], skillMetrics: {}, waveMetrics: [], coreHp: 8, maxCoreHp: 8, score: 0, bricksBroken: 0, combo: 0, maxCombo: 0, ballLosses: 0, maxBalls: 1, barrierTime: 0, bossAttackTimer: 0, bossPattern: 0, nextBrickId: 1, complete: false, gameOver: false,
+    wave: 1, waveElapsed: 0, elapsed: 0, paddleX: GAME_WIDTH / 2, paddleWidth: BASE_PADDLE_WIDTH, balls: [], bricks: [], items: [], gravityWells: [], upgrades: [], skillHistory: [], skillMetrics: {}, waveMetrics: [], coreHp: 8, maxCoreHp: 8, score: 0, bricksBroken: 0, combo: 0, maxCombo: 0, ballLosses: 0, maxBalls: 1, totalDamage: 0, lastDamageElapsed: 0, reflectorBlockedHits: 0, barrierTime: 0, bossAttackTimer: 0, bossPattern: 0, nextBrickId: 1, complete: false, gameOver: false,
   } satisfies CanonicalState;
   buildWave(state, 1);
   state.balls = [makeBall(state)];
@@ -400,7 +407,7 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
         const guardWasReady = brick.guardReady;
         damageBrick(state, brick, baseDamage, ball, true);
         if (!guardWasReady) triggerCollisionSkills(state, ball, brick);
-      }
+      } else state.reflectorBlockedHits++;
       if (collision.nx) ball.vx = collision.nx * Math.abs(ball.vx); else ball.vy = collision.ny * Math.abs(ball.vy);
       ball.x += collision.nx * 1.5;
       ball.y += collision.ny * 1.5;
@@ -427,6 +434,6 @@ export function canonicalSnapshot(state: CanonicalState) {
     wave: state.wave, elapsed: Number(state.elapsed.toFixed(6)), waveElapsed: Number(state.waveElapsed.toFixed(6)), paddleX: Number(state.paddleX.toFixed(4)), coreHp: state.coreHp, score: state.score, bricksBroken: state.bricksBroken,
     balls: state.balls.map((ball) => [Number(ball.x.toFixed(4)), Number(ball.y.toFixed(4)), Number(ball.vx.toFixed(4)), Number(ball.vy.toFixed(4))]),
     bricks: state.bricks.filter((brick) => brick.alive).map((brick) => [brick.id, Number(brick.hp.toFixed(3)), brick.guardReady]),
-    upgrades: [...state.upgrades], complete: state.complete, gameOver: state.gameOver,
+    upgrades: [...state.upgrades], complete: state.complete, gameOver: state.gameOver, totalDamage: Number(state.totalDamage.toFixed(3)), lastDamageElapsed: Number(state.lastDamageElapsed.toFixed(3)), reflectorBlockedHits: state.reflectorBlockedHits,
   };
 }
