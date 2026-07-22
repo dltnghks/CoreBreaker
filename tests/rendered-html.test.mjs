@@ -635,7 +635,9 @@ test("aims the visible benchmark bot at live hittable bricks independently of pa
   assert.match(policy, /predictLandingX/);
   assert.match(policy, /const directTargets = attackable\.filter\(\(brick\) => brick\.trait !== "reflector"\)/);
   assert.match(policy, /const reflectorTarget = directTarget \? undefined/);
-  assert.match(policy, /reflectorBankAim\(reflectorTarget, observation\.paddleX, state\.bankPhase\)/);
+  assert.match(policy, /reflectorBankAim\(target, observation\.paddleX, state\.bankPhase, reflectorTargets\)/);
+  assert.match(policy, /protectedReflectorBlocking\(directTarget, observation\.bricks, observation\.paddleX\)/);
+  assert.match(policy, /const topY = ballRadius \+ 2/);
   assert.match(source, /const controls = decideBotControls/);
   assert.match(source, /pointerXRef\.current = controls\.aimX;\s*pointerYRef\.current = controls\.aimY/);
   assert.match(source, /game\.paddleX \+= botMoveRef\.current \* PADDLE_KEYBOARD_SPEED/);
@@ -644,15 +646,15 @@ test("aims the visible benchmark bot at live hittable bricks independently of pa
   assert.doesNotMatch(source, /pointerXRef\.current = predictedX/);
 });
 
-test("banks around protected reflector undersides and rotates weak-side attempts", async () => {
+test("routes visible bot shots above protected reflector undersides", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /const BOT_REFLECTOR_AIM_PHASE_SECONDS = 4/);
   assert.match(source, /function protectedReflectorBlockingAim/);
   assert.match(source, /const contactTime = \(protectedFaceY - originY\) \/ verticalTravel/);
   assert.match(source, /contactX >= brick\.x - 8 && contactX <= brick\.x \+ brick\.w \+ 8/);
   assert.match(source, /function reflectorWeakSideBankAim/);
-  assert.match(source, /mirroredTargetX = wallX === 0 \? -weakSideX : W \* 2 - weakSideX/);
-  assert.match(source, /constraintPenalty: Math\.max\(0, horizontalRatio - MAX_PADDLE_REBOUND_RATIO\)/);
+  assert.match(source, /reflectorBankAim\(reflector, originX, phase, reflectors\)/);
+  assert.match(source, /reflectorWeakSideBankAim\(target, originX, phase, bricks\.filter/);
   assert.match(source, /const reflector = reflectors\[Math\.floor\(phase \/ 2\) % reflectors\.length\]/);
   assert.match(source, /Math\.floor\(game\.rowTimer \/ BOT_REFLECTOR_AIM_PHASE_SECONDS\)/);
   assert.doesNotMatch(source, /leftGap >= rightGap/);

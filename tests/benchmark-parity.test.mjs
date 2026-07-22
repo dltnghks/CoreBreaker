@@ -52,29 +52,42 @@ test("small seeded pilot keeps canonical benchmark metadata and finite outcomes"
   }
 });
 
-test("predictive policy avoids direct reflector aim and computes a side-wall bank shot", () => {
+test("predictive policy avoids reflector undersides with a top-bank trajectory", () => {
   const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
   definitions[0] = { ...definitions[0], pattern: ["...xrrrrx..."] };
   const state = engine.createCanonicalState({ seed: 551, targetWave: 1, waves: definitions });
   const bot = policy.createBotPolicyState(551);
   const controls = policy.decideBotControls({ elapsed: state.elapsed, paddleX: state.paddleX, paddleWidth: state.paddleWidth, paddleSpeed: engine.PADDLE_SPEED, balls: state.balls, bricks: state.bricks, items: state.items }, bot, engine.FIXED_STEP_SECONDS);
   assert.match(bot.lastTargetKey, /:reflector:bank$/);
-  assert.ok(controls.aimX === 0 || controls.aimX === engine.GAME_WIDTH);
-  assert.ok(controls.aimY < engine.PLAYER_PADDLE_Y - 50);
+  assert.equal(controls.aimY, 80);
+  assert.notEqual(controls.aimX, state.bricks[0].x + state.bricks[0].w / 2);
 });
 
-test("reflector bank policy can damage a protected reflector layout", () => {
+test("reflector top-bank policy clears a protected reflector layout", () => {
   const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
   definitions[0] = { ...definitions[0], pattern: ["....rrrr...."] };
   const state = engine.createCanonicalState({ seed: 553, targetWave: 1, waves: definitions });
   const bot = policy.createBotPolicyState(553);
   const initialHp = state.bricks.reduce((sum, brick) => sum + brick.hp, 0);
-  for (let step = 0; step < 120 * 45 && !state.complete && !state.gameOver; step++) {
+  for (let step = 0; step < 120 * 90 && !state.complete && !state.gameOver; step++) {
     const controls = policy.decideBotControls({ elapsed: state.elapsed, paddleX: state.paddleX, paddleWidth: state.paddleWidth, paddleSpeed: engine.PADDLE_SPEED, balls: state.balls, bricks: state.bricks, items: state.items }, bot, engine.FIXED_STEP_SECONDS);
     engine.stepCanonicalEngine(state, controls, engine.FIXED_STEP_SECONDS);
   }
   const remainingHp = state.bricks.filter((brick) => brick.alive).reduce((sum, brick) => sum + brick.hp, 0);
-  assert.ok(state.complete || remainingHp < initialHp, "bank aiming should reach a reflector side or upper face");
+  assert.equal(state.complete, true, `top-bank aiming should clear reflectors; ${remainingHp}/${initialHp} HP remains`);
+});
+
+test("seeded benchmark skill choices remain reproducible but vary across runs", () => {
+  const starts = Array.from({ length: 16 }, (_, index) => benchmark.runHeadlessBenchmark({
+    run: index + 1,
+    seed: 4100 + index,
+    policy: "balanced",
+    benchmarkConfig: { targetWave: 1 },
+    maxSimulatedSeconds: 0.1,
+  }).startingSkills[0]);
+  assert.ok(new Set(starts).size >= 5, `expected varied starting builds, received ${new Set(starts).size}`);
+  const repeated = benchmark.runHeadlessBenchmark({ run: 1, seed: 4100, policy: "balanced", benchmarkConfig: { targetWave: 1 }, maxSimulatedSeconds: 0.1 });
+  assert.equal(repeated.startingSkills[0], starts[0]);
 });
 
 test("predictive policy never targets indestructible-only layouts", () => {
