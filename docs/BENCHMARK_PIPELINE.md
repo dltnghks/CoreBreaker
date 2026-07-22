@@ -25,7 +25,7 @@
 - 결과 메타데이터:
   - `engineVersion: live-game-runtime-v1`
   - `engineParity: exact-live-runtime`
-  - `policyVersion: predictive-controls-v1`
+  - `policyVersion: predictive-controls-v2-reflector-bank`
 
 실제 플레이와의 시각·물리 패리티를 확인할 때 WATCH RUN을 기준으로 사용한다.
 
@@ -38,7 +38,7 @@
 - 결과 메타데이터:
   - `engineVersion: canonical-fixed-step-v1`
   - `engineParity: fixed-step-canonical-rules`
-  - `policyVersion: predictive-controls-v1`
+  - `policyVersion: predictive-controls-v2-reflector-bank`
 
 HEADLESS는 과거의 성공 확률·DPS·손실 확률 기반 집계 모델을 사용하지 않는다. 공, 패들, 블록, 아이템을 좌표 상태로 갱신한다.
 
@@ -75,7 +75,7 @@ type CanonicalControls = {
 
 ## 5. 조준 정책
 
-정책 버전: `predictive-controls-v1`
+정책 버전: `predictive-controls-v2-reflector-bank`
 
 ### 수비
 
@@ -88,8 +88,9 @@ type CanonicalControls = {
 
 1. 살아 있고 파괴 가능한 블록만 후보로 사용한다.
 2. 회복, 폭발, 가드와 블록의 Y 위치·HP를 반영해 우선순위를 계산한다.
-3. 파괴 불가 블록과 반사 블록은 조준 후보에서 완전히 제외한다.
-4. 제외 블록이 직선 경로를 막으면 다른 공격 가능한 목표를 선택한다.
+3. 파괴 불가 블록은 조준 후보에서 완전히 제외한다.
+4. 반사 블록은 직접 조준 후보에서는 제외하지만, 다른 파괴 가능 블록이 없으면 좌·우 벽의 반사점과 입사각을 계산해 옆면·윗면을 노린다.
+5. 제외 블록이 직선 경로를 막으면 다른 공격 가능한 목표나 유효한 뱅크 경로를 선택한다.
 5. 좌우 약점과 벽 반사점을 이용해 측면·상단 진입 경로를 만든다.
 6. 패들 예상 접촉점에 오프셋을 주어 원하는 출사각을 만든다.
 7. 일정 시간 블록 수가 줄지 않으면 뱅크 방향과 목표를 교대한다.
@@ -98,7 +99,7 @@ type CanonicalControls = {
 
 - 실제 게임의 최대 조준 수평 비율과 최소 수직 속도를 지킨다.
 - 무작위 정책을 제외하면 저장된 실행 시드로부터 결정론적으로 행동한다.
-- 공격 가능한 블록이 없으면 중앙 기본 조준을 사용하며 반사·파괴 불가 블록을 새 목표로 채택하지 않는다.
+- 파괴 불가 블록만 남으면 중앙 기본 조준을 사용한다. 반사 블록이 남아 있으면 목표 중심이 아닌 벽 반사점을 조준하고, 정체 시 좌우 약점을 번갈아 시도한다.
 
 ## 6. 실행 순서
 
@@ -158,7 +159,8 @@ type CanonicalControls = {
 
 - 같은 시드와 입력으로 두 상태가 같은 스냅샷을 만드는지 검증
 - 같은 시드의 HEADLESS 결과가 반복 실행에서 동일한지 검증
-- 반사·파괴 불가 전용 패턴에서 목표 후보가 비어 있는지 검증
+- 반사 블록 전용 패턴에서 직접 조준 대신 유효한 벽 반사점이 반환되는지 검증
+- 파괴 불가 전용 패턴에서는 목표 후보가 비어 있는지 검증
 - 정책이 관찰 상태를 직접 변경하지 않는지 검증
 - 여러 시드 파일럿이 유효한 메타데이터와 유한한 결과를 만드는지 검증
 
