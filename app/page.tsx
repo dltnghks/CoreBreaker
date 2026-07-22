@@ -4135,7 +4135,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ctx.stroke();
       ctx.restore();
     }
-      game.balls.filter((ball) => ball.owner === "player" && (ball.respawnRecoveryTime ?? 0) <= 0).forEach((ball) => {
+    game.balls.filter((ball) => ball.owner === "player").forEach((ball) => {
       const drawColor = ballBodyColor(ball);
       const isExtraBall = ball.waveBonus || ball.temporaryTime > 0 || ball.visualSkill !== null;
       const skillEffectAlpha = isExtraBall ? 0.38 : 1;
