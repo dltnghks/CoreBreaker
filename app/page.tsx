@@ -5528,7 +5528,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             <div className="hud-badge hud-wave" aria-label={`웨이브 ${hud.wave}/${MAX_WAVE}, ${hud.waveName}, 블록 ${hud.aliveBricks}개 남음`}><i aria-hidden="true">⚑</i><span><small>WAVE {hud.wave}/{MAX_WAVE}</small><strong>{hud.waveName}</strong><em>{hud.aliveBricks} LEFT</em></span></div>
             <div className="hud-badge hud-score" aria-label={`점수 ${formatScore(hud.score)}`}><i aria-hidden="true">✦</i><span><small>SCORE</small><strong>{formatScore(hud.score)}</strong></span></div>
             <div className={hud.overdriveLevel > 0 ? "hud-badge hud-speed active" : "hud-badge hud-speed"} aria-label={`공 속도 ${Math.round(hud.overdriveMultiplier * 100)}퍼센트`}><i aria-hidden="true">»</i><span><small>SPEED</small><strong>{Math.round(hud.overdriveMultiplier * 100)}%</strong><em>{hud.overdriveLevel < MAX_OVERDRIVE_LEVEL ? "+1%/s" : "MAX"}</em></span></div>
-            <div className="skill-loadout-hud" aria-label="보유 스킬">
+            <div className="skill-loadout-hud" aria-label="보유 스킬" style={{ pointerEvents: "auto" }}>
               {hud.skillLevels.map(({ id, level, enhancement = 0 }) => {
                 const skill = upgradeCatalog.find((entry) => entry.id === id);
                 const evolved = isSkillEvolved(gameRef.current?.upgrades ?? [], id);
