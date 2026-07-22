@@ -520,6 +520,14 @@ function enhancedSkillValue(id: UpgradeId, level: number, enhancement = 0) {
   return config.direction === "down" ? Math.max(0.2, base - enhancement * step) : base + enhancement * step;
 }
 
+function formatSkillNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function formatSkillDelta(value: number, unit: string) {
+  return `${value >= 0 ? "+" : ""}${formatSkillNumber(value)}${unit}`;
+}
+
 function gameSkillValue(game: GameState, id: UpgradeId) {
   return enhancedSkillValue(id, upgradeLevel(game.upgrades, id), game.bossEnhancements?.[id] ?? 0);
 }
@@ -1162,6 +1170,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const [clearedWave, setClearedWave] = useState<{ wave: number; boss: boolean } | null>(null);
   const [hud, setHud] = useState({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, barriers: 0, overdriveLevel: 0, overdriveMultiplier: 1, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0, skillLevels: [] as { id: UpgradeId; level: number; enhancement?: number }[] });
   const [choices, setChoices] = useState<UpgradeChoice[]>([]);
+  const [bossRewardChoices, setBossRewardChoices] = useState<UpgradeId[]>([]);
   const [rerollsLeft, setRerollsLeft] = useState(1);
   const [result, setResult] = useState<GameState | null>(null);
   const [savedMessage, setSavedMessage] = useState("");
@@ -3382,6 +3391,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             setHud(hudFromGame(game));
             return;
           }
+          const ownedSkills = [...new Set(game.upgrades)].filter((id) => Boolean(activeSkillMap[id]));
+          const randomBossChoices = ownedSkills
+            .map((id) => ({ id, roll: decisionRandom() }))
+            .sort((a, b) => a.roll - b.roll || a.id.localeCompare(b.id))
+            .slice(0, 3)
+            .map(({ id }) => id);
+          setBossRewardChoices(randomBossChoices);
           setHud(hudFromGame(game));
           setMode("bossreward");
           return;
@@ -5416,12 +5432,29 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     } satisfies Upgrade;
   });
   const upgradeCounts = (ids: UpgradeId[]) => [...upgradeCatalog, ...ultimateCatalog].map((u) => ({ ...u, count: ids.filter((id) => id === u.id).length })).filter((u) => u.count > 0);
-  const bossEnhancementCatalog = [...new Set(gameRef.current?.upgrades ?? [])].map((id) => {
+  const bossEnhancementCatalog = bossRewardChoices.map((id) => {
     const skill = activeSkillMap[id];
     if (!skill) return null;
-    const current = gameRef.current?.bossEnhancements?.[id] ?? 0;
-    return { id, name: skill.name, category: skill.category, mechanic: skill.mechanic, tag: `${CLASS_META[skill.category].tag} · SKILL BOOST`, description: skill.description, color: skill.color, enhancement: current + 1 };
-  }).filter((entry): entry is Upgrade & { enhancement: number } => entry !== null);
+    const game = gameRef.current;
+    const currentEnhancement = game?.bossEnhancements?.[id] ?? 0;
+    const currentLevel = upgradeLevel(game?.upgrades ?? [], id);
+    const currentValue = enhancedSkillValue(id, currentLevel, currentEnhancement);
+    const nextValue = enhancedSkillValue(id, currentLevel, currentEnhancement + 1);
+    return {
+      id,
+      name: skill.name,
+      category: skill.category,
+      mechanic: skill.mechanic,
+      tag: `${CLASS_META[skill.category].tag} · SKILL BOOST`,
+      description: skill.description,
+      color: skill.color,
+      enhancement: currentEnhancement + 1,
+      currentLevel,
+      currentValue,
+      delta: nextValue - currentValue,
+      unit: skill.unit,
+    };
+  }).filter((entry): entry is Upgrade & { enhancement: number; currentLevel: number; currentValue: number; delta: number; unit: string } => entry !== null);
   const visibleBotResults = benchmarkMode ? botResults.filter((item) => item.benchmarkRuleset === BENCHMARK_RULESET) : botResults;
   const botAverageSurvival = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.elapsed, 0) / visibleBotResults.length : 0;
   const botAverageWave = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.wave, 0) / visibleBotResults.length : 0;
@@ -5534,7 +5567,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                 const evolved = isSkillEvolved(gameRef.current?.upgrades ?? [], id);
                 const category = skill?.category ?? "common";
                 const levelState = evolved ? "진화" : level >= 3 ? "최대 강화" : level === 2 ? "강화" : "습득";
-                return <div key={id} className={`skill-loadout-entry class-${category} level-${Math.min(3, level)}${evolved ? " evolved" : ""}`} style={{ "--skill-color": category === "common" ? "#8f98a7" : skill?.color ?? "#8f98a7" } as React.CSSProperties} aria-label={`${skill?.name ?? id}, ${levelState}`} title={`${skill?.name ?? id} · LEVEL ${level}${enhancement > 0 ? ` · +${enhancement}` : ""}`}><i aria-hidden="true">{SKILL_ICONS[id] ?? "•"}</i>{evolved && <b aria-hidden="true">✦</b>}{enhancement > 0 && <strong className="skill-enhancement-badge">+{enhancement}</strong>}<div className="skill-loadout-tooltip" role="tooltip"><b>{skill?.name ?? id}</b><span>LEVEL {level}{enhancement > 0 ? ` · +${enhancement}` : ""}</span><p><SkillDescriptionText text={skill?.description ?? ""} /></p></div></div>;
+                return <div key={id} className={`skill-loadout-entry class-${category} level-${Math.min(3, level)}${evolved ? " evolved" : ""}`} style={{ "--skill-color": category === "common" ? "#8f98a7" : skill?.color ?? "#8f98a7" } as React.CSSProperties} aria-label={`${skill?.name ?? id}, ${levelState}`} title={`${skill?.name ?? id} · LEVEL ${level}${enhancement > 0 ? ` · +${enhancement}` : ""}`}><i aria-hidden="true">{SKILL_ICONS[id] ?? "•"}</i>{evolved && <b aria-hidden="true">✦</b>}{enhancement > 0 && <strong className="skill-enhancement-badge">+{enhancement}</strong>}{mode !== "playing" && <div className="skill-loadout-tooltip" role="tooltip"><b>{skill?.name ?? id}</b><span>LEVEL {level}{enhancement > 0 ? ` · +${enhancement}` : ""}</span><p><SkillDescriptionText text={skill?.description ?? ""} /></p></div>}</div>;
               })}
             </div>
             <div className="drop-legend" aria-label="아이템 블록 표시 안내">
@@ -5627,10 +5660,14 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                     <button key={reward.id} className={`upgrade-card class-${reward.category} boss-enhancement-card`} onClick={() => applyBossReward(reward.id)} style={{ "--accent": reward.color } as React.CSSProperties}>
                       <span className="upgrade-index">0{index + 1}</span>
                       <span className="upgrade-tag">{reward.tag}</span>
+                      <span className="upgrade-icon" aria-hidden="true">{SKILL_ICONS[reward.id]}</span>
                       <strong>{reward.name}</strong>
-                      <b className="boss-enhancement-value">+{reward.enhancement}</b>
-                      <p><SkillDescriptionText text={reward.description} /></p>
-                      <em>INSTANT BOOST</em>
+                      <div className="upgrade-level-values">
+                        <span className="owned"><small>현재 LV{reward.currentLevel}</small><b>{formatSkillNumber(reward.currentValue)}{reward.unit}</b></span>
+                        <span className="next"><small>보스 강화</small><b>{formatSkillDelta(reward.delta, reward.unit)}</b></span>
+                      </div>
+                      <p><SkillDescriptionText text={reward.description} /> <strong className="skill-value-accent">({formatSkillDelta(reward.delta, reward.unit)})</strong></p>
+                      <em>SKILL BOOST +{reward.enhancement}</em>
                     </button>
                   ))}
                 </div>
