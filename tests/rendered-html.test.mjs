@@ -457,6 +457,8 @@ test("respawns a ball at the cost of one core health", async () => {
   assert.match(source, /game\.balls\.push\(respawnBall\);/);
   assert.match(source, /RESPAWN_SPEED_RECOVERY_SECONDS = 5/);
   assert.match(source, /respawnBall\.respawnRecoveryTime = RESPAWN_SPEED_RECOVERY_SECONDS/);
+  assert.match(source, /game\.balls\.filter\(\(ball\) => ball\.owner === "player"\)\.forEach\(\(ball\) =>/);
+  assert.doesNotMatch(source, /ball\.owner === "player" && \(ball\.respawnRecoveryTime \?\? 0\) <= 0/);
   assert.match(source, /RESPAWN SPEED 100%/);
 });
 
