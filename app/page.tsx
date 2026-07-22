@@ -811,7 +811,8 @@ function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfi
   const startX = (W - width) / 2;
   const startY = 94;
   const bossHpMultiplier = [1, 0.85, 0.95, 1.05, 1.2][Math.min(4, stage)] ?? 0.85;
-  const coreHp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage * 0.55 + ghostCount * 10) * bossHpMultiplier * waveHpMultiplier * 0.5);
+  const earlyBossHealthScale = stage <= 2 ? 0.4 : 1;
+  const coreHp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage * 0.55 + ghostCount * 10) * bossHpMultiplier * waveHpMultiplier * 0.5 * earlyBossHealthScale);
   return [{
     x: startX, y: startY, w: width, h: height,
     hp: coreHp, maxHp: coreHp,
