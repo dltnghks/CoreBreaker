@@ -224,11 +224,13 @@ const PADDLE_COLLISION_SLOP = 3;
 const PADDLE_SIDE_FORGIVENESS = 14;
 const PADDLE_SIDE_DEPTH = 18;
 const PADDLE_KEYBOARD_SPEED = 460;
+const KEYBOARD_AIM_RATIO_SPEED = 1.2;
 const ITEM_BARRIER_DURATION = 10;
 const ITEM_BARRIER_Y = H - 18;
 const MIN_AIM_VERTICAL_DISTANCE = 52;
 const AIM_LIMIT_GUIDE_LENGTH = 100;
 const AIM_LINE_LENGTH = 170;
+const KEYBOARD_AIM_TARGET_DISTANCE = AIM_LINE_LENGTH;
 const BOT_REFLECTOR_AIM_PHASE_SECONDS = 4;
 
 function paddleAimDirection(fromX: number, fromY: number, targetX: number, targetY: number) {
@@ -461,14 +463,13 @@ const ITEM_DATA: Record<ItemKind, { label: string; symbol: string; color: string
   "cooldown-reset": { label: "COOLDOWN RESET", symbol: "↻", color: "#c18cff" },
 };
 const ITEM_KINDS = Object.keys(ITEM_DATA) as ItemKind[];
-const BRICK_TRAIT_DATA: Record<Exclude<BrickTrait, "standard">, { label: string; glyph: string; color: string; description: string }> = {
-  guard: { label: "가드", glyph: "방", color: "#fff27a", description: "공 직접 공격 1회 무시" },
-  explosive: { label: "폭발", glyph: "폭", color: "#ff8a3d", description: "파괴 시 주변 피해 · 공 밀어냄" },
-  indestructible: { label: "불괴", glyph: "불", color: "#aeb8ca", description: "파괴 불가 · 아이템 없음" },
-  healer: { label: "회복", glyph: "회", color: "#72f1b8", description: "3초마다 주변 체력 +1" },
-  reflector: { label: "반사", glyph: "반", color: "#65dcff", description: "아래에서 오는 공 반사" },
+const BRICK_TRAIT_COLORS: Record<Exclude<BrickTrait, "standard">, string> = {
+  guard: "#fff27a",
+  explosive: "#ff8a3d",
+  indestructible: "#aeb8ca",
+  healer: "#72f1b8",
+  reflector: "#65dcff",
 };
-const BRICK_TRAITS = Object.keys(BRICK_TRAIT_DATA) as Exclude<BrickTrait, "standard">[];
 
 const CLASS_META: Record<SkillCategory, { tag: string; color: string }> = {
   warrior: { tag: "WARRIOR", color: "#ff6b57" },
@@ -1106,6 +1107,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const activeGhostsRef = useRef<GhostRecord[]>([]);
   const pointerXRef = useRef(W / 2);
   const pointerYRef = useRef(H / 3);
+  const aimInputModeRef = useRef<"mouse" | "keyboard">("mouse");
+  const keyboardAimRef = useRef({ left: false, right: false, horizontalRatio: 0 });
   const botPaddleTargetXRef = useRef(W / 2);
   const botMoveRef = useRef<-1 | 0 | 1>(0);
   const botPolicyStateRef = useRef<BotPolicyState>(createBotPolicyState(1));
@@ -1161,25 +1164,47 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   }, []);
 
   useEffect(() => {
-    const setMovementKey = (event: KeyboardEvent, pressed: boolean) => {
+    const setControlKey = (event: KeyboardEvent, pressed: boolean) => {
       const target = event.target as HTMLElement | null;
       if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
       const key = event.key.toLowerCase();
-      if (key !== "a" && key !== "d") return;
+      const movementKey = key === "a" || key === "d";
+      const aimKey = key === "arrowleft" || key === "arrowright";
+      if (!movementKey && !aimKey) return;
       if (key === "a") keyboardRef.current.left = pressed;
       if (key === "d") keyboardRef.current.right = pressed;
+      if (aimKey) {
+        const wasPressed = key === "arrowleft" ? keyboardAimRef.current.left : keyboardAimRef.current.right;
+        if (pressed && !wasPressed && aimInputModeRef.current !== "keyboard") {
+          const game = gameRef.current;
+          keyboardAimRef.current.horizontalRatio = paddleAimDirection(
+            game?.paddleX ?? W / 2,
+            PLAYER_PADDLE_Y,
+            pointerXRef.current,
+            pointerYRef.current,
+          ).horizontalRatio;
+          aimInputModeRef.current = "keyboard";
+        }
+        if (key === "arrowleft") keyboardAimRef.current.left = pressed;
+        if (key === "arrowright") keyboardAimRef.current.right = pressed;
+      }
       event.preventDefault();
     };
-    const onKeyDown = (event: KeyboardEvent) => setMovementKey(event, true);
-    const onKeyUp = (event: KeyboardEvent) => setMovementKey(event, false);
-    const clearMovement = () => { keyboardRef.current.left = false; keyboardRef.current.right = false; };
+    const onKeyDown = (event: KeyboardEvent) => setControlKey(event, true);
+    const onKeyUp = (event: KeyboardEvent) => setControlKey(event, false);
+    const clearControls = () => {
+      keyboardRef.current.left = false;
+      keyboardRef.current.right = false;
+      keyboardAimRef.current.left = false;
+      keyboardAimRef.current.right = false;
+    };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
-    window.addEventListener("blur", clearMovement);
+    window.addEventListener("blur", clearControls);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
-      window.removeEventListener("blur", clearMovement);
+      window.removeEventListener("blur", clearControls);
     };
   }, []);
   const [botPolicy, setBotPolicy] = useState<BotPolicy>("balanced");
@@ -1794,6 +1819,16 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       pointerXRef.current = controls.aimX;
       pointerYRef.current = controls.aimY;
       botMoveRef.current = controls.move;
+    } else if (aimInputModeRef.current === "keyboard") {
+      const aimMovement = Number(keyboardAimRef.current.right) - Number(keyboardAimRef.current.left);
+      keyboardAimRef.current.horizontalRatio = Math.max(
+        -MAX_PADDLE_REBOUND_RATIO,
+        Math.min(MAX_PADDLE_REBOUND_RATIO, keyboardAimRef.current.horizontalRatio + aimMovement * KEYBOARD_AIM_RATIO_SPEED * dt),
+      );
+      const horizontalRatio = keyboardAimRef.current.horizontalRatio;
+      const verticalRatio = -Math.sqrt(Math.max(0, 1 - horizontalRatio * horizontalRatio));
+      pointerXRef.current = game.paddleX + horizontalRatio * KEYBOARD_AIM_TARGET_DISTANCE;
+      pointerYRef.current = PLAYER_PADDLE_Y + verticalRatio * KEYBOARD_AIM_TARGET_DISTANCE;
     }
     const previousPaddleX = game.paddleX;
     if (botActiveRef.current) {
@@ -3125,7 +3160,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             emitEffect("beam", brick.x + brick.w / 2, brick.y + brick.h / 2, classSkillColor("warrior-crush"), 6, target.x + target.w / 2, target.y + target.h / 2, 0.38, 0, "warrior-crush");
             if (target.hp <= 0) destroyBrick(target, ball, false, 0);
           });
-          game.flashes.push({ text: `분쇄 진화 // ${BRICK_TRAIT_DATA[brick.trait as Exclude<BrickTrait, "standard">]?.label ?? brick.trait} 공명`, x: brick.x + brick.w / 2, y: brick.y - 20, life: 0.9, color: classSkillColor("warrior-crush") });
+          game.flashes.push({ text: `CRUSH EVOLUTION // ${brick.trait.toUpperCase()} RESONANCE`, x: brick.x + brick.w / 2, y: brick.y - 20, life: 0.9, color: classSkillColor("warrior-crush") });
         }
         if (ball.missileTime > 0) {
           ball.missileHitCooldown = 0.09;
@@ -3517,10 +3552,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         ctx.restore();
       }
       if (brick.kind === "normal" && brick.trait !== "standard") {
-        const traitData = BRICK_TRAIT_DATA[brick.trait];
+        const traitColor = BRICK_TRAIT_COLORS[brick.trait];
         const traitPulse = 0.72 + Math.sin(game.elapsed * 6 + brick.x * 0.04) * 0.18;
         ctx.save();
-        ctx.strokeStyle = brick.trait === "guard" && !brick.guardReady ? "rgba(255,242,122,.32)" : traitData.color;
+        ctx.strokeStyle = brick.trait === "guard" && !brick.guardReady ? "rgba(255,242,122,.32)" : traitColor;
         ctx.lineWidth = brick.trait === "indestructible" ? 3 : brick.trait === "guard" && brick.guardReady ? 3 : 2;
         if (brick.trait === "explosive") ctx.setLineDash([5, 3]);
         ctx.strokeRect(brick.x + 1.5, brick.y + 1.5, brick.w - 3, brick.h - 3);
@@ -3575,9 +3610,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         }
         if (brick.trait === "healer") {
           ctx.globalAlpha = traitPulse;
-          ctx.shadowColor = traitData.color;
+          ctx.shadowColor = traitColor;
           ctx.shadowBlur = 12;
-          ctx.strokeStyle = traitData.color;
+          ctx.strokeStyle = traitColor;
           ctx.lineWidth = 2;
           ctx.beginPath();
           ctx.arc(brick.x + brick.w / 2, brick.y + brick.h / 2, 8 + traitPulse * 3, 0, Math.PI * 2);
@@ -3634,20 +3669,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           ctx.stroke();
           ctx.restore();
         }
-        const badgeWidth = 18;
-        ctx.globalAlpha = brick.trait === "guard" && !brick.guardReady ? 0.5 : 1;
-        ctx.shadowColor = traitData.color;
-        ctx.shadowBlur = 10;
-        ctx.fillStyle = "rgba(5,8,18,.96)";
-        ctx.fillRect(brick.x + 3, brick.y - 6, badgeWidth, 13);
-        ctx.strokeStyle = traitData.color;
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(brick.x + 3, brick.y - 6, badgeWidth, 13);
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = traitData.color;
-        ctx.font = "900 10px 'Noto Sans KR', sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(brick.trait === "guard" && !brick.guardReady ? "소" : traitData.glyph, brick.x + 3 + badgeWidth / 2, brick.y + 4);
         ctx.restore();
       }
       if (brick.drop) {
@@ -5070,6 +5091,10 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const openingAim = asBot ? botAimPoint(game.bricks, game.paddleX, PLAYER_PADDLE_Y) : { x: W / 2, y: H / 3 };
     pointerXRef.current = openingAim.x;
     pointerYRef.current = openingAim.y;
+    aimInputModeRef.current = "mouse";
+    keyboardAimRef.current.left = false;
+    keyboardAimRef.current.right = false;
+    keyboardAimRef.current.horizontalRatio = 0;
     botPaddleTargetXRef.current = game.paddleX;
     if (asBot) parkBallsAbovePaddle(game, openingAim.x, openingAim.y);
     keyboardRef.current.left = false;
@@ -5341,6 +5366,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
+    aimInputModeRef.current = "mouse";
     pointerXRef.current = Math.max(0, Math.min(W, ((clientX - rect.left) / rect.width) * W));
     pointerYRef.current = Math.max(0, Math.min(H, ((clientY - rect.top) / rect.height) * H));
   };
@@ -5426,14 +5452,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
       <section className={benchmarkMode ? "workspace" : "workspace solo-workspace"}>
         <div className="game-column">
-          {(mode === "lobby" || mode === "initialskills") && <div className="brick-key-strip" aria-label="특수 블록 기능 안내">
-            <strong>BLOCK KEY</strong>
-            {BRICK_TRAITS.map((trait) => {
-              const data = BRICK_TRAIT_DATA[trait];
-              return <span key={trait} style={{ "--trait-color": data.color } as React.CSSProperties} title={`${data.label}: ${data.description}`}><b>{data.glyph}</b><em>{data.label}</em><small>{data.description}</small></span>;
-            })}
-          </div>}
-
           <div className="game-frame">
             <button className="fullscreen-toggle" type="button" onClick={() => void toggleFullscreen()} aria-label={isFullscreen ? "전체화면 종료" : "전체화면으로 보기"} title={isFullscreen ? "전체화면 종료" : "전체화면"}>{isFullscreen ? "×" : "⛶"}</button>
             <canvas
@@ -5471,7 +5489,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                 <h2>{benchmarkMode ? benchmarkRunMode === "watch" ? <>실제 플레이를<br />관찰합니다.</> : <>실제 게임 규칙을<br />병렬 테스트합니다.</> : <>패턴을 돌파하고<br />코어를 지키세요.</>}</h2>
                 <p>{benchmarkMode ? benchmarkRunMode === "watch" ? "봇이 실제 캔버스에서 패들을 조작합니다. 블록 타격마다 적용되는 스킬 효과와 공 손실을 화면으로 확인하세요." : "웨이브 패턴, 블록 체력, 보스와 Skill LAB 수치를 헤드리스 Worker가 동시에 시뮬레이션합니다." : "웨이브마다 공 1개로 고정 패턴을 모두 파괴하세요. 공을 놓치면 CORE 1을 잃고, 새 공은 100% 속도에서 5초 동안 현재 속도로 복귀합니다."}</p>
                 {!benchmarkMode && <button className="primary-button" onClick={() => startRun(false)}>20 웨이브 시작 <span>→</span></button>}
-                <small>{benchmarkMode ? benchmarkRunMode === "watch" ? "오른쪽에서 관찰 배속과 봇 정책을 선택하세요." : "오른쪽에서 반복 횟수와 봇 정책을 선택하세요." : "A/D로 패들을 움직이고 마우스로 반사 방향을 조준하세요."}</small>
+                <small>{benchmarkMode ? benchmarkRunMode === "watch" ? "오른쪽에서 관찰 배속과 봇 정책을 선택하세요." : "오른쪽에서 반복 횟수와 봇 정책을 선택하세요." : "A/D로 이동하고 마우스 또는 좌우 방향키로 반사 방향을 조준하세요."}</small>
               </div>
             )}
 
@@ -5601,7 +5619,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               {(gameRef.current ? upgradeCounts(gameRef.current.upgrades) : []).map((u) => <span key={u.id} style={{ borderColor: u.color, color: u.color }}>{u.tag} <b>×{u.count}</b></span>)}
               {(!gameRef.current || gameRef.current.upgrades.length === 0) && <em>웨이브 보상을 선택하면 조합이 여기에 기록됩니다.</em>}
             </div>
-            <div className="controls">MOVE <kbd>A</kbd><kbd>D</kbd> · AIM / MOUSE</div>
+            <div className="controls">MOVE <kbd>A</kbd><kbd>D</kbd> · AIM / MOUSE OR <kbd>←</kbd><kbd>→</kbd></div>
           </div>
         </div>
 
