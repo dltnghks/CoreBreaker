@@ -810,8 +810,8 @@ function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfi
   const height = rows * cellHeight;
   const startX = (W - width) / 2;
   const startY = 94;
-  const bossHpMultiplier = [1, 1.25, 1.55, 1.9, 2.25][Math.min(4, stage)] ?? 1.25;
-  const coreHp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage + ghostCount * 10) * bossHpMultiplier * waveHpMultiplier);
+  const bossHpMultiplier = [1, 0.85, 0.95, 1.05, 1.2][Math.min(4, stage)] ?? 0.85;
+  const coreHp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage * 0.55 + ghostCount * 10) * bossHpMultiplier * waveHpMultiplier);
   return [{
     x: startX, y: startY, w: width, h: height,
     hp: coreHp, maxHp: coreHp,
@@ -822,6 +822,16 @@ function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfi
 }
 
 type BossAttackPattern = { name: string; cells: Array<{ col: number; row: number; trait: BrickTrait }> };
+
+const EARLY_BOSS_ATTACK_PATTERNS: BossAttackPattern[] = [
+  { name: "STONE WINGS", cells: [
+    { col: 2, row: 0, trait: "standard" }, { col: 3, row: 1, trait: "guard" },
+    { col: 8, row: 1, trait: "guard" }, { col: 9, row: 0, trait: "standard" },
+  ] },
+  { name: "SINGLE FUSE", cells: [
+    { col: 5, row: 0, trait: "explosive" }, { col: 6, row: 1, trait: "standard" },
+  ] },
+];
 
 const MID_BOSS_ATTACK_PATTERNS: BossAttackPattern[] = [
   { name: "SCATTER BOMB", cells: [
@@ -851,12 +861,23 @@ const FINAL_BOSS_ATTACK_PATTERNS: BossAttackPattern[] = [
   ] },
 ];
 
+const LATE_BOSS_ATTACK_PATTERNS: BossAttackPattern[] = [
+  { name: "RECOVERY CROSS", cells: [
+    { col: 5, row: 0, trait: "healer" }, { col: 2, row: 1, trait: "guard" },
+    { col: 9, row: 1, trait: "guard" }, { col: 0, row: 0, trait: "reflector" }, { col: 11, row: 0, trait: "reflector" },
+  ] },
+  { name: "PRESSURE MAZE", cells: [
+    { col: 1, row: 0, trait: "explosive" }, { col: 4, row: 1, trait: "guard" },
+    { col: 7, row: 1, trait: "guard" }, { col: 10, row: 0, trait: "explosive" },
+  ] },
+];
+
 function makeBossAttackBricks(stage: number, patternIndex: number, forcedMultiballs = 0) {
   const cols = 12;
   const gap = 7;
   const margin = 36;
   const width = (W - margin * 2 - gap * (cols - 1)) / cols;
-  const patterns = stage <= 1 ? MID_BOSS_ATTACK_PATTERNS.slice(0, 2) : stage === 2 ? [...MID_BOSS_ATTACK_PATTERNS, FINAL_BOSS_ATTACK_PATTERNS[0]] : [...MID_BOSS_ATTACK_PATTERNS, ...FINAL_BOSS_ATTACK_PATTERNS];
+  const patterns = stage <= 1 ? EARLY_BOSS_ATTACK_PATTERNS : stage === 2 ? MID_BOSS_ATTACK_PATTERNS : stage === 3 ? LATE_BOSS_ATTACK_PATTERNS : FINAL_BOSS_ATTACK_PATTERNS;
   const pattern = patterns[patternIndex % patterns.length];
   const bricks = pattern.cells.map(({ col, row, trait }, index) => {
     const hp = [1, 1, 2, 3, 4][Math.min(4, stage)] ?? 1;
@@ -1813,14 +1834,14 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         game.bricks.push(...reinforcements);
         game.bossAttackPattern++;
         game.bossMultiballsRemaining -= forcedMultiballs;
-        game.bossSkillTimer = Math.max(2.6, balanceConfigRef.current.bossAttackInterval - game.bossStage * balanceConfigRef.current.bossAttackAcceleration);
+        game.bossSkillTimer = Math.max(3.8, balanceConfigRef.current.bossAttackInterval - game.bossStage * balanceConfigRef.current.bossAttackAcceleration * 0.45);
         game.flashes.push({ text: `BOSS SKILL // ${attack.name}`, x: W / 2, y: 190, life: 1, color: "#ff9658" });
         pushPooledEffect(game, { kind: "ring", x: W / 2, y: 150, x2: W / 2, y2: 150, size: 180, life: 0.8, maxLife: 0.8, color: "#ff9658", variant: 0, skillId: null });
       }
     }
     if (botActiveRef.current) {
       const moveSpeedMultiplier = 1 + skillValue("common-move-speed", upgradeLevel(game.upgrades, "common-move-speed")) / 100;
-      const controls = decideBotControls({ elapsed: game.elapsed, paddleX: game.paddleX, paddleWidth: effectivePaddleWidth(game.paddleWidth, game.upgrades), paddleSpeed: PADDLE_KEYBOARD_SPEED * moveSpeedMultiplier, balls: game.balls.filter((ball) => ball.owner === "player"), bricks: game.bricks, items: game.items }, botPolicyStateRef.current, dt);
+      const controls = decideBotControls({ elapsed: game.elapsed, paddleX: game.paddleX, paddleWidth: effectivePaddleWidth(game.paddleWidth, game.upgrades), paddleSpeed: PADDLE_KEYBOARD_SPEED * moveSpeedMultiplier, balls: game.balls.filter((ball) => ball.owner === "player").map((ball) => ({ ...ball, temporary: ball.temporaryTime > 0 || ball.waveBonus || ball.visualSkill !== null })), bricks: game.bricks, items: game.items }, botPolicyStateRef.current, dt);
       pointerXRef.current = controls.aimX;
       pointerYRef.current = controls.aimY;
       botMoveRef.current = controls.move;

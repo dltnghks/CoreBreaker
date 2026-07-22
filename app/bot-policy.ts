@@ -1,7 +1,7 @@
 import { GAME_HEIGHT, GAME_WIDTH, MAX_AIM_HORIZONTAL_RATIO, PLAYER_PADDLE_Y, POLICY_VERSION, reflectWallX, type CanonicalControls } from "./canonical-engine";
 
 export { POLICY_VERSION };
-export type PolicyBall = { x: number; y: number; vx: number; vy: number; radius: number };
+export type PolicyBall = { x: number; y: number; vx: number; vy: number; radius: number; temporary?: boolean };
 export type PolicyBrick = { id?: number; x: number; y: number; w: number; h: number; hp: number; alive: boolean; trait: string };
 export type PolicyItem = { x: number; y: number; vy?: number; alive: boolean; kind?: string };
 export type BotObservation = { elapsed: number; paddleX: number; paddleWidth: number; paddleSpeed: number; balls: PolicyBall[]; bricks: PolicyBrick[]; items: PolicyItem[] };
@@ -93,7 +93,8 @@ export function decideBotControls(observation: BotObservation, state: BotPolicyS
   const reflectorTargets = attackable.filter((brick) => brick.trait === "reflector");
   if (attackable.length === state.lastAlive) state.stalledFor += dt; else { state.stalledFor = 0; state.lastAlive = attackable.length; }
   if (state.stalledFor > 3.5) { state.bankPhase++; state.stalledFor = 0; }
-  const falling = observation.balls.filter((ball) => ball.vy > 0).sort((a, b) => b.y - a.y)[0];
+  const primaryBall = observation.balls.find((ball) => !ball.temporary) ?? observation.balls[0];
+  const falling = observation.balls.filter((ball) => ball.vy > 0).sort((a, b) => Number(Boolean(a.temporary)) - Number(Boolean(b.temporary)) || b.y - a.y)[0];
   const directTarget = [...directTargets].sort((a, b) => priority(b) - priority(a) || (a.id ?? 0) - (b.id ?? 0))[0];
   const reflectorTarget = directTarget ? undefined : [...reflectorTargets].sort((a, b) => b.y - a.y || (a.id ?? 0) - (b.id ?? 0))[0];
   const target = directTarget ?? reflectorTarget;
@@ -107,8 +108,9 @@ export function decideBotControls(observation: BotObservation, state: BotPolicyS
     const bank = bankAim(target, observation.paddleX, state.bankPhase, reflectorTargets);
     aimX = bank.x; aimY = bank.y;
   }
-  const landingX = falling ? predictLandingX(falling) : observation.balls[0]?.x ?? observation.paddleX;
-  const urgency = falling ? Math.max(0, Math.min(1, (falling.y - 360) / 150)) : 0;
+  const trackingBall = primaryBall?.vy > 0 ? primaryBall : falling ?? primaryBall;
+  const landingX = trackingBall ? predictLandingX(trackingBall) : observation.paddleX;
+  const urgency = trackingBall?.vy > 0 ? Math.max(0, Math.min(1, (trackingBall.y - 360) / 150)) : 0;
   const desiredRatio = Math.max(-MAX_AIM_HORIZONTAL_RATIO, Math.min(MAX_AIM_HORIZONTAL_RATIO, (aimX - observation.paddleX) / Math.max(120, PLAYER_PADDLE_Y - aimY)));
   let paddleTarget = landingX - desiredRatio * observation.paddleWidth * 0.32;
   const item = observation.items.filter((entry) => entry.alive && entry.y < PLAYER_PADDLE_Y).sort((a, b) => b.y - a.y)[0];

@@ -2,9 +2,9 @@ import { DEFAULT_BALANCE_CONFIG, type BalanceConfig, type BotWaveSample } from "
 import { DEFAULT_SKILLS, type SkillConfig, type UpgradeId } from "./skill-config";
 import { WAVE_DEFINITIONS, waveDefinitionFrom, type WaveDefinition } from "./wave-config";
 
-export const ENGINE_VERSION = "canonical-fixed-step-v1" as const;
+export const ENGINE_VERSION = "canonical-fixed-step-v2-boss-tuning" as const;
 export const ENGINE_PARITY = "fixed-step-canonical-rules" as const;
-export const POLICY_VERSION = "predictive-controls-v3-reflector-top-bank" as const;
+export const POLICY_VERSION = "predictive-controls-v4-primary-ball-priority" as const;
 export const FIXED_STEP_SECONDS = 1 / 120;
 export const GAME_WIDTH = 900;
 export const GAME_HEIGHT = 600;
@@ -131,10 +131,10 @@ function buildWave(state: CanonicalState, wave: number) {
   state.nextBrickId = 1;
   if (definition.boss) {
     const stage = definition.boss === "final" ? 4 : definition.boss === "late" ? 3 : definition.boss === "mid" ? 2 : 1;
-    const hpMultiplier = [1, 1.25, 1.55, 1.9, 2.25][stage];
-    const hp = Math.round((state.balance.bossBaseHp + stage * state.balance.bossHpPerStage) * hpMultiplier * definition.hpMultiplier);
+    const hpMultiplier = [1, 0.85, 0.95, 1.05, 1.2][stage];
+    const hp = Math.round((state.balance.bossBaseHp + stage * state.balance.bossHpPerStage * 0.55) * hpMultiplier * definition.hpMultiplier);
     state.bricks = [makeBrick(state, (GAME_WIDTH - 416) / 2, 94, 416, 102, hp, "standard", "boss-core", "multiball")];
-    state.bossAttackTimer = Math.max(3.2, 6.2 - stage * 0.65);
+    state.bossAttackTimer = Math.max(4.4, 6 - stage * 0.3);
     state.bossPattern = 0;
     return;
   }
@@ -256,14 +256,18 @@ function bossReinforcements(state: CanonicalState) {
   const gap = 7;
   const margin = 36;
   const width = (GAME_WIDTH - margin * 2 - gap * 11) / 12;
-  const patterns: Array<Array<[number, number, CanonicalTrait]>> = [
-    [[1, 0, "standard"], [4, 1, "explosive"], [7, 0, "standard"], [10, 1, "explosive"]],
-    [[2, 1, "guard"], [3, 0, "standard"], [8, 0, "standard"], [9, 1, "guard"]],
-    [[0, 0, "reflector"], [5, 1, "guard"], [6, 1, "guard"], [11, 0, "reflector"]],
-  ];
+  const definition = waveDefinitionFrom(state.waves, state.wave);
+  const stage = definition.boss === "final" ? 4 : definition.boss === "late" ? 3 : definition.boss === "mid" ? 2 : 1;
+  const patterns: Array<Array<[number, number, CanonicalTrait]>> = stage === 1
+    ? [[[2, 0, "standard"], [3, 1, "guard"], [8, 1, "guard"], [9, 0, "standard"]], [[5, 0, "explosive"], [6, 1, "standard"]]]
+    : stage === 2
+      ? [[[1, 0, "standard"], [4, 1, "explosive"], [7, 0, "standard"], [10, 1, "explosive"]], [[2, 1, "guard"], [3, 0, "standard"], [8, 0, "standard"], [9, 1, "guard"]]]
+      : stage === 3
+        ? [[[0, 0, "reflector"], [2, 1, "guard"], [5, 0, "healer"], [9, 1, "guard"], [11, 0, "reflector"]], [[1, 0, "explosive"], [4, 1, "guard"], [7, 1, "guard"], [10, 0, "explosive"]]]
+        : [[[0, 0, "reflector"], [3, 1, "guard"], [5, 0, "healer"], [6, 1, "healer"], [8, 1, "guard"], [11, 0, "reflector"]], [[1, 1, "explosive"], [4, 0, "guard"], [7, 0, "guard"], [10, 1, "explosive"]]];
   for (const [col, row, trait] of patterns[state.bossPattern++ % patterns.length]) {
     if (state.bricks.some((brick) => brick.alive && Math.abs(brick.x - (margin + col * (width + gap))) < 2 && Math.abs(brick.y - (214 + row * BRICK_ROW_STEP)) < 2)) continue;
-    state.bricks.push(makeBrick(state, margin + col * (width + gap), 214 + row * BRICK_ROW_STEP, width, 24, state.wave >= 20 ? 2 : 1, trait, "boss-minion"));
+    state.bricks.push(makeBrick(state, margin + col * (width + gap), 214 + row * BRICK_ROW_STEP, width, 24, Math.min(3, Math.max(1, stage - 1)), trait, "boss-minion"));
   }
 }
 
