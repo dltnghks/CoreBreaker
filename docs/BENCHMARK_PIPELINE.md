@@ -25,7 +25,7 @@
 - 결과 메타데이터:
   - `engineVersion: live-game-runtime-v1`
   - `engineParity: exact-live-runtime`
-  - `policyVersion: predictive-controls-v2-reflector-bank`
+  - `policyVersion: predictive-controls-v3-reflector-top-bank`
 
 실제 플레이와의 시각·물리 패리티를 확인할 때 WATCH RUN을 기준으로 사용한다.
 
@@ -38,7 +38,7 @@
 - 결과 메타데이터:
   - `engineVersion: canonical-fixed-step-v1`
   - `engineParity: fixed-step-canonical-rules`
-  - `policyVersion: predictive-controls-v2-reflector-bank`
+  - `policyVersion: predictive-controls-v3-reflector-top-bank`
 
 HEADLESS는 과거의 성공 확률·DPS·손실 확률 기반 집계 모델을 사용하지 않는다. 공, 패들, 블록, 아이템을 좌표 상태로 갱신한다.
 
@@ -75,7 +75,7 @@ type CanonicalControls = {
 
 ## 5. 조준 정책
 
-정책 버전: `predictive-controls-v2-reflector-bank`
+정책 버전: `predictive-controls-v3-reflector-top-bank`
 
 ### 수비
 
@@ -89,7 +89,7 @@ type CanonicalControls = {
 1. 살아 있고 파괴 가능한 블록만 후보로 사용한다.
 2. 회복, 폭발, 가드와 블록의 Y 위치·HP를 반영해 우선순위를 계산한다.
 3. 파괴 불가 블록은 조준 후보에서 완전히 제외한다.
-4. 반사 블록은 직접 조준 후보에서는 제외하지만, 다른 파괴 가능 블록이 없으면 좌·우 벽의 반사점과 입사각을 계산해 옆면·윗면을 노린다.
+4. 반사 블록 또는 반사면에 가려진 목표는 직접 조준하지 않고 천장을 경유해 위쪽에서 타격하는 경로를 계산한다.
 5. 제외 블록이 직선 경로를 막으면 다른 공격 가능한 목표나 유효한 뱅크 경로를 선택한다.
 5. 좌우 약점과 벽 반사점을 이용해 측면·상단 진입 경로를 만든다.
 6. 패들 예상 접촉점에 오프셋을 주어 원하는 출사각을 만든다.
@@ -127,6 +127,14 @@ type CanonicalControls = {
 - 남은 CORE, 최대 공 수, 공 손실 횟수
 - 시작 스킬, 전체 업그레이드, 궁극기
 - 스킬 선택 이력
+- 종료 사유: `complete`, `core-dead`, `timeout`
+- 타임아웃 웨이브와 해당 웨이브 경과 시간
+- 남은 블록의 타입·위치·HP
+- 최근 30초 피해량과 마지막 피해 이후 시간
+- 마지막 목표, 목표 변경 횟수와 뱅크 단계
+- 반사면 차단 횟수와 반복 궤도 횟수
+- 자동 원인 분류와 동일 상황 재현용 시드
+
 
 ### 웨이브 단위
 
