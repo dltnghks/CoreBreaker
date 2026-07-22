@@ -759,6 +759,11 @@ test("renders live benchmark KPIs, wave charts, and per-run data", async () => {
   assert.match(source, /benchmarkRuleset === BENCHMARK_RULESET/);
   assert.match(styles, /\.benchmark-dashboard/);
   assert.match(styles, /\.benchmark-charts/);
+  assert.match(source, /TIMEOUT FORENSICS/);
+  assert.match(source, /diagnostic\.remainingBricks/);
+  assert.match(source, /diagnostic\.secondsSinceLastDamage/);
+  assert.match(styles, /\.benchmark-timeout-section/);
+  assert.match(styles, /\.benchmark-timeout-table/);
   assert.match(styles, /\.benchmark-skill-table/);
 });
 

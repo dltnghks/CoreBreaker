@@ -33,6 +33,27 @@ test("headless benchmark is deterministic for a seed and persists parity version
   assert.equal(first.seed, request.seed);
 });
 
+test("headless timeouts preserve a replayable forensic snapshot", () => {
+  const result = benchmark.runHeadlessBenchmark({
+    run: 7,
+    seed: 88007,
+    policy: "balanced",
+    benchmarkConfig: { targetWave: 20 },
+    maxSimulatedSeconds: 0.1,
+  });
+  assert.equal(result.terminationReason, "timeout");
+  assert.equal(result.evaluationComplete, false);
+  assert.ok(result.timeoutDiagnostic);
+  assert.equal(result.timeoutDiagnostic.stuckWave, result.wave);
+  assert.ok(result.timeoutDiagnostic.remainingBrickCount > 0);
+  assert.ok(result.timeoutDiagnostic.remainingBricks.length > 0);
+  assert.ok(Number.isFinite(result.timeoutDiagnostic.secondsSinceLastDamage));
+  assert.ok(Number.isFinite(result.timeoutDiagnostic.damageLast30Seconds));
+  assert.equal(typeof result.timeoutDiagnostic.lastTargetKey, "string");
+  assert.ok(result.finalSnapshot.reflectorBlockedHits >= 0);
+});
+
+
 test("small seeded pilot keeps canonical benchmark metadata and finite outcomes", () => {
   const results = [1201, 1202, 1203].map((seed, index) => benchmark.runHeadlessBenchmark({
     run: index + 1,
