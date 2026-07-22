@@ -82,6 +82,9 @@ type Ball = {
   visualSkill: ClassSkillId | null;
   temporaryTime: number;
   waveBonus: boolean;
+  respawnRecoveryTime: number;
+  respawnRecoveryDuration: number;
+  respawnRecoveryBaseSpeed: number;
 };
 
 type Brick = {
@@ -175,6 +178,10 @@ type GameState = {
   screenFlashColor: string;
   screenFlashTime: number;
   screenFlashDuration: number;
+  coreBreakTime: number;
+  coreBreakDuration: number;
+  coreBreakX: number;
+  coreBreakY: number;
   wave: number;
   pendingWave: number | null;
   failed: boolean;
@@ -209,6 +216,7 @@ const BASE_BALL_VY = 320;
 const OVERDRIVE_RATE_PER_SECOND = 0.01;
 const MAX_OVERDRIVE_LEVEL = 50;
 const OVERDRIVE_EFFECT_INTERVAL = 10;
+const RESPAWN_SPEED_RECOVERY_SECONDS = 5;
 const MIN_PADDLE_REBOUND_SPEED = 300;
 const MAX_PADDLE_REBOUND_SPEED = Math.hypot(BASE_BALL_VX, BASE_BALL_VY) * 2;
 const MAX_PADDLE_REBOUND_RATIO = 0.84;
@@ -878,7 +886,7 @@ function makeInitialBricks(ghostCount: number, balance: BalanceConfig): Brick[] 
 
 function makePlayerBall(upgrades: UpgradeId[], x = W / 2): Ball {
   const speed = 1 + upgrades.filter((u) => u === "speed").length * 0.12;
-  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8 + skillValue("common-ball-size", upgradeLevel(upgrades, "common-ball-size")), owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, gravityBaseSpeed: null, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0, canTriggerSkills: true, skillGeneration: 0, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false };
+  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8 + skillValue("common-ball-size", upgradeLevel(upgrades, "common-ball-size")), owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, gravityBaseSpeed: null, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0, canTriggerSkills: true, skillGeneration: 0, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false, respawnRecoveryTime: 0, respawnRecoveryDuration: 0, respawnRecoveryBaseSpeed: 0 };
   syncBallPayloadDisplay(ball, upgrades);
   return ball;
 }
@@ -966,6 +974,10 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     screenFlashColor: "#ffffff",
     screenFlashTime: 0,
     screenFlashDuration: 0,
+    coreBreakTime: 0,
+    coreBreakDuration: 0,
+    coreBreakX: W / 2,
+    coreBreakY: PLAYER_PADDLE_Y + 35,
     wave: 1,
     pendingWave: null,
     failed: false,
@@ -1845,6 +1857,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.shakeTime = Math.max(0, game.shakeTime - dt);
     if (game.shakeTime <= 0) game.shakeStrength = 0;
     game.screenFlashTime = Math.max(0, game.screenFlashTime - dt);
+    game.coreBreakTime = Math.max(0, (game.coreBreakTime ?? 0) - dt);
     game.gravityWells.forEach((well) => { well.life -= dt; });
     game.gravityWells = game.gravityWells.filter((well) => well.life > 0);
     Object.values(game.paddleCounters).forEach((counter) => {
@@ -2417,6 +2430,22 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ball.payloads ??= {};
       ball.payloadLevel ??= 0;
       ball.skillCooldowns ??= {};
+      ball.respawnRecoveryTime ??= 0;
+      ball.respawnRecoveryDuration ??= 0;
+      ball.respawnRecoveryBaseSpeed ??= 0;
+      if (ball.respawnRecoveryTime > 0) {
+        ball.respawnRecoveryTime = Math.max(0, ball.respawnRecoveryTime - dt);
+        const elapsedRecovery = ball.respawnRecoveryDuration - ball.respawnRecoveryTime;
+        const progress = Math.max(0, Math.min(1, elapsedRecovery / Math.max(0.001, ball.respawnRecoveryDuration)));
+        const easedProgress = progress * progress * (3 - progress * 2);
+        const targetMultiplier = overdriveMultiplier(game.overdriveLevel);
+        const desiredSpeed = ball.respawnRecoveryBaseSpeed * (1 + (targetMultiplier - 1) * easedProgress);
+        if (ball.gravityBaseSpeed === null && ball.explosionBoostTime <= 0) {
+          const currentSpeed = Math.max(1, Math.hypot(ball.vx, ball.vy));
+          ball.vx *= desiredSpeed / currentSpeed;
+          ball.vy *= desiredSpeed / currentSpeed;
+        }
+      }
       if (ball.explosionBoostTime > 0) {
         ball.explosionBoostTime = Math.max(0, ball.explosionBoostTime - dt);
         if (ball.explosionBoostTime <= 0) clearExplosionSpeedBoost(ball);
@@ -2431,7 +2460,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       if (berserkerLevel > 0) ball.skillCharges["warrior-berserker"] = berserkerLevel;
       else delete ball.skillCharges["warrior-berserker"];
       syncBallPayloadDisplay(ball, inheritedUpgrades);
-      if (berserkerLevel > 0) {
+      if (berserkerLevel > 0 && ball.respawnRecoveryTime <= 0) {
         const currentSpeed = Math.max(1, Math.hypot(ball.vx, ball.vy));
         const targetSpeed = Math.hypot(BASE_BALL_VX, BASE_BALL_VY) * overdriveMultiplier(game.overdriveLevel) * 1.25;
         if (currentSpeed < targetSpeed) {
@@ -3218,9 +3247,18 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           counter.combo = 0;
           counter.comboTimer = 0;
         });
+        const previousCoreHp = game.coreHp;
+        const coreGap = 18;
+        const coreStartX = game.paddleX - (Math.max(1, previousCoreHp) - 1) * coreGap / 2;
+        game.coreBreakX = coreStartX + (Math.max(1, previousCoreHp) - 1) * coreGap;
+        game.coreBreakY = PLAYER_PADDLE_Y + 36;
+        game.coreBreakDuration = 1.05;
+        game.coreBreakTime = game.coreBreakDuration;
         game.coreHp = Math.max(0, game.coreHp - 1);
         audioRef.current?.play("core-damage");
         impactFeedback(8, "#ff6b87", 0.32, 0.18);
+        emitEffect("ring", game.coreBreakX, game.coreBreakY, "#ff6b87", 62, game.coreBreakX, game.coreBreakY, 0.75);
+        emitBurst(game.coreBreakX, game.coreBreakY, "#ff6b87", 24, 290);
         if (game.coreHp <= 0) {
           game.failed = true;
           game.failureReason = "core";
@@ -3230,12 +3268,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           return;
         }
         const respawnBall = makePlayerBall(game.upgrades, game.paddleX);
-        const respawnOverdrive = overdriveMultiplier(game.overdriveLevel);
-        respawnBall.vx *= respawnOverdrive;
-        respawnBall.vy *= respawnOverdrive;
         launchBallToward(respawnBall, pointerXRef.current, pointerYRef.current, Math.hypot(respawnBall.vx, respawnBall.vy));
+        respawnBall.respawnRecoveryDuration = RESPAWN_SPEED_RECOVERY_SECONDS;
+        respawnBall.respawnRecoveryTime = RESPAWN_SPEED_RECOVERY_SECONDS;
+        respawnBall.respawnRecoveryBaseSpeed = Math.hypot(respawnBall.vx, respawnBall.vy);
         game.balls.push(respawnBall);
-        game.flashes.push({ text: "BALL LOST // CORE -1 // RESPAWN", x: W / 2, y: H - 105, life: 1.4, color: "#ffcf4a" });
+        game.flashes.push({ text: `CORE BREAK // RESPAWN SPEED 100% → ${Math.round(overdriveMultiplier(game.overdriveLevel) * 100)}%`, x: W / 2, y: H - 105, life: 1.7, color: "#ffcf4a" });
         emitEffect("ring", game.paddleX, PLAYER_PADDLE_Y, "#ffcf4a", 90, game.paddleX, PLAYER_PADDLE_Y, 0.8);
         emitBurst(game.paddleX, PLAYER_PADDLE_Y, "#ffcf4a", 18, 230);
       }
@@ -3916,7 +3954,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ctx.fillRect(x - width / 2, y, width * Math.max(0.2, visual.intensity), 4);
       ctx.restore();
     };
-    const drawPaddleBody = (x: number, y: number, width: number, color: string, alpha = 1, coreHealth: number | null = null) => {
+    const drawPaddleBody = (x: number, y: number, width: number, color: string, alpha = 1) => {
       const height = 18;
       ctx.save();
       ctx.globalAlpha = alpha;
@@ -3936,24 +3974,77 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ctx.shadowBlur = 0;
       ctx.fillStyle = "rgba(255,255,255,.42)";
       ctx.fillRect(x - width / 2 + 7, y + 3, Math.max(0, width - 14), 2);
-      if (coreHealth !== null) {
-        const healthText = `◆ ${Math.max(0, coreHealth)}`;
-        let fontSize = 13;
-        ctx.font = `900 ${fontSize}px monospace`;
-        while (fontSize > 9 && ctx.measureText(healthText).width > width - 12) {
-          fontSize -= 1;
-          ctx.font = `900 ${fontSize}px monospace`;
-        }
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.lineJoin = "round";
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = "rgba(3,6,12,.94)";
-        ctx.fillStyle = coreHealth <= 3 ? "#ff8ca3" : "#fff4c2";
-        ctx.strokeText(healthText, x, y + height / 2 + 1);
-        ctx.fillText(healthText, x, y + height / 2 + 1);
-      }
       ctx.restore();
+    };
+    const drawCoreCrystal = (x: number, y: number, scale: number, alpha: number, danger: boolean) => {
+      const color = danger ? "#ff6b87" : "#72e7ff";
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = alpha;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = danger ? 15 : 11;
+      const gradient = ctx.createLinearGradient(-7, -9, 7, 10);
+      gradient.addColorStop(0, "#ffffff");
+      gradient.addColorStop(0.28, danger ? "#ffb0c0" : "#bdf8ff");
+      gradient.addColorStop(0.62, color);
+      gradient.addColorStop(1, danger ? "#7d1738" : "#17617c");
+      ctx.fillStyle = gradient;
+      ctx.strokeStyle = danger ? "#ffd5df" : "#e9fdff";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(0, -9);
+      ctx.lineTo(7, -2);
+      ctx.lineTo(5, 7);
+      ctx.lineTo(0, 11);
+      ctx.lineTo(-5, 7);
+      ctx.lineTo(-7, -2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha *= 0.72;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(0, -8);
+      ctx.lineTo(0, 9);
+      ctx.moveTo(-6, -2);
+      ctx.lineTo(0, 1);
+      ctx.lineTo(6, -2);
+      ctx.stroke();
+      ctx.restore();
+    };
+    const drawPlayerCores = () => {
+      const count = Math.max(0, Math.floor(game.coreHp));
+      const gap = Math.min(20, count > 1 ? 156 / (count - 1) : 20);
+      const startX = game.paddleX - (count - 1) * gap / 2;
+      const y = PLAYER_PADDLE_Y + 36;
+      const danger = count <= 3;
+      for (let index = 0; index < count; index++) {
+        const pulse = danger ? 0.96 + Math.sin(game.elapsed * 8 + index) * 0.08 : 1;
+        drawCoreCrystal(startX + index * gap, y, pulse, 1, danger);
+      }
+      if (game.coreBreakTime > 0) {
+        const progress = 1 - game.coreBreakTime / Math.max(0.001, game.coreBreakDuration);
+        drawCoreCrystal(game.coreBreakX, game.coreBreakY, 1 + progress * 0.8, Math.max(0, 1 - progress), true);
+        ctx.save();
+        ctx.translate(game.coreBreakX, game.coreBreakY);
+        ctx.strokeStyle = `rgba(255,107,135,${1 - progress})`;
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = "#ff6b87";
+        ctx.shadowBlur = 12;
+        for (let shard = 0; shard < 8; shard++) {
+          const angle = shard / 8 * Math.PI * 2 + 0.2;
+          const inner = 8 + progress * 12;
+          const outer = 14 + progress * 34;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
     };
     activeGhostsRef.current.forEach((ghost, index) => {
       const x = game.ghostPaddles[index];
@@ -3971,8 +4062,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
     const playerDrawWidth = Math.min(280, game.paddleWidth + skillValue("common-wide", upgradeLevel(game.upgrades, "common-wide")) + (emergencyDanger ? skillValue("emergency-wide", upgradeLevel(game.upgrades, "emergency-wide")) : 0));
     const playerChargeVisual = paddleChargeVisual("player", game.upgrades);
-    drawPaddleBody(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, PLAYER_BALL_COLOR, 1, game.coreHp);
+    drawPaddleBody(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, PLAYER_BALL_COLOR, 1);
     drawPaddleChargeAura(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, playerChargeVisual);
+    drawPlayerCores();
     if (!botActiveRef.current) {
       const aim = paddleAimDirection(game.paddleX, PLAYER_PADDLE_Y, pointerXRef.current, pointerYRef.current);
       const targetY = Math.max(BRICK_ROW_Y, Math.min(PLAYER_PADDLE_Y - MIN_AIM_VERTICAL_DISTANCE, pointerYRef.current));
@@ -4022,7 +4114,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ctx.stroke();
       ctx.restore();
     }
-    game.balls.filter((ball) => ball.owner === "player").forEach((ball) => {
+      game.balls.filter((ball) => ball.owner === "player" && (ball.respawnRecoveryTime ?? 0) <= 0).forEach((ball) => {
       const drawColor = ballBodyColor(ball);
       const isExtraBall = ball.waveBonus || ball.temporaryTime > 0 || ball.visualSkill !== null;
       const skillEffectAlpha = isExtraBall ? 0.38 : 1;
@@ -5362,7 +5454,8 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
                 const skill = upgradeCatalog.find((entry) => entry.id === id);
                 const evolved = isSkillEvolved(gameRef.current?.upgrades ?? [], id);
                 const category = skill?.category ?? "common";
-                return <div key={id} className={`skill-loadout-entry class-${category}${evolved ? " evolved" : ""}`} style={{ "--skill-color": category === "common" ? "#8f98a7" : skill?.color ?? "#8f98a7" } as React.CSSProperties} aria-label={`${skill?.name ?? id} 레벨 ${level}${evolved ? ", 진화 완료" : ""}`} title={`${skill?.name ?? id} · Lv${level}${evolved ? " · 진화" : ""}`}><i aria-hidden="true">{SKILL_ICONS[id] ?? "•"}</i><span aria-hidden="true">×</span><strong>{level}</strong>{evolved && <b aria-hidden="true">✦</b>}</div>;
+                const levelState = evolved ? "진화" : level >= 3 ? "최대 강화" : level === 2 ? "강화" : "습득";
+                return <div key={id} className={`skill-loadout-entry class-${category} level-${Math.min(3, level)}${evolved ? " evolved" : ""}`} style={{ "--skill-color": category === "common" ? "#8f98a7" : skill?.color ?? "#8f98a7" } as React.CSSProperties} aria-label={`${skill?.name ?? id}, ${levelState}`} title={`${skill?.name ?? id} · ${levelState}`}><i aria-hidden="true">{SKILL_ICONS[id] ?? "•"}</i>{evolved && <b aria-hidden="true">✦</b>}</div>;
               })}
             </div>
             <div className="drop-legend" aria-label="아이템 블록 표시 안내">
@@ -5376,7 +5469,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               <div className="overlay lobby-overlay">
                 <p className="overlay-kicker">{benchmarkMode ? benchmarkRunMode === "watch" ? `WATCH RUN · REAL PHYSICS · ${botSpeed}×` : `HEADLESS · W1–W20 · ${benchmarkConfig.runs} RUNS` : "20 WAVES. ONE BALL. BREAK THROUGH."}</p>
                 <h2>{benchmarkMode ? benchmarkRunMode === "watch" ? <>실제 플레이를<br />관찰합니다.</> : <>실제 게임 규칙을<br />병렬 테스트합니다.</> : <>패턴을 돌파하고<br />코어를 지키세요.</>}</h2>
-                <p>{benchmarkMode ? benchmarkRunMode === "watch" ? "봇이 실제 캔버스에서 패들을 조작합니다. 블록 타격마다 적용되는 스킬 효과와 공 손실을 화면으로 확인하세요." : "웨이브 패턴, 블록 체력, 보스와 Skill LAB 수치를 헤드리스 Worker가 동시에 시뮬레이션합니다." : "웨이브마다 공 1개로 고정 패턴을 모두 파괴하세요. 공을 놓치면 CORE 1을 잃고 새 공으로 즉시 이어집니다."}</p>
+                <p>{benchmarkMode ? benchmarkRunMode === "watch" ? "봇이 실제 캔버스에서 패들을 조작합니다. 블록 타격마다 적용되는 스킬 효과와 공 손실을 화면으로 확인하세요." : "웨이브 패턴, 블록 체력, 보스와 Skill LAB 수치를 헤드리스 Worker가 동시에 시뮬레이션합니다." : "웨이브마다 공 1개로 고정 패턴을 모두 파괴하세요. 공을 놓치면 CORE 1을 잃고, 새 공은 100% 속도에서 5초 동안 현재 속도로 복귀합니다."}</p>
                 {!benchmarkMode && <button className="primary-button" onClick={() => startRun(false)}>20 웨이브 시작 <span>→</span></button>}
                 <small>{benchmarkMode ? benchmarkRunMode === "watch" ? "오른쪽에서 관찰 배속과 봇 정책을 선택하세요." : "오른쪽에서 반복 횟수와 봇 정책을 선택하세요." : "A/D로 패들을 움직이고 마우스로 반사 방향을 조준하세요."}</small>
               </div>
