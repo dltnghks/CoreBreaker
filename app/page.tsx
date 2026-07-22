@@ -6,7 +6,7 @@ import { DEFAULT_SKILLS, ENCHANT_MODE_LABELS, levelValue, NORMAL_SKILLS, normali
 import { BALANCE_STORAGE_KEY, BOT_LIVE_STORAGE_KEY, BOT_RESULTS_STORAGE_KEY, DEFAULT_BALANCE_CONFIG, DEFAULT_SKILL_BENCH_CONFIG, DEFAULT_SKILL_BENCH_PROGRESS, normalizeBalanceConfig, normalizeSkillBenchConfig, normalizeSkillBenchProgress, SKILL_BENCH_PROGRESS_KEY, SKILL_BENCH_STORAGE_KEY, type BalanceConfig, type BotWaveSample, type SkillBenchConfig, type SkillBenchProgress } from "./balance-config";
 import { BENCHMARK_STORAGE_KEY, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConfig, type BenchmarkConfig } from "./benchmark-config";
 import { applyWaveDefinitions, getActiveWaveDefinitions, MAX_WAVE, WAVE_STORAGE_KEY, waveDefinition } from "./wave-config";
-import { PARALLEL_BENCHMARK_RULESET, type HeadlessBenchmarkRequest, type HeadlessBenchmarkResult } from "./benchmark-headless";
+import { PARALLEL_BENCHMARK_RULESET, type HeadlessBenchmarkRequest, type HeadlessBenchmarkResult, type HeadlessTerminationReason, type HeadlessTimeoutDiagnostic } from "./benchmark-headless";
 import { clearBenchmarkResults, getBenchmarkResults, putBenchmarkResults } from "./benchmark-result-store";
 import { createBotPolicyState, decideBotControls, POLICY_VERSION, reflectorBankAim, type BotPolicyState } from "./bot-policy";
 
@@ -24,7 +24,7 @@ type SkillSelectionSource = "start" | "wave" | "boss";
 type SkillSelectionEvent = { wave: number; skillId: UpgradeId; level: number; source: SkillSelectionSource };
 type SkillRunMetric = { activations: number; damage: number; kills: number };
 type BenchmarkRuleset = "live-v1" | "live-v2" | "watch-v1" | "parallel-v1" | typeof PARALLEL_BENCHMARK_RULESET;
-type BotRunResult = BotMetrics & { id: string; run: number; seed?: number; policy: BotPolicy; policyVersion?: string; engineVersion?: string; engineParity?: string; speed: BotSpeed; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; startingSkills: UpgradeId[]; skillHistory: SkillSelectionEvent[]; ultimates: UpgradeId[]; skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig | null; benchmarkRuleset?: BenchmarkRuleset | null; waveSamples: BotWaveSample[]; evaluationComplete: boolean; skillBench: SkillBenchVariant | null };
+type BotRunResult = BotMetrics & { id: string; run: number; seed?: number; policy: BotPolicy; policyVersion?: string; engineVersion?: string; engineParity?: string; speed: BotSpeed; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; startingSkills: UpgradeId[]; skillHistory: SkillSelectionEvent[]; ultimates: UpgradeId[]; skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig | null; benchmarkRuleset?: BenchmarkRuleset | null; waveSamples: BotWaveSample[]; evaluationComplete: boolean; terminationReason?: HeadlessTerminationReason; timeoutDiagnostic?: HeadlessTimeoutDiagnostic | null; skillBench: SkillBenchVariant | null };
 
 type Upgrade = {
   id: UpgradeId;
@@ -5389,6 +5389,28 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const reachPoints = benchmarkWaveStats.map((item, index) => `${chartX(index)},${18 + (100 - item.reachRate) / 100 * 126}`).join(" ");
   const corePoints = benchmarkWaveStats.map((item, index) => `${chartX(index)},${18 + (1 - Math.min(1, item.averageCore / MAX_CORE_HP)) * 126}`).join(" ");
   const benchmarkTableResults = [...visibleBotResults].reverse().slice(0, 20);
+  const timeoutResults = visibleBotResults.filter((item) => item.terminationReason === "timeout"
+    || (!item.terminationReason && !item.evaluationComplete && item.coreHp > 0 && item.elapsed >= 1799));
+  const diagnosedTimeoutResults = timeoutResults.filter((item): item is BotRunResult & { timeoutDiagnostic: HeadlessTimeoutDiagnostic } => Boolean(item.timeoutDiagnostic));
+  const timeoutCauseLabels: Record<HeadlessTimeoutDiagnostic["classification"], string> = {
+    "reflector-lock": "반사면 고착",
+    "trajectory-loop": "반복 궤도",
+    "healer-stalemate": "회복 교착",
+    "reinforcement-overrun": "증원 누적",
+    "completion-rule": "완료 판정",
+    "no-damage": "피해 중단",
+    "insufficient-throughput": "화력 부족",
+  };
+  const timeoutCauseCounts = Object.entries(diagnosedTimeoutResults.reduce<Record<string, number>>((counts, item) => {
+    const cause = item.timeoutDiagnostic.classification;
+    counts[cause] = (counts[cause] ?? 0) + 1;
+    return counts;
+  }, {})).sort((a, b) => b[1] - a[1]);
+  const timeoutWaveCounts = Object.entries(diagnosedTimeoutResults.reduce<Record<string, number>>((counts, item) => {
+    const wave = String(item.timeoutDiagnostic.stuckWave);
+    counts[wave] = (counts[wave] ?? 0) + 1;
+    return counts;
+  }, {})).sort((a, b) => b[1] - a[1] || Number(a[0]) - Number(b[0]));
   const benchmarkSkillStats = [...upgradeCatalog, ...ultimateCatalog].map((skill) => {
     const pickedRuns = visibleBotResults.filter((item) => item.upgrades.includes(skill.id));
     const metric = pickedRuns.reduce<SkillRunMetric>((total, item) => {
@@ -5718,6 +5740,35 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               </svg>
             </article>
           </div>
+          {timeoutResults.length > 0 && <div className="benchmark-timeout-section">
+            <div className="benchmark-timeout-heading">
+              <div><span>TIMEOUT FORENSICS</span><strong>1800초 정체 원인 분석</strong></div>
+              <small>동일 시드로 재실행하면 같은 상황을 재현할 수 있습니다.</small>
+            </div>
+            <div className="benchmark-timeout-summary">
+              <div><span>TIMEOUT</span><strong>{timeoutResults.length}</strong></div>
+              <div><span>TOP CAUSE</span><strong>{timeoutCauseCounts[0] ? timeoutCauseLabels[timeoutCauseCounts[0][0] as HeadlessTimeoutDiagnostic["classification"]] : "진단 대기"}</strong></div>
+              <div><span>TOP WAVE</span><strong>{timeoutWaveCounts[0] ? `W${timeoutWaveCounts[0][0]} · ${timeoutWaveCounts[0][1]}회` : "-"}</strong></div>
+              <div><span>DIAGNOSED</span><strong>{diagnosedTimeoutResults.length}/{timeoutResults.length}</strong></div>
+            </div>
+            {diagnosedTimeoutResults.length > 0 ? <div className="benchmark-timeout-table" role="table" aria-label="타임아웃 원인 진단">
+              <div className="benchmark-timeout-head" role="row"><span>RUN / SEED</span><span>WAVE TIME</span><span>CAUSE</span><span>REMAIN</span><span>NO DAMAGE</span><span>30s DMG</span><span>REFLECT</span><span>TARGET / LOOP</span></div>
+              {[...diagnosedTimeoutResults].reverse().slice(0, 20).map((item) => {
+                const diagnostic = item.timeoutDiagnostic;
+                const traitSummary = Object.entries(diagnostic.remainingTraits).map(([trait, count]) => `${trait} ${count}`).join(" · ");
+                return <div key={item.id} role="row" title={diagnostic.remainingBricks.map((brick) => `#${brick.id} ${brick.trait} HP ${brick.hp}/${brick.maxHp} @ ${brick.x},${brick.y}`).join("\n")}>
+                  <strong>#{item.run}<small>SEED {item.seed ?? "-"}</small></strong>
+                  <span>W{diagnostic.stuckWave}<small>{diagnostic.waveElapsed.toFixed(1)}s</small></span>
+                  <b data-cause={diagnostic.classification}>{timeoutCauseLabels[diagnostic.classification]}</b>
+                  <span>{diagnostic.remainingBrickCount} · HP {diagnostic.remainingHp}<small>{traitSummary || "-"}</small></span>
+                  <span>{diagnostic.secondsSinceLastDamage.toFixed(1)}s</span>
+                  <span>{diagnostic.damageLast30Seconds.toFixed(1)}</span>
+                  <span>{diagnostic.reflectorBlockedHits}<small>BANK {diagnostic.bankPhase}</small></span>
+                  <span>{diagnostic.lastTargetKey}<small>CHANGE {diagnostic.targetChanges} · LOOP {diagnostic.maxTrajectoryRepeats}</small></span>
+                </div>;
+              })}
+            </div> : <p className="benchmark-timeout-legacy">기존 결과에는 진단 정보가 없습니다. 새 HEADLESS 벤치마크부터 원인이 기록됩니다.</p>}
+          </div>}
           <div className="benchmark-skill-section">
             <div className="benchmark-skill-heading"><div><span>SKILL IMPACT</span><strong>선택 스킬별 성과</strong></div><small>발동·피해·처치는 새 측정 결과부터 집계됩니다.</small></div>
             <div className="benchmark-skill-table" role="table" aria-label="스킬별 벤치마크 성과">
@@ -5727,7 +5778,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           </div>
           <div className="benchmark-data-table" role="table" aria-label="벤치마크 회차별 결과">
             <div className="benchmark-data-head" role="row"><span>RUN</span><span>RESULT</span><span>TIME</span><span>SCORE</span><span>BRICKS</span><span>COMBO</span><span>MAX BALLS</span><span>CORE</span><span>START</span><span>BUILD</span></div>
-            {benchmarkTableResults.map((item) => <div key={item.id} role="row"><strong>#{item.run}</strong><span>{item.evaluationComplete ? "W20 CLEAR" : `W${item.wave} STOP`}</span><span>{item.elapsed.toFixed(1)}s</span><span>{Math.round(item.score).toLocaleString("ko-KR")}</span><span>{item.bricks}</span><span>{item.maxCombo}</span><span>{item.maxBalls}</span><span>{item.coreHp}/{MAX_CORE_HP}</span><span>{item.startingSkills.map((id) => activeSkillMap[id]?.name ?? id).join(" + ") || "-"}</span><span>{item.upgrades.length}</span></div>)}
+            {benchmarkTableResults.map((item) => <div key={item.id} role="row"><strong>#{item.run}</strong><span>{item.evaluationComplete ? "W20 CLEAR" : item.terminationReason === "timeout" ? `W${item.wave} TIMEOUT` : `W${item.wave} STOP`}</span><span>{item.elapsed.toFixed(1)}s</span><span>{Math.round(item.score).toLocaleString("ko-KR")}</span><span>{item.bricks}</span><span>{item.maxCombo}</span><span>{item.maxBalls}</span><span>{item.coreHp}/{MAX_CORE_HP}</span><span>{item.startingSkills.map((id) => activeSkillMap[id]?.name ?? id).join(" + ") || "-"}</span><span>{item.upgrades.length}</span></div>)}
           </div>
         </>}
       </section>}
