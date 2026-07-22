@@ -4,7 +4,7 @@ import { WAVE_DEFINITIONS, waveDefinitionFrom, type WaveDefinition } from "./wav
 
 export const ENGINE_VERSION = "canonical-fixed-step-v1" as const;
 export const ENGINE_PARITY = "fixed-step-canonical-rules" as const;
-export const POLICY_VERSION = "predictive-controls-v1" as const;
+export const POLICY_VERSION = "predictive-controls-v2-reflector-bank" as const;
 export const FIXED_STEP_SECONDS = 1 / 120;
 export const GAME_WIDTH = 900;
 export const GAME_HEIGHT = 600;
@@ -20,11 +20,12 @@ export const MIN_AIM_VERTICAL_DISTANCE = 52;
 export const MIN_VERTICAL_SPEED_RATIO = 0.32;
 export const OVERDRIVE_RATE_PER_SECOND = 0.01;
 export const MAX_OVERDRIVE_LEVEL = 50;
+export const RESPAWN_SPEED_RECOVERY_SECONDS = 5;
 
 export type CanonicalTrait = "standard" | "guard" | "explosive" | "indestructible" | "healer" | "reflector";
 export type CanonicalItemKind = "multiball" | "auto-barrier" | "core-repair" | "cooldown-reset";
 export type CanonicalControls = { move: -1 | 0 | 1; aimX: number; aimY: number };
-export type CanonicalBall = { x: number; y: number; vx: number; vy: number; radius: number; temporary: boolean; cooldowns: Record<string, number> };
+export type CanonicalBall = { x: number; y: number; vx: number; vy: number; radius: number; temporary: boolean; cooldowns: Record<string, number>; respawnRecoveryTime: number; respawnRecoveryDuration: number; respawnRecoveryBaseSpeed: number };
 export type CanonicalBrick = { id: number; x: number; y: number; w: number; h: number; hp: number; maxHp: number; alive: boolean; trait: CanonicalTrait; guardReady: boolean; healTimer: number; healBlockTime: number; burnTime: number; burnTick: number; drop: CanonicalItemKind | null; kind: "normal" | "boss-core" | "boss-minion" };
 export type CanonicalItem = { x: number; y: number; vy: number; kind: CanonicalItemKind; alive: boolean };
 export type CanonicalGravityWell = { x: number; y: number; radius: number; life: number; damagePerSecond: number; damageTick: number };
@@ -142,10 +143,11 @@ function buildWave(state: CanonicalState, wave: number) {
   });
 }
 
-function makeBall(state: CanonicalState, x = GAME_WIDTH / 2, temporary = false): CanonicalBall {
-  const speed = Math.hypot(BASE_BALL_VX, BASE_BALL_VY) * overdriveMultiplier(overdriveLevelAt(state.waveElapsed));
+function makeBall(state: CanonicalState, x = GAME_WIDTH / 2, temporary = false, recovering = false): CanonicalBall {
+  const baseSpeed = Math.hypot(BASE_BALL_VX, BASE_BALL_VY);
+  const speed = baseSpeed * (recovering ? 1 : overdriveMultiplier(overdriveLevelAt(state.waveElapsed)));
   const aim = paddleAimDirection(x, PLAYER_PADDLE_Y, GAME_WIDTH / 2, GAME_HEIGHT / 3);
-  return { x, y: PLAYER_PADDLE_Y - 11, vx: aim.horizontalRatio * speed, vy: aim.verticalRatio * speed, radius: 8 + skillValue(state, "common-ball-size"), temporary, cooldowns: {} };
+  return { x, y: PLAYER_PADDLE_Y - 11, vx: aim.horizontalRatio * speed, vy: aim.verticalRatio * speed, radius: 8 + skillValue(state, "common-ball-size"), temporary, cooldowns: {}, respawnRecoveryTime: recovering ? RESPAWN_SPEED_RECOVERY_SECONDS : 0, respawnRecoveryDuration: recovering ? RESPAWN_SPEED_RECOVERY_SECONDS : 0, respawnRecoveryBaseSpeed: recovering ? baseSpeed : 0 };
 }
 
 function damageBrick(state: CanonicalState, brick: CanonicalBrick, damage: number, sourceBall: CanonicalBall, directBallHit = false) {
@@ -347,6 +349,15 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
   const overdrive = overdriveMultiplier(overdriveLevelAt(state.waveElapsed));
   for (const ball of [...state.balls]) {
     for (const id of Object.keys(ball.cooldowns)) ball.cooldowns[id] = Math.max(0, ball.cooldowns[id] - step);
+    if (ball.respawnRecoveryTime > 0) {
+      ball.respawnRecoveryTime = Math.max(0, ball.respawnRecoveryTime - step);
+      const progress = 1 - ball.respawnRecoveryTime / Math.max(0.001, ball.respawnRecoveryDuration);
+      const easedProgress = progress * progress * (3 - progress * 2);
+      const desiredSpeed = ball.respawnRecoveryBaseSpeed * (1 + (overdrive - 1) * easedProgress);
+      const currentSpeed = Math.max(1, Math.hypot(ball.vx, ball.vy));
+      ball.vx *= desiredSpeed / currentSpeed;
+      ball.vy *= desiredSpeed / currentSpeed;
+    }
     const well = state.gravityWells.find((entry) => Math.hypot(entry.x - ball.x, entry.y - ball.y) < entry.radius);
     if (well) {
       const dx = well.x - ball.x;
@@ -373,7 +384,7 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
     if (ball.y - ball.radius < 0) { ball.y = ball.radius; ball.vy = Math.abs(ball.vy); }
     if (ball.vy > 0 && ball.y + ball.radius >= PLAYER_PADDLE_Y && ball.y - ball.radius <= PLAYER_PADDLE_Y + 18 && Math.abs(ball.x - state.paddleX) <= state.paddleWidth / 2 + ball.radius) {
       ball.y = PLAYER_PADDLE_Y - ball.radius - 0.1;
-      const speed = Math.max(300, Math.hypot(BASE_BALL_VX, BASE_BALL_VY) * overdrive);
+      const speed = ball.respawnRecoveryTime > 0 ? Math.max(300, Math.hypot(ball.vx, ball.vy)) : Math.max(300, Math.hypot(BASE_BALL_VX, BASE_BALL_VY) * overdrive);
       const aim = paddleAimDirection(state.paddleX, PLAYER_PADDLE_Y, controls.aimX, controls.aimY);
       ball.vx = aim.horizontalRatio * speed;
       ball.vy = aim.verticalRatio * speed;
@@ -405,7 +416,7 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
     state.ballLosses++;
     state.coreHp--;
     if (state.coreHp <= 0) state.gameOver = true;
-    else state.balls = [makeBall(state, state.paddleX)];
+    else state.balls = [makeBall(state, state.paddleX, false, true)];
   }
   state.maxBalls = Math.max(state.maxBalls, state.balls.length);
   if (!state.bricks.some((brick) => brick.alive && brick.trait !== "indestructible")) completeWave(state);

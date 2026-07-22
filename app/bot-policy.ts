@@ -26,25 +26,43 @@ function directPathBlocked(target: PolicyBrick, bricks: PolicyBrick[], originX: 
   return bricks.some((brick) => brick !== target && brick.alive && brick.trait === "indestructible" && brick.y > ty && brick.y < PLAYER_PADDLE_Y && Math.abs((originX + (tx - originX) * ((brick.y - PLAYER_PADDLE_Y) / (ty - PLAYER_PADDLE_Y))) - (brick.x + brick.w / 2)) < brick.w / 2 + 8);
 }
 
+export function reflectorBankAim(target: PolicyBrick, originX: number, phase: number) {
+  const targetY = target.y + target.h * 0.52;
+  const candidates = ([0, GAME_WIDTH] as const).map((wallX) => {
+    const sideX = wallX === 0 ? target.x - 8 : target.x + target.w + 8;
+    const mirroredTargetX = wallX === 0 ? -sideX : GAME_WIDTH * 2 - sideX;
+    const totalDx = mirroredTargetX - originX;
+    const wallTime = Math.max(0.02, Math.min(0.98, (wallX - originX) / (Math.abs(totalDx) < 0.001 ? 0.001 : totalDx)));
+    const wallY = PLAYER_PADDLE_Y + (targetY - PLAYER_PADDLE_Y) * wallTime;
+    const directionLength = Math.max(1, Math.hypot(wallX - originX, wallY - PLAYER_PADDLE_Y));
+    const horizontalRatio = Math.abs(wallX - originX) / directionLength;
+    const valid = wallY >= 38 && wallY <= PLAYER_PADDLE_Y - 58 && horizontalRatio <= MAX_AIM_HORIZONTAL_RATIO;
+    return { x: wallX, y: Math.max(38, Math.min(PLAYER_PADDLE_Y - 58, wallY)), valid, horizontalRatio };
+  });
+  const preferredWall = phase % 2 ? GAME_WIDTH : 0;
+  return [...candidates].sort((a, b) => Number(b.valid) - Number(a.valid) || Number(a.x !== preferredWall) - Number(b.x !== preferredWall) || a.horizontalRatio - b.horizontalRatio)[0];
+}
+
 function bankAim(target: PolicyBrick, originX: number, phase: number) {
-  const weakX = phase % 2 ? target.x + target.w + 8 : target.x - 8;
-  const wallX = phase % 2 ? GAME_WIDTH : 0;
-  const mirrored = wallX === 0 ? -weakX : GAME_WIDTH * 2 - weakX;
-  const dy = target.y + target.h / 2 - PLAYER_PADDLE_Y;
-  const dx = mirrored - originX;
-  const t = Math.max(0.05, Math.min(0.95, (wallX - originX) / Math.max(1, dx)));
-  return { x: wallX, y: Math.max(40, Math.min(PLAYER_PADDLE_Y - 60, PLAYER_PADDLE_Y + dy * t)) };
+  return reflectorBankAim(target, originX, phase);
 }
 
 export function decideBotControls(observation: BotObservation, state: BotPolicyState, dt: number): CanonicalControls {
-  const alive = observation.bricks.filter((brick) => brick.alive && brick.trait !== "indestructible" && brick.trait !== "reflector");
-  if (alive.length === state.lastAlive) state.stalledFor += dt; else { state.stalledFor = 0; state.lastAlive = alive.length; }
+  const attackable = observation.bricks.filter((brick) => brick.alive && brick.trait !== "indestructible");
+  const directTargets = attackable.filter((brick) => brick.trait !== "reflector");
+  const reflectorTargets = attackable.filter((brick) => brick.trait === "reflector");
+  if (attackable.length === state.lastAlive) state.stalledFor += dt; else { state.stalledFor = 0; state.lastAlive = attackable.length; }
   if (state.stalledFor > 3.5) { state.bankPhase++; state.stalledFor = 0; }
   const falling = observation.balls.filter((ball) => ball.vy > 0).sort((a, b) => b.y - a.y)[0];
-  const target = [...alive].sort((a, b) => priority(b) - priority(a) || (a.id ?? 0) - (b.id ?? 0))[0];
+  const directTarget = [...directTargets].sort((a, b) => priority(b) - priority(a) || (a.id ?? 0) - (b.id ?? 0))[0];
+  const reflectorTarget = directTarget ? undefined : [...reflectorTargets].sort((a, b) => b.y - a.y || (a.id ?? 0) - (b.id ?? 0))[0];
+  const target = directTarget ?? reflectorTarget;
   let aimX = target ? target.x + target.w / 2 : GAME_WIDTH / 2;
   let aimY = target ? target.y + target.h / 2 : 80;
-  if (target && (directPathBlocked(target, observation.bricks, observation.paddleX) || state.bankPhase % 3 !== 0 && state.stalledFor > 2)) {
+  if (reflectorTarget) {
+    const bank = reflectorBankAim(reflectorTarget, observation.paddleX, state.bankPhase);
+    aimX = bank.x; aimY = bank.y;
+  } else if (target && (directPathBlocked(target, observation.bricks, observation.paddleX) || state.bankPhase % 3 !== 0 && state.stalledFor > 2)) {
     const bank = bankAim(target, observation.paddleX, state.bankPhase);
     aimX = bank.x; aimY = bank.y;
   }
@@ -57,6 +75,6 @@ export function decideBotControls(observation: BotObservation, state: BotPolicyS
   paddleTarget = Math.max(observation.paddleWidth / 2, Math.min(GAME_WIDTH - observation.paddleWidth / 2, paddleTarget));
   const tolerance = Math.max(3, observation.paddleSpeed * dt * 0.45);
   const move: -1 | 0 | 1 = paddleTarget > observation.paddleX + tolerance ? 1 : paddleTarget < observation.paddleX - tolerance ? -1 : 0;
-  state.lastTargetKey = target ? `${target.id ?? "x"}:${target.trait}` : "none";
+  state.lastTargetKey = target ? `${target.id ?? "x"}:${target.trait}${reflectorTarget ? ":bank" : ""}` : "none";
   return { move, aimX, aimY: Math.min(GAME_HEIGHT - 1, aimY) };
 }
