@@ -192,7 +192,7 @@ test("shows level values in separate colors and renders skill icons", async () =
   assert.match(css, /\.upgrade-card:hover \.upgrade-tooltip/);
 });
 
-test("shows compact skill levels and highlights fourth-pick evolutions", async () => {
+test("shows compact skill icons with color-only level states and fourth-pick evolutions", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(source, /skillLevels: \[\] as \{ id: UpgradeId; level: number \}\[\]/);
@@ -201,7 +201,11 @@ test("shows compact skill levels and highlights fourth-pick evolutions", async (
   assert.match(source, /pickCount === 3 && Boolean\(config\?\.evolution\)/);
   assert.match(styles, /\.upgrade-card\.evolution-card/);
   assert.match(styles, /@keyframes evolution-rainbow/);
-  assert.match(source, /<span aria-hidden="true">×<\/span><strong>\{level\}<\/strong>/);
+  assert.match(source, /className={`skill-loadout-entry class-\$\{category\} level-\$\{Math\.min\(3, level\)\}/);
+  assert.doesNotMatch(source, /<span aria-hidden="true">×<\/span><strong>\{level\}<\/strong>/);
+  assert.match(styles, /\.skill-loadout-entry\.level-1\{opacity:\.68;filter:grayscale/);
+  assert.match(styles, /\.skill-loadout-entry\.level-2\{opacity:\.84;filter:grayscale/);
+  assert.match(styles, /\.skill-loadout-entry\.level-3\{opacity:1;filter:saturate/);
   assert.match(styles, /\.skill-loadout-hud\{position:absolute;z-index:5;top:66px;left:14px/);
   assert.match(styles, /\.skill-loadout-entry\.evolved:before/);
   assert.match(styles, /\.skill-loadout-entry\.evolved:before\{border-style:solid;animation:none/);
@@ -447,7 +451,9 @@ test("respawns a ball at the cost of one core health", async () => {
   assert.match(source, /game\.coreHp = Math\.max\(0, game\.coreHp - 1\);/);
   assert.match(source, /const respawnBall = makePlayerBall\(game\.upgrades, game\.paddleX\);/);
   assert.match(source, /game\.balls\.push\(respawnBall\);/);
-  assert.match(source, /BALL LOST \/\/ CORE -1 \/\/ RESPAWN/);
+  assert.match(source, /RESPAWN_SPEED_RECOVERY_SECONDS = 5/);
+  assert.match(source, /respawnBall\.respawnRecoveryTime = RESPAWN_SPEED_RECOVERY_SECONDS/);
+  assert.match(source, /RESPAWN SPEED 100%/);
 });
 
 test("uses clear-driven waves without a time limit and keeps skill-specific combat effects", async () => {
@@ -478,14 +484,17 @@ test("propagates paddle debuffs and keeps barrier state accessible in the in-gam
   assert.match(source, /EXP ×/);
 });
 
-test("renders compact core health inside only the player paddle", async () => {
+test("renders individual core crystals below the player paddle with a break effect", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  assert.match(source, /const drawPaddleBody = \(x: number, y: number, width: number, color: string, alpha = 1, coreHealth: number \| null = null\)/);
-  assert.match(source, /const healthText = `◆ \$\{Math\.max\(0, coreHealth\)\}`/);
-  assert.match(source, /ctx\.measureText\(healthText\)\.width > width - 12/);
-  assert.match(source, /ctx\.strokeText\(healthText, x, y \+ height \/ 2 \+ 1\)/);
-  assert.match(source, /drawPaddleBody\(game\.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, PLAYER_BALL_COLOR, 1, game\.coreHp\)/);
+  assert.match(source, /const drawCoreCrystal =/);
+  assert.match(source, /const drawPlayerCores =/);
+  assert.match(source, /const count = Math\.max\(0, Math\.floor\(game\.coreHp\)\)/);
+  assert.match(source, /const y = PLAYER_PADDLE_Y \+ 36/);
+  assert.match(source, /drawCoreCrystal\(startX \+ index \* gap, y/);
+  assert.match(source, /if \(game\.coreBreakTime > 0\)/);
+  assert.match(source, /drawPlayerCores\(\)/);
+  assert.doesNotMatch(source, /const healthText = `◆/);
   assert.match(source, /drawPaddleBody\(x, y, width, color, 0\.74\)/);
   assert.doesNotMatch(source, /drawPaddleBody\(x, y, width, color, 0\.74, game\.coreHp\)/);
   assert.match(source, /<output className="sr-only" aria-live="polite" aria-atomic="true">코어 체력 \{hud\.coreHp\}\/\{hud\.maxCoreHp\}/);
@@ -618,7 +627,9 @@ test("aims the visible benchmark bot at live hittable bricks independently of pa
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const policy = await readFile(new URL("../app/bot-policy.ts", import.meta.url), "utf8");
   assert.match(policy, /predictLandingX/);
-  assert.match(policy, /brick\.trait !== "indestructible" && brick\.trait !== "reflector"/);
+  assert.match(policy, /const directTargets = attackable\.filter\(\(brick\) => brick\.trait !== "reflector"\)/);
+  assert.match(policy, /const reflectorTarget = directTarget \? undefined/);
+  assert.match(policy, /reflectorBankAim\(reflectorTarget, observation\.paddleX, state\.bankPhase\)/);
   assert.match(source, /const controls = decideBotControls/);
   assert.match(source, /pointerXRef\.current = controls\.aimX;\s*pointerYRef\.current = controls\.aimY/);
   assert.match(source, /game\.paddleX \+= botMoveRef\.current \* PADDLE_KEYBOARD_SPEED/);
@@ -816,7 +827,7 @@ test("removes the neutral floor and spends core health when the base ball falls"
   assert.match(source, /if \(ball\.y - ball\.radius > H\)/);
   assert.match(source, /const lostBaseBall =/);
   assert.match(source, /game\.coreHp = Math\.max\(0, game\.coreHp - 1\)/);
-  assert.match(source, /BALL LOST \/\/ CORE -1 \/\/ RESPAWN/);
+  assert.match(source, /CORE BREAK \/\/ RESPAWN SPEED 100%/);
 });
 
 test("keeps the faster base ball speed for the one-ball ruleset", async () => {

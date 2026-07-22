@@ -52,11 +52,36 @@ test("small seeded pilot keeps canonical benchmark metadata and finite outcomes"
   }
 });
 
-test("predictive policy never selects reflector or indestructible bricks as targets", () => {
+test("predictive policy avoids direct reflector aim and computes a side-wall bank shot", () => {
   const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
   definitions[0] = { ...definitions[0], pattern: ["...xrrrrx..."] };
   const state = engine.createCanonicalState({ seed: 551, targetWave: 1, waves: definitions });
   const bot = policy.createBotPolicyState(551);
+  const controls = policy.decideBotControls({ elapsed: state.elapsed, paddleX: state.paddleX, paddleWidth: state.paddleWidth, paddleSpeed: engine.PADDLE_SPEED, balls: state.balls, bricks: state.bricks, items: state.items }, bot, engine.FIXED_STEP_SECONDS);
+  assert.match(bot.lastTargetKey, /:reflector:bank$/);
+  assert.ok(controls.aimX === 0 || controls.aimX === engine.GAME_WIDTH);
+  assert.ok(controls.aimY < engine.PLAYER_PADDLE_Y - 50);
+});
+
+test("reflector bank policy can damage a protected reflector layout", () => {
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  definitions[0] = { ...definitions[0], pattern: ["....rrrr...."] };
+  const state = engine.createCanonicalState({ seed: 553, targetWave: 1, waves: definitions });
+  const bot = policy.createBotPolicyState(553);
+  const initialHp = state.bricks.reduce((sum, brick) => sum + brick.hp, 0);
+  for (let step = 0; step < 120 * 45 && !state.complete && !state.gameOver; step++) {
+    const controls = policy.decideBotControls({ elapsed: state.elapsed, paddleX: state.paddleX, paddleWidth: state.paddleWidth, paddleSpeed: engine.PADDLE_SPEED, balls: state.balls, bricks: state.bricks, items: state.items }, bot, engine.FIXED_STEP_SECONDS);
+    engine.stepCanonicalEngine(state, controls, engine.FIXED_STEP_SECONDS);
+  }
+  const remainingHp = state.bricks.filter((brick) => brick.alive).reduce((sum, brick) => sum + brick.hp, 0);
+  assert.ok(state.complete || remainingHp < initialHp, "bank aiming should reach a reflector side or upper face");
+});
+
+test("predictive policy never targets indestructible-only layouts", () => {
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  definitions[0] = { ...definitions[0], pattern: ["...xxxxxx..."] };
+  const state = engine.createCanonicalState({ seed: 552, targetWave: 1, waves: definitions });
+  const bot = policy.createBotPolicyState(552);
   const controls = policy.decideBotControls({ elapsed: state.elapsed, paddleX: state.paddleX, paddleWidth: state.paddleWidth, paddleSpeed: engine.PADDLE_SPEED, balls: state.balls, bricks: state.bricks, items: state.items }, bot, engine.FIXED_STEP_SECONDS);
   assert.equal(bot.lastTargetKey, "none");
   assert.equal(controls.aimX, engine.GAME_WIDTH / 2);
@@ -103,4 +128,17 @@ test("indestructible bricks never carry item drops", () => {
   const state = engine.createCanonicalState({ seed: 93, targetWave: 1, waves: definitions });
   assert.ok(state.bricks.length > 0);
   assert.ok(state.bricks.every((brick) => brick.trait === "indestructible" && brick.drop === null));
+});
+
+test("core-loss respawn starts at base speed and recovers over five seconds", () => {
+  const state = engine.createCanonicalState({ seed: 94, targetWave: 1 });
+  state.waveElapsed = 30;
+  state.balls[0].y = engine.GAME_HEIGHT + state.balls[0].radius + 2;
+  state.balls[0].vy = 320;
+  engine.stepCanonicalEngine(state, { move: 0, aimX: engine.GAME_WIDTH / 2, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  const respawned = state.balls[0];
+  assert.equal(state.coreHp, state.maxCoreHp - 1);
+  assert.equal(respawned.respawnRecoveryDuration, engine.RESPAWN_SPEED_RECOVERY_SECONDS);
+  assert.ok(respawned.respawnRecoveryTime > 4.9);
+  assert.ok(Math.abs(Math.hypot(respawned.vx, respawned.vy) - Math.hypot(engine.BASE_BALL_VX, engine.BASE_BALL_VY)) < 0.01);
 });
