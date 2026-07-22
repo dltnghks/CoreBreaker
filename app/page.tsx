@@ -2589,13 +2589,23 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
             tangentX *= -1;
             tangentY *= -1;
           }
-          const orbitRadius = well.radius * 0.46;
+          const lifeRatio = Math.max(0, Math.min(1, well.life / Math.max(0.01, well.maxLife)));
+          const convergence = 1 - lifeRatio;
+          const orbitRadius = well.radius * (0.06 + 0.4 * lifeRatio);
           const radialCorrection = Math.max(-0.72, Math.min(0.72, (distance - orbitRadius) / Math.max(1, orbitRadius)));
-          const targetX = tangentX + inwardX * radialCorrection;
-          const targetY = tangentY + inwardY * radialCorrection;
+          const tangentWeight = 1 - convergence * 0.82;
+          const inwardWeight = 0.05 + convergence * 1.8;
+          const targetX = tangentX * tangentWeight + inwardX * (radialCorrection + inwardWeight);
+          const targetY = tangentY * tangentWeight + inwardY * (radialCorrection + inwardWeight);
           const targetLength = Math.max(0.001, Math.hypot(targetX, targetY));
-          ball.vx = targetX / targetLength * ball.gravityBaseSpeed!;
-          ball.vy = targetY / targetLength * ball.gravityBaseSpeed!;
+          const desiredVx = targetX / targetLength * ball.gravityBaseSpeed!;
+          const desiredVy = targetY / targetLength * ball.gravityBaseSpeed!;
+          const steering = Math.min(1, dt * (4 + convergence * 8));
+          ball.vx += (desiredVx - ball.vx) * steering;
+          ball.vy += (desiredVy - ball.vy) * steering;
+          const steeredSpeed = Math.max(1, Math.hypot(ball.vx, ball.vy));
+          ball.vx *= ball.gravityBaseSpeed! / steeredSpeed;
+          ball.vy *= ball.gravityBaseSpeed! / steeredSpeed;
         });
         if (botActiveRef.current && ball.gravityRescueCooldown <= 0 && influencingWells.some(({ distance }) => distance < 34)) {
           game.botMetrics.gravityRescues++;
