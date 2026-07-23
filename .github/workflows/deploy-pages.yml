@@ -45,11 +45,16 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Build blog with Jekyll
-        uses: actions/jekyll-build-pages@v1
+      - name: Setup Ruby for blog
+        uses: ruby/setup-ruby@v1
         with:
-          source: blog-source
-          destination: _site
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: blog-source
+
+      - name: Build blog with Jekyll
+        working-directory: blog-source
+        run: bundle exec jekyll build --destination ../_site
 
       - name: Add game under /game
         run: cp -R dist/client _site/game
