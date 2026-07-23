@@ -22,12 +22,12 @@ jobs:
       GITHUB_PAGES_BASE_PATH: "/game"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -37,7 +37,7 @@ jobs:
         run: node scripts/build-github-pages.mjs
 
       - name: Checkout blog source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main
           path: blog-source
@@ -60,7 +60,7 @@ jobs:
         run: cp -R dist/client _site/game
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: ./dist/client
 
