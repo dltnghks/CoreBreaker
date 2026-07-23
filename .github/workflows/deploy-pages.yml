@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GITHUB_PAGES: "true"
+      GITHUB_PAGES_BASE_PATH: "/game"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,8 +36,23 @@ jobs:
       - name: Build static site
         run: node scripts/build-github-pages.mjs
 
+      - name: Checkout blog source
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: blog-source
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
+
+      - name: Build blog with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: blog-source
+          destination: _site
+
+      - name: Add game under /game
+        run: cp -R dist/client _site/game
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

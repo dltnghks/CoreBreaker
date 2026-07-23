@@ -68,6 +68,6 @@ node --test tests\rendered-html.test.mjs tests\benchmark-parity.test.mjs
 
 ## GitHub Pages
 
-The repository includes `.github/workflows/deploy-pages.yml`. Pushes to `main` build a static Pages shell from the production renderer and deploy it to GitHub Pages.
+The repository includes `.github/workflows/deploy-pages.yml`. Pushes to `nhn-ai` build the existing Jekyll blog from `main`, add the game under `/game/`, and deploy the combined site to GitHub Pages.
 
-In the repository settings, set **Pages → Build and deployment → Source** to **GitHub Actions**. The workflow automatically uses the repository name as the project-site base path, so the deployed game and `/benchmark`, `/skill-lab`, and `/stage-lab` routes work under the Pages URL.
+In the repository settings, set **Pages → Build and deployment → Source** to **GitHub Actions**. The blog remains at the root URL and the game is available at `/game/`, including `/game/benchmark`, `/game/skill-lab`, and `/game/stage-lab`.
