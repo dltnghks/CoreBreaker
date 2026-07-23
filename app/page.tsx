@@ -10,6 +10,7 @@ import { PARALLEL_BENCHMARK_RULESET, type HeadlessBenchmarkRequest, type Headles
 import { clearBenchmarkResults, getBenchmarkResults, putBenchmarkResults } from "./benchmark-result-store";
 import { createBotPolicyState, decideBotControls, POLICY_VERSION, reflectorBankAim, type BotPolicyState } from "./bot-policy";
 import { appHref } from "./site-path";
+import { SkillSelectionModal } from "./_components/modals/SkillSelectionModal";
 
 import type {
   Ball,
@@ -241,8 +242,8 @@ function circleRectangleCollision(ball: Pick<Ball, "x" | "y" | "radius">, brick:
   const exit = exits.sort((a, b) => a.distance - b.distance)[0];
   const penetration = exit.normalX < 0 ? ball.x + ball.radius - brick.x
     : exit.normalX > 0 ? brick.x + brick.w - (ball.x - ball.radius)
-    : exit.normalY < 0 ? ball.y + ball.radius - brick.y
-    : brick.y + brick.h - (ball.y - ball.radius);
+      : exit.normalY < 0 ? ball.y + ball.radius - brick.y
+        : brick.y + brick.h - (ball.y - ball.radius);
   return { normalX: exit.normalX, normalY: exit.normalY, penetration: Math.max(0, penetration) };
 }
 
@@ -637,10 +638,10 @@ function makeWaveBricks(waveNumber: number, balance = DEFAULT_BALANCE_CONFIG): B
     if (cell === ".") return [];
     const trait: BrickTrait = cell === "g" ? "guard"
       : cell === "e" ? "explosive"
-      : cell === "x" ? "indestructible"
-      : cell === "c" ? "healer"
-      : cell === "r" ? "reflector"
-      : "standard";
+        : cell === "x" ? "indestructible"
+          : cell === "c" ? "healer"
+            : cell === "r" ? "reflector"
+              : "standard";
     const hpBonus = cell === "h" ? 1 + Math.floor((waveNumber - 1) / 8) : cell === "c" ? 2 : 0;
     const maxHp = Math.ceil((baseHp + hpBonus) * lateWaveHpMultiplier(waveNumber) * definition.hpMultiplier);
     return [{
@@ -676,52 +677,70 @@ function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfi
 type BossAttackPattern = { name: string; cells: Array<{ col: number; row: number; trait: BrickTrait }> };
 
 const EARLY_BOSS_ATTACK_PATTERNS: BossAttackPattern[] = [
-  { name: "STONE WINGS", cells: [
-    { col: 2, row: 0, trait: "standard" }, { col: 3, row: 1, trait: "guard" },
-    { col: 8, row: 1, trait: "guard" }, { col: 9, row: 0, trait: "standard" },
-  ] },
-  { name: "SINGLE FUSE", cells: [
-    { col: 5, row: 0, trait: "explosive" }, { col: 6, row: 1, trait: "standard" },
-  ] },
+  {
+    name: "STONE WINGS", cells: [
+      { col: 2, row: 0, trait: "standard" }, { col: 3, row: 1, trait: "guard" },
+      { col: 8, row: 1, trait: "guard" }, { col: 9, row: 0, trait: "standard" },
+    ]
+  },
+  {
+    name: "SINGLE FUSE", cells: [
+      { col: 5, row: 0, trait: "explosive" }, { col: 6, row: 1, trait: "standard" },
+    ]
+  },
 ];
 
 const MID_BOSS_ATTACK_PATTERNS: BossAttackPattern[] = [
-  { name: "SCATTER BOMB", cells: [
-    { col: 1, row: 0, trait: "standard" }, { col: 4, row: 1, trait: "explosive" },
-    { col: 7, row: 0, trait: "standard" }, { col: 10, row: 1, trait: "explosive" },
-  ] },
-  { name: "GUARD WINGS", cells: [
-    { col: 2, row: 1, trait: "guard" }, { col: 3, row: 0, trait: "standard" },
-    { col: 8, row: 0, trait: "standard" }, { col: 9, row: 1, trait: "guard" },
-  ] },
-  { name: "REFLECTOR GATE", cells: [
-    { col: 0, row: 0, trait: "reflector" }, { col: 5, row: 1, trait: "guard" },
-    { col: 6, row: 1, trait: "guard" }, { col: 11, row: 0, trait: "reflector" },
-  ] },
+  {
+    name: "SCATTER BOMB", cells: [
+      { col: 1, row: 0, trait: "standard" }, { col: 4, row: 1, trait: "explosive" },
+      { col: 7, row: 0, trait: "standard" }, { col: 10, row: 1, trait: "explosive" },
+    ]
+  },
+  {
+    name: "GUARD WINGS", cells: [
+      { col: 2, row: 1, trait: "guard" }, { col: 3, row: 0, trait: "standard" },
+      { col: 8, row: 0, trait: "standard" }, { col: 9, row: 1, trait: "guard" },
+    ]
+  },
+  {
+    name: "REFLECTOR GATE", cells: [
+      { col: 0, row: 0, trait: "reflector" }, { col: 5, row: 1, trait: "guard" },
+      { col: 6, row: 1, trait: "guard" }, { col: 11, row: 0, trait: "reflector" },
+    ]
+  },
 ];
 
 const FINAL_BOSS_ATTACK_PATTERNS: BossAttackPattern[] = [
-  { name: "REPAIR CROSS", cells: [
-    { col: 3, row: 1, trait: "guard" }, { col: 5, row: 0, trait: "standard" },
-    { col: 6, row: 1, trait: "healer" }, { col: 7, row: 0, trait: "standard" },
-    { col: 9, row: 1, trait: "guard" },
-  ] },
-  { name: "BLAST MAZE", cells: [
-    { col: 0, row: 1, trait: "reflector" }, { col: 2, row: 0, trait: "explosive" },
-    { col: 5, row: 1, trait: "guard" }, { col: 8, row: 0, trait: "explosive" },
-    { col: 11, row: 1, trait: "reflector" },
-  ] },
+  {
+    name: "REPAIR CROSS", cells: [
+      { col: 3, row: 1, trait: "guard" }, { col: 5, row: 0, trait: "standard" },
+      { col: 6, row: 1, trait: "healer" }, { col: 7, row: 0, trait: "standard" },
+      { col: 9, row: 1, trait: "guard" },
+    ]
+  },
+  {
+    name: "BLAST MAZE", cells: [
+      { col: 0, row: 1, trait: "reflector" }, { col: 2, row: 0, trait: "explosive" },
+      { col: 5, row: 1, trait: "guard" }, { col: 8, row: 0, trait: "explosive" },
+      { col: 11, row: 1, trait: "reflector" },
+    ]
+  },
 ];
 
 const LATE_BOSS_ATTACK_PATTERNS: BossAttackPattern[] = [
-  { name: "RECOVERY CROSS", cells: [
-    { col: 5, row: 0, trait: "healer" }, { col: 2, row: 1, trait: "guard" },
-    { col: 9, row: 1, trait: "guard" }, { col: 0, row: 0, trait: "reflector" }, { col: 11, row: 0, trait: "reflector" },
-  ] },
-  { name: "PRESSURE MAZE", cells: [
-    { col: 1, row: 0, trait: "explosive" }, { col: 4, row: 1, trait: "guard" },
-    { col: 7, row: 1, trait: "guard" }, { col: 10, row: 0, trait: "explosive" },
-  ] },
+  {
+    name: "RECOVERY CROSS", cells: [
+      { col: 5, row: 0, trait: "healer" }, { col: 2, row: 1, trait: "guard" },
+      { col: 9, row: 1, trait: "guard" }, { col: 0, row: 0, trait: "reflector" }, { col: 11, row: 0, trait: "reflector" },
+    ]
+  },
+  {
+    name: "PRESSURE MAZE", cells: [
+      { col: 1, row: 0, trait: "explosive" }, { col: 4, row: 1, trait: "guard" },
+      { col: 7, row: 1, trait: "guard" }, { col: 10, row: 0, trait: "explosive" },
+    ]
+  },
 ];
 
 function makeBossAttackBricks(stage: number, patternIndex: number, forcedMultiballs = 0) {
@@ -994,7 +1013,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const parallelWorkersRef = useRef<Worker[]>([]);
   const parallelSessionRef = useRef(0);
   const parallelPendingResultsRef = useRef<BotRunResult[]>([]);
-  const parallelFlushRef = useRef<() => void>(() => {});
+  const parallelFlushRef = useRef<() => void>(() => { });
   const balanceConfigRef = useRef<BalanceConfig>(DEFAULT_BALANCE_CONFIG);
   const activeSkillConfigsRef = useRef<SkillConfig[]>(DEFAULT_SKILLS);
   const botLivePersistRef = useRef(0);
@@ -1277,17 +1296,17 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   useEffect(() => {
     let cancelled = false;
     const normalizeResults = (saved: Partial<BotRunResult>[]) => saved.map((item) => ({
-        ...item,
-        balanceConfig: normalizeBalanceConfig(item.balanceConfig),
-        benchmarkConfig: item.benchmarkConfig ? normalizeBenchmarkConfig(item.benchmarkConfig) : null,
-        startingSkills: Array.isArray(item.startingSkills) ? item.startingSkills : [],
-        skillHistory: Array.isArray(item.skillHistory) ? item.skillHistory : [],
-        ultimates: Array.isArray(item.ultimates) ? item.ultimates : [],
-        skillMetrics: item.skillMetrics && typeof item.skillMetrics === "object" ? item.skillMetrics : {},
-        waveSamples: Array.isArray(item.waveSamples) ? item.waveSamples : [],
-        evaluationComplete: item.evaluationComplete ?? Number(item.wave) >= BOT_EVALUATION_WAVE,
-        skillBench: item.skillBench ?? null,
-      } as BotRunResult));
+      ...item,
+      balanceConfig: normalizeBalanceConfig(item.balanceConfig),
+      benchmarkConfig: item.benchmarkConfig ? normalizeBenchmarkConfig(item.benchmarkConfig) : null,
+      startingSkills: Array.isArray(item.startingSkills) ? item.startingSkills : [],
+      skillHistory: Array.isArray(item.skillHistory) ? item.skillHistory : [],
+      ultimates: Array.isArray(item.ultimates) ? item.ultimates : [],
+      skillMetrics: item.skillMetrics && typeof item.skillMetrics === "object" ? item.skillMetrics : {},
+      waveSamples: Array.isArray(item.waveSamples) ? item.waveSamples : [],
+      evaluationComplete: item.evaluationComplete ?? Number(item.wave) >= BOT_EVALUATION_WAVE,
+      skillBench: item.skillBench ?? null,
+    } as BotRunResult));
     const loadResults = async () => {
       let localResults: BotRunResult[] = [];
       try {
@@ -2244,16 +2263,16 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         const target = aliveBricks.filter((brick) => brick.y === lowestY)
           .sort((a, b) => Math.abs(a.x + a.w / 2 - paddle.x) - Math.abs(b.x + b.w / 2 - paddle.x))[0];
         const sourceBall = game.balls.find((ball) => ball.sourcePaddleId === paddle.id) ?? game.balls[0];
-          if (target && sourceBall) {
-            if (absorbGuardHit(target)) {
-              counter.lastShotTimer = skillValue("last-shot", level);
-              return;
-            }
-            target.hp -= damageMultiplier(target);
-            if (target.hp <= 0) destroyBrick(target, sourceBall, false, 0);
-            game.flashes.push({ text: `${paddle.name} // LAST SHOT`, x: target.x + target.w / 2, y: target.y, life: 0.65, color: "#ff6b87" });
-            emitEffect("beam", paddle.x, paddle.y, "#ff6b87", 8, target.x + target.w / 2, target.y + target.h / 2, 0.35);
+        if (target && sourceBall) {
+          if (absorbGuardHit(target)) {
+            counter.lastShotTimer = skillValue("last-shot", level);
+            return;
           }
+          target.hp -= damageMultiplier(target);
+          if (target.hp <= 0) destroyBrick(target, sourceBall, false, 0);
+          game.flashes.push({ text: `${paddle.name} // LAST SHOT`, x: target.x + target.w / 2, y: target.y, life: 0.65, color: "#ff6b87" });
+          emitEffect("beam", paddle.x, paddle.y, "#ff6b87", 8, target.x + target.w / 2, target.y + target.h / 2, 0.35);
+        }
         counter.lastShotTimer = skillValue("last-shot", level);
       });
     }
@@ -2514,7 +2533,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           // Class skills are resolved from the owning ball's upgrades on brick impact.
           // Keeping the callbacks below inert preserves the legacy skill implementations
           // while removing paddle-reflection charging from the live ruleset.
-          const triggerReflectionSkill = (_id: ClassSkillId, _onTrigger: (level: number) => void) => {};
+          const triggerReflectionSkill = (_id: ClassSkillId, _onTrigger: (level: number) => void) => { };
           const chargeBall = (id: ClassSkillId, level: number, label: string, color: string) => {
             ball.skillCharges[id] = level;
             game.flashes.push({ text: `${paddle.name} // ${label}`, x: paddle.x, y: paddle.y - 32, life: 0.85, color });
@@ -3399,21 +3418,21 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       ctx.shadowBlur = 12;
       const brickColor = brick.kind === "boss-core" ? "#ff4f78"
         : brick.kind === "boss-armor" ? "#587cff"
-        : brick.kind === "boss-minion" ? "#ff9658"
-        : brick.trait === "guard" ? "#fff27a"
-        : brick.trait === "explosive" ? "#ff8a3d"
-        : brick.trait === "indestructible" ? "#8d96a8"
-        : brick.trait === "healer" ? "#72f1b8"
-        : brick.trait === "reflector" ? "#65dcff"
-        : brick.maxHp >= 5 ? "#c5a766" : brick.maxHp >= 3 ? "#aeb4bd" : "#8f969f";
+          : brick.kind === "boss-minion" ? "#ff9658"
+            : brick.trait === "guard" ? "#fff27a"
+              : brick.trait === "explosive" ? "#ff8a3d"
+                : brick.trait === "indestructible" ? "#8d96a8"
+                  : brick.trait === "healer" ? "#72f1b8"
+                    : brick.trait === "reflector" ? "#65dcff"
+                      : brick.maxHp >= 5 ? "#c5a766" : brick.maxHp >= 3 ? "#aeb4bd" : "#8f969f";
       ctx.shadowColor = brickColor;
       ctx.fillStyle = brick.kind === "normal"
         ? brick.trait === "guard" ? `rgba(135,115,25,${alpha})`
-        : brick.trait === "explosive" ? `rgba(174,61,20,${alpha})`
-        : brick.trait === "indestructible" ? "rgba(55,62,76,.98)"
-        : brick.trait === "healer" ? `rgba(30,122,91,${alpha})`
-        : brick.trait === "reflector" ? `rgba(22,102,145,${alpha})`
-        : brick.maxHp >= 5 ? `rgba(111,88,43,${alpha})` : brick.maxHp >= 3 ? `rgba(78,83,92,${alpha})` : `rgba(61,66,73,${alpha})`
+          : brick.trait === "explosive" ? `rgba(174,61,20,${alpha})`
+            : brick.trait === "indestructible" ? "rgba(55,62,76,.98)"
+              : brick.trait === "healer" ? `rgba(30,122,91,${alpha})`
+                : brick.trait === "reflector" ? `rgba(22,102,145,${alpha})`
+                  : brick.maxHp >= 5 ? `rgba(111,88,43,${alpha})` : brick.maxHp >= 3 ? `rgba(78,83,92,${alpha})` : `rgba(61,66,73,${alpha})`
         : brickColor;
       ctx.globalAlpha = brick.kind === "normal" ? 1 : alpha;
       traceBrickBody(brick);
@@ -5440,68 +5459,18 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               </div>
             )}
 
-            {mode === "initialskills" && (
-              <div className="overlay level-overlay initial-skill-overlay">
-                <p className="overlay-kicker">LOADOUT SETUP // 1 STARTING SKILL</p>
-                <h2>시작 스킬 1개를 선택하세요</h2>
-                <div className="upgrade-grid">
-                  {choices.map(({ upgrade }, index) => {
-                    const config = activeSkillMap[upgrade.id]!;
-                    return (
-                      <button key={upgrade.id} className={`upgrade-card class-${upgrade.category}`} onClick={() => selectInitialSkill(upgrade)} style={{ "--accent": upgrade.color } as React.CSSProperties}>
-                        <span className="upgrade-index">0{index + 1}</span>
-                        <span className="upgrade-tag">STARTING SKILL · {upgrade.tag}</span>
-                        <span className="upgrade-icon" aria-hidden="true">{SKILL_ICONS[upgrade.id]}</span>
-                        <strong>{upgrade.name}</strong>
-                        <div className="upgrade-level-values"><span className="next"><small>START</small><b>{config.levels[0]}{config.unit}</b>{config.cooldown[0] > 0 && <i>CD {config.cooldown[0]}s</i>}</span></div>
-                        <em>SELECT &amp; START</em>
-                        <div className="upgrade-tooltip" role="tooltip"><span>발동 조건</span><b>{config.trigger}</b><p><SkillDescriptionText text={config.description} /></p></div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {mode === "levelup" && (
-              <div className="overlay level-overlay">
-                <p className="overlay-kicker">WAVE REWARD // SIGNAL UPGRADE</p>
-                <h2>조합을 선택하세요</h2>
-                <div className="upgrade-grid">
-                  <p className="upgrade-ball-summary">스킬은 공마다 독립 쿨타임으로 발동 · 재사용 가속은 모든 공의 쿨타임을 줄입니다.</p>
-                  {choices.map(({ upgrade, ballCost }, index) => {
-                    const pickCount = skillPickCount(gameRef.current?.upgrades ?? [], upgrade.id);
-                    const currentLevel = Math.min(3, pickCount);
-                    const config = activeSkillMap[upgrade.id];
-                    const evolutionChoice = pickCount === 3 && Boolean(config?.evolution);
-                    return (
-                      <button key={upgrade.id} className={`upgrade-card class-${upgrade.category}${evolutionChoice ? " evolution-card" : ""}`} onClick={() => applyUpgrade(upgrade, 0)} aria-label={`${upgrade.name}, ${evolutionChoice ? "진화" : "영구 적용 스킬"}`} style={{ "--accent": upgrade.color } as React.CSSProperties}>
-                        <span className="upgrade-index">0{index + 1}</span>
-                        <span className="upgrade-tag">{upgrade.tag}</span>
-                        <span className="upgrade-icon" aria-hidden="true">{SKILL_ICONS[upgrade.id]}</span>
-                        <strong>{upgrade.name}</strong>
-                        <div className="upgrade-level-values" aria-label={`${upgrade.name} 레벨별 수치`}>
-                          {config!.levels.map((value, levelIndex) => (
-                            <span key={levelIndex} className={`${!evolutionChoice && currentLevel === levelIndex ? "next" : currentLevel > levelIndex ? "owned" : ""} ${evolutionChoice && levelIndex === 2 ? "evolution" : ""}`}>
-                              <small>LV{levelIndex + 1}</small><b>{value}{config!.unit}</b>{config!.cooldown[levelIndex] > 0 && <i>CD {config!.cooldown[levelIndex]}s</i>}
-                            </span>
-                          ))}
-                        </div>
-                        <em>{evolutionChoice ? "EVOLUTION" : currentLevel > 0 ? `LV ${currentLevel + 1} 획득` : "NEW SKILL"}</em>
-                        <div className="upgrade-tooltip" role="tooltip">
-                          <span>발동 조건</span><b>{config!.trigger}</b>
-                          <p><SkillDescriptionText text={config!.description} /></p>
-                          {evolutionChoice && config!.evolution && <p className="upgrade-evolution"><b>진화</b><SkillDescriptionText text={config!.evolution} /></p>}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="upgrade-choice-actions">
-                  <button type="button" onClick={rerollUpgradeChoices} disabled={rerollsLeft <= 0}>리롤 {rerollsLeft}/1</button>
-                  <button type="button" onClick={skipUpgradeChoice}>선택 건너뛰기</button>
-                </div>
-              </div>
+            {(mode === "initialskills" || mode === "levelup") && (
+              <SkillSelectionModal
+                mode={mode}
+                choices={choices}
+                activeSkillMap={activeSkillMap}
+                userUpgrades={gameRef.current?.upgrades ?? []}
+                rerollsLeft={rerollsLeft}
+                onSelectInitialSkill={(upgrade) => selectInitialSkill(upgrade)}
+                onApplyUpgrade={(upgrade, ballCost) => applyUpgrade(upgrade, ballCost)}
+                onReroll={rerollUpgradeChoices}
+                onSkip={skipUpgradeChoice}
+              />
             )}
 
             {mode === "bossreward" && (
@@ -5578,7 +5547,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         {benchmarkMode && <aside className="ghost-panel">
           <section className="bot-panel" aria-label="플레이테스트 봇 설정 및 결과">
             <div className="panel-heading">
-                  <div><p className="eyebrow">{benchmarkRunMode === "watch" ? `VISIBLE PHYSICS · ${botSpeed}× · TARGET W${benchmarkConfig.targetWave}` : `PARALLEL HEADLESS · ${parallelWorkerCount || "AUTO"} WORKERS · TARGET W${benchmarkConfig.targetWave}`}</p><h2>벤치마크 러너</h2></div>
+              <div><p className="eyebrow">{benchmarkRunMode === "watch" ? `VISIBLE PHYSICS · ${botSpeed}× · TARGET W${benchmarkConfig.targetWave}` : `PARALLEL HEADLESS · ${parallelWorkerCount || "AUTO"} WORKERS · TARGET W${benchmarkConfig.targetWave}`}</p><h2>벤치마크 러너</h2></div>
               <span>{botRunning ? `${botCompletedRuns}/${botTargetRuns}` : `${visibleBotResults.length} DATA`}</span>
             </div>
             <div className="benchmark-mode-switch" role="group" aria-label="벤치마크 실행 방식">
@@ -5589,11 +5558,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               ? skillBenchConfig.environment === "original"
                 ? `ORIGINAL · 스킬 획득 없음 · ${skillBenchConfig.runsPerVariant}회 기준 측정${skillBenchProgress.status === "paused" ? ` · ${skillBenchProgress.completedRuns}회부터 재개` : ""}`
                 : skillBenchConfig.mode === "batch"
-                ? `배치 스킬 벤치 · ${skillBenchConfig.skillIds.length}개 스킬 · 총 ${skillBenchConfig.skillIds.length * skillBenchConfig.runsPerVariant * 4}회${skillBenchProgress.status === "paused" ? ` · ${skillBenchProgress.completedRuns}회부터 재개` : ""}`
-                : `${skillBenchConfig.environment.toUpperCase()} · ${activeSkillMap[skillBenchConfig.skillId as UpgradeId]?.name ?? skillBenchConfig.skillId} · 기준/LV1/LV2/LV3 각 ${skillBenchConfig.runsPerVariant}회`
-                  : benchmarkRunMode === "watch"
-                    ? `실제 충돌 물리와 이펙트를 사용하는 화면 관찰용 봇 · 1회 실행 · ${botSpeed}×`
-                    : `실제 스테이지 데이터와 Skill LAB 수치를 사용하는 결정론적 헤드리스 시뮬레이션 · ${benchmarkConfig.runs}회 병렬 실행`}</p>
+                  ? `배치 스킬 벤치 · ${skillBenchConfig.skillIds.length}개 스킬 · 총 ${skillBenchConfig.skillIds.length * skillBenchConfig.runsPerVariant * 4}회${skillBenchProgress.status === "paused" ? ` · ${skillBenchProgress.completedRuns}회부터 재개` : ""}`
+                  : `${skillBenchConfig.environment.toUpperCase()} · ${activeSkillMap[skillBenchConfig.skillId as UpgradeId]?.name ?? skillBenchConfig.skillId} · 기준/LV1/LV2/LV3 각 ${skillBenchConfig.runsPerVariant}회`
+              : benchmarkRunMode === "watch"
+                ? `실제 충돌 물리와 이펙트를 사용하는 화면 관찰용 봇 · 1회 실행 · ${botSpeed}×`
+                : `실제 스테이지 데이터와 Skill LAB 수치를 사용하는 결정론적 헤드리스 시뮬레이션 · ${benchmarkConfig.runs}회 병렬 실행`}</p>
             <div className="bot-controls">
               <label>반복 횟수
                 {benchmarkRunMode === "watch"
@@ -5640,14 +5609,14 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
               <button type="button" onClick={clearBotResults} disabled={botRunning || visibleBotResults.length === 0}>CLEAR DATA</button>
             </div>
           </section>
-              <div className="panel-note">
-                <span>CURRENT TEST SCOPE</span>
-                <p>
-                  {benchmarkRunMode === "watch"
-                    ? "실제 게임과 동일한 캔버스·충돌 물리·웨이브를 봇이 플레이합니다. 화면을 보며 배속을 실시간으로 바꿀 수 있습니다."
-                    : "동일한 20개 웨이브 데이터로 시작 스킬 2개, 웨이브 보상과 보스 궁극기를 선택합니다. 충돌 물리는 빠른 통계 모델로 계산됩니다."}
-                </p>
-              </div>
+          <div className="panel-note">
+            <span>CURRENT TEST SCOPE</span>
+            <p>
+              {benchmarkRunMode === "watch"
+                ? "실제 게임과 동일한 캔버스·충돌 물리·웨이브를 봇이 플레이합니다. 화면을 보며 배속을 실시간으로 바꿀 수 있습니다."
+                : "동일한 20개 웨이브 데이터로 시작 스킬 2개, 웨이브 보상과 보스 궁극기를 선택합니다. 충돌 물리는 빠른 통계 모델로 계산됩니다."}
+            </p>
+          </div>
         </aside>}
       </section>
       {benchmarkMode && <section className="benchmark-dashboard" aria-label="벤치마크 결과 분석">
