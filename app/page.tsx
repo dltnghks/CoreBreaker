@@ -9,6 +9,7 @@ import { applyWaveDefinitions, getActiveWaveDefinitions, MAX_WAVE, WAVE_STORAGE_
 import { PARALLEL_BENCHMARK_RULESET, type HeadlessBenchmarkRequest, type HeadlessBenchmarkResult, type HeadlessTerminationReason, type HeadlessTimeoutDiagnostic } from "./benchmark-headless";
 import { clearBenchmarkResults, getBenchmarkResults, putBenchmarkResults } from "./benchmark-result-store";
 import { createBotPolicyState, decideBotControls, POLICY_VERSION, reflectorBankAim, type BotPolicyState } from "./bot-policy";
+import { appHref } from "./site-path";
 
 type PayloadId = "pierce" | "blast" | "glass" | "link";
 type ItemKind = "multiball" | "auto-barrier" | "core-repair" | "cooldown-reset";
@@ -5547,9 +5548,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           <div><p className="eyebrow">{benchmarkMode ? `LIVE GAME RULES // TARGET W${benchmarkConfig.targetWave}` : "PLAYTEST BUILD 0.3 // LIVE GAMEPLAY"}</p><h1>{benchmarkMode ? "CORE BREAKER BENCH" : "CORE BREAKER"}</h1></div>
         </div>
         <div className="header-rule" />
-        <a className="lab-link" href={benchmarkMode ? "/" : "/benchmark"}>{benchmarkMode ? "GAMEPLAY" : "BENCHMARK"}</a>
-        <a className="lab-link" href="/skill-lab">SKILL LAB</a>
-        <a className="lab-link" href="/stage-lab">STAGE LAB</a>
+        <a className="lab-link" href={benchmarkMode ? appHref("/") : appHref("/benchmark")}>{benchmarkMode ? "GAMEPLAY" : "BENCHMARK"}</a>
+        <a className="lab-link" href={appHref("/skill-lab")}>SKILL LAB</a>
+        <a className="lab-link" href={appHref("/stage-lab")}>STAGE LAB</a>
         <button className="sound-toggle" type="button" aria-pressed={!soundEnabled} onClick={toggleSound}>{soundEnabled ? "SOUND ON" : "SOUND OFF"}</button>
         <div className="session-status"><span className={mode === "playing" ? "live-dot active" : "live-dot"} />{mode === "playing" ? "SESSION LIVE" : "SYSTEM READY"}</div>
       </header>

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BALANCE_STORAGE_KEY, BOT_LIVE_STORAGE_KEY, BOT_RESULTS_STORAGE_KEY, DEFAULT_BALANCE_CONFIG, normalizeBalanceConfig, type BalanceConfig, type BotWaveSample } from "../balance-config";
 import { BENCHMARK_STORAGE_KEY, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConfig, type BenchmarkConfig } from "../benchmark-config";
 import styles from "./skill-lab.module.css";
+import { appHref } from "../site-path";
 
 type StoredBotRun = {
   id?: string;
@@ -220,7 +221,7 @@ export default function BalanceSimulator() {
           <WaveChart title="필드 잔여 체력" unit="" primary={graph.fieldHp} secondary={graph.designHp} primaryLabel="봇 실측" secondaryLabel="설계 예상" />
         </div>
       </div>
-      <div className={styles.balanceFooter}><span>{message}</span><a href="/">게임에서 봇 테스트 실행 →</a></div>
+      <div className={styles.balanceFooter}><span>{message}</span><a href={appHref("/")}>게임에서 봇 테스트 실행 →</a></div>
     </section>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { DEFAULT_SKILLS, normalizeSkillConfigs, SKILL_MECHANIC_LABELS, SKILL_STORAGE_KEY, type SkillCategory, type SkillConfig, type SkillMechanic } from "../skill-config";
 import styles from "./skill-lab.module.css";
+import { appHref } from "../site-path";
 
 const CATEGORY_LABELS: Record<SkillCategory, string> = {
   warrior: "전사",
@@ -128,7 +129,7 @@ export default function SkillLab() {
     <main className={styles.shell}>
       <header className={styles.header}>
         <div><p>INTERNAL BALANCE TOOL</p><h1>SKILL LAB</h1></div>
-        <nav><a href="/">← GAME</a><a href="/benchmark">BENCHMARK</a><button onClick={saveDraft}>SAVE & APPLY</button><button onClick={exportJson}>EXPORT JSON</button></nav>
+        <nav><a href={appHref("/")}>← GAME</a><a href={appHref("/benchmark")}>BENCHMARK</a><button onClick={saveDraft}>SAVE & APPLY</button><button onClick={exportJson}>EXPORT JSON</button></nav>
       </header>
 
       <section className={styles.toolbar} aria-label="스킬 카테고리 필터">

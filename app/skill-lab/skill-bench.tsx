@@ -5,6 +5,7 @@ import { BALANCE_STORAGE_KEY, BOT_RESULTS_STORAGE_KEY, DEFAULT_BALANCE_CONFIG, D
 import { DEFAULT_SKILLS, normalizeSkillConfigs, SKILL_STORAGE_KEY, type SkillCategory, type SkillConfig, type UpgradeId } from "../skill-config";
 import { BENCHMARK_STORAGE_KEY, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConfig, type BenchmarkConfig } from "../benchmark-config";
 import styles from "./skill-lab.module.css";
+import { appHref } from "../site-path";
 
 const CATEGORIES: SkillCategory[] = ["warrior", "archer", "mage", "common"];
 const CATEGORY_LABELS: Record<SkillCategory, string> = { warrior: "전사", archer: "궁수", mage: "법사", common: "공용" };
@@ -199,7 +200,7 @@ export default function SkillBench() {
           <span><i style={{ "--bench-fill": `${group.averageCoreHp / 8 * 100}%` } as CSSProperties} /><b>{group.averageCoreHp.toFixed(1)}</b></span>
         </div>)}
       </div>
-      <div className={styles.benchFooter}><span>{message}</span><a href="/">게임에서 {progress.status === "paused" ? "이어서 실행" : "자동 테스트 시작"} →</a></div>
+      <div className={styles.benchFooter}><span>{message}</span><a href={appHref("/")}>게임에서 {progress.status === "paused" ? "이어서 실행" : "자동 테스트 시작"} →</a></div>
     </section>
   );
 }

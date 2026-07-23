@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BENCHMARK_STAGES, BENCHMARK_STORAGE_KEY, benchmarkFeatures, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConfig, type BenchmarkConfig, type BenchmarkStage } from "../benchmark-config";
 import styles from "./benchmark.module.css";
+import { appHref } from "../site-path";
 
 export default function BenchmarkSetup() {
   const [config, setConfig] = useState<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
@@ -21,7 +22,7 @@ export default function BenchmarkSetup() {
   };
 
   return <section className={styles.setup} aria-label="벤치마크 기능 계층 설정">
-    <header><div><p>CONTROLLED FEATURE LADDER</p><h1>BENCHMARK LAB</h1></div><nav><a href="/">GAMEPLAY</a><a href="/skill-lab">SKILL AUTHORING</a></nav></header>
+    <header><div><p>CONTROLLED FEATURE LADDER</p><h1>BENCHMARK LAB</h1></div><nav><a href={appHref("/")}>GAMEPLAY</a><a href={appHref("/skill-lab")}>SKILL AUTHORING</a></nav></header>
     <div className={styles.stageGrid} role="tablist" aria-label="벤치마크 확장 단계">
       {BENCHMARK_STAGES.map((entry) => <button key={entry.stage} type="button" role="tab" aria-selected={config.stage === entry.stage} onClick={() => setConfig((current) => ({ ...current, stage: entry.stage as BenchmarkStage }))}><b>{entry.stage}</b><strong>{entry.name}</strong><span>{entry.description}</span></button>)}
     </div>

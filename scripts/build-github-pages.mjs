@@ -6,7 +6,12 @@ import { fileURLToPath } from "node:url";
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const repositoryName = process.env.GITHUB_REPOSITORY?.split("/").at(-1) ?? "";
 const basePath = process.env.GITHUB_PAGES_BASE_PATH || (repositoryName && !repositoryName.endsWith(".github.io") ? `/${repositoryName}` : "");
-const env = { ...process.env, GITHUB_PAGES: "true", GITHUB_PAGES_STATIC_SHELL: "true" };
+const env = {
+  ...process.env,
+  GITHUB_PAGES: "true",
+  GITHUB_PAGES_STATIC_SHELL: "true",
+  NEXT_PUBLIC_BASE_PATH: basePath,
+};
 const vinextCommand = resolve(root, process.platform === "win32" ? "node_modules/.bin/vinext.cmd" : "node_modules/.bin/vinext");
 
 execFileSync(vinextCommand, ["build"], { cwd: root, env, stdio: "inherit", shell: process.platform === "win32" });
