@@ -1,8 +1,8 @@
-name: Deploy Core Breaker to GitHub Pages
+name: Deploy blog and Core Breaker
 
 on:
   push:
-    branches: [nhn-ai]
+    branches: [main, nhn-ai]
   workflow_dispatch:
 
 permissions:
@@ -17,33 +17,40 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_PAGES: "true"
-      GITHUB_PAGES_BASE_PATH: "/game"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build static site
-        run: node scripts/build-github-pages.mjs
-
       - name: Checkout blog source
         uses: actions/checkout@v6
         with:
           ref: main
           path: blog-source
 
+      - name: Checkout game source
+        uses: actions/checkout@v6
+        with:
+          ref: nhn-ai
+          path: game-source
+
       - name: Configure Pages
         uses: actions/configure-pages@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: game-source/package-lock.json
+
+      - name: Install game dependencies
+        working-directory: game-source
+        run: npm ci
+
+      - name: Build game static site
+        working-directory: game-source
+        env:
+          GITHUB_PAGES: "true"
+          GITHUB_PAGES_BASE_PATH: "/game"
+          GITHUB_PAGES_STATIC_SHELL: "true"
+        run: node scripts/build-github-pages.mjs
 
       - name: Setup Ruby for blog
         uses: ruby/setup-ruby@v1
@@ -52,12 +59,12 @@ jobs:
           bundler-cache: true
           working-directory: blog-source
 
-      - name: Build blog with Jekyll
+      - name: Build blog
         working-directory: blog-source
         run: bundle exec jekyll build --destination ../_site
 
       - name: Add game under /game
-        run: cp -R dist/client _site/game
+        run: cp -R game-source/dist/client _site/game
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
