@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const repositoryName = process.env.GITHUB_REPOSITORY?.split("/").at(-1) ?? "";
-const basePath = repositoryName ? `/${repositoryName}` : "";
+const basePath = repositoryName && !repositoryName.endsWith(".github.io") ? `/${repositoryName}` : "";
 const env = { ...process.env, GITHUB_PAGES: "true", GITHUB_PAGES_STATIC_SHELL: "true" };
 const vinextCommand = resolve(root, process.platform === "win32" ? "node_modules/.bin/vinext.cmd" : "node_modules/.bin/vinext");
 

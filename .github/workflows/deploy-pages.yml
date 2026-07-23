@@ -2,7 +2,7 @@ name: Deploy Core Breaker to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [nhn-ai]
   workflow_dispatch:
 
 permissions:
