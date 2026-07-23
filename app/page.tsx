@@ -11,194 +11,36 @@ import { clearBenchmarkResults, getBenchmarkResults, putBenchmarkResults } from 
 import { createBotPolicyState, decideBotControls, POLICY_VERSION, reflectorBankAim, type BotPolicyState } from "./bot-policy";
 import { appHref } from "./site-path";
 
-type PayloadId = "pierce" | "blast" | "glass" | "link";
-type ItemKind = "multiball" | "auto-barrier" | "core-repair" | "cooldown-reset";
-type BrickKind = "normal" | "boss-armor" | "boss-core" | "boss-minion";
-type BrickTrait = "standard" | "guard" | "explosive" | "indestructible" | "healer" | "reflector";
-type BossRewardId = UpgradeId;
-type BotPolicy = "balanced" | "survival" | "random";
-type BotSpeed = 1 | 2 | 4 | 8;
-type BenchmarkRunMode = "parallel" | "watch";
-type BotMetrics = { maxBalls: number; ballLosses: number; missileActivations: number; safetySaves: number; gravityRescues: number };
-type SkillBenchVariant = { batchId: string; environment: SkillBenchConfig["environment"]; skillId: UpgradeId | "original"; level: 0 | 1 | 2 | 3; skillValues: [number, number, number]; seed: number };
-type SkillSelectionSource = "start" | "wave" | "boss";
-type SkillSelectionEvent = { wave: number; skillId: UpgradeId; level: number; source: SkillSelectionSource };
-type SkillRunMetric = { activations: number; damage: number; kills: number };
-type BenchmarkRuleset = "live-v1" | "live-v2" | "watch-v1" | "parallel-v1" | typeof PARALLEL_BENCHMARK_RULESET;
-type BotRunResult = BotMetrics & { id: string; run: number; seed?: number; policy: BotPolicy; policyVersion?: string; engineVersion?: string; engineParity?: string; speed: BotSpeed; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; startingSkills: UpgradeId[]; skillHistory: SkillSelectionEvent[]; ultimates: UpgradeId[]; bossEnhancements?: Partial<Record<UpgradeId, number>>; skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig | null; benchmarkRuleset?: BenchmarkRuleset | null; waveSamples: BotWaveSample[]; evaluationComplete: boolean; terminationReason?: HeadlessTerminationReason; timeoutDiagnostic?: HeadlessTimeoutDiagnostic | null; skillBench: SkillBenchVariant | null };
-
-type Upgrade = {
-  id: UpgradeId;
-  name: string;
-  category: SkillCategory;
-  mechanic: SkillMechanic;
-  tag: string;
-  description: string;
-  color: string;
-};
-
-type UpgradeChoice = { upgrade: Upgrade; ballCost: 0 | 1 | 2 };
-
-type GhostRecord = {
-  id: string;
-  name: string;
-  score: number;
-  bricks: number;
-  maxCombo: number;
-  upgrades: UpgradeId[];
-  skillHistory: SkillSelectionEvent[];
-  skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>;
-  paddleTrack: number[];
-  createdAt: number;
-};
-
-type Ball = {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  radius: number;
-  owner: "player" | "ghost";
-  ghostIndex?: number;
-  pierce: number;
-  maxPierce: number;
-  blast: number;
-  payload: PayloadId | null;
-  payloadLevel: number;
-  payloads: Partial<Record<PayloadId, number>>;
-  attackPower: number;
-  color: string;
-  sourcePaddleId: string;
-  missileTime: number;
-  missileHitCooldown: number;
-  gravityRescueCooldown: number;
-  gravityBaseSpeed: number | null;
-  explosionBaseSpeed: number | null;
-  explosionBoostRatio: number;
-  explosionBoostTime: number;
-  canTriggerSkills: boolean;
-  skillGeneration: number;
-  skillCharges: Partial<Record<ClassSkillId, number>>;
-  skillCooldowns: Partial<Record<ClassSkillId, number>>;
-  visualSkill: ClassSkillId | null;
-  temporaryTime: number;
-  waveBonus: boolean;
-  respawnRecoveryTime: number;
-  respawnRecoveryDuration: number;
-  respawnRecoveryBaseSpeed: number;
-};
-
-type Brick = {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  hp: number;
-  maxHp: number;
-  hue: number;
-  alive: boolean;
-  drop: ItemKind | null;
-  kind: BrickKind;
-  trait: BrickTrait;
-  guardReady: boolean;
-  healTimer: number;
-  poisonTime: number;
-  poisonTick: number;
-  poisonSourcePaddleId: string | null;
-  burnTime: number;
-  burnTick: number;
-  burnLevel: number;
-  burnSourcePaddleId: string | null;
-  healBlockTime: number;
-  blastVulnerability: number;
-  blastVulnerabilitySourcePaddleId: string | null;
-  frostVulnerability: number;
-  traitLockTime: number;
-  lastHitPaddleId: string | null;
-};
-
-type DropItem = {
-  id: number;
-  x: number;
-  y: number;
-  vy: number;
-  alive: boolean;
-  kind: ItemKind;
-};
-
-type SafetyBlock = { ownerPaddleId: string; x: number; y: number; width: number; color: string };
-type GravityWell = { ownerPaddleId: string; x: number; y: number; radius: number; life: number; maxLife: number; color: string; damagePerSecond: number; damageTick: number };
-
-type GameState = {
-  balls: Ball[];
-  bricks: Brick[];
-  paddleX: number;
-  paddleWidth: number;
-  ghostPaddles: number[];
-  elapsed: number;
-  score: number;
-  level: number;
-  combo: number;
-  maxCombo: number;
-  comboTimer: number;
-  bricksBroken: number;
-  upgrades: UpgradeId[];
-  skillHistory: SkillSelectionEvent[];
-  skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>;
-  paddleTrack: number[];
-  particles: Particle[];
-  particlePool: Particle[];
-  particlePoolCursor: number;
-  flashes: Flash[];
-  effects: GameEffect[];
-  effectPool: GameEffect[];
-  effectPoolCursor: number;
-  items: DropItem[];
-  safetyBlocks: SafetyBlock[];
-  gravityWells: GravityWell[];
-  paddleBarriers: Record<string, number>;
-  itemBarrierTime: number;
-  ultimateAuras: Partial<Record<ClassSkillId, boolean>>;
-  paddleCounters: Record<string, PaddleCounter>;
-  coreHp: number;
-  maxCoreHp: number;
-  bossActive: boolean;
-  bossPending: boolean;
-  bossStage: number;
-  nextBossWave: number;
-  bossTimeRemaining: number;
-  bossSkillTimer: number;
-  bossAttackPattern: number;
-  bossMultiballsRemaining: number;
-  bossRewards: BossRewardId[];
-  bossEnhancements: Partial<Record<UpgradeId, number>>;
-  autoGuard: boolean;
-  rowTimer: number;
-  rowInterval: number;
-  overdriveLevel: number;
-  shakeStrength: number;
-  shakeTime: number;
-  shakeDuration: number;
-  screenFlashColor: string;
-  screenFlashTime: number;
-  screenFlashDuration: number;
-  coreBreakTime: number;
-  coreBreakDuration: number;
-  coreBreakX: number;
-  coreBreakY: number;
-  wave: number;
-  pendingWave: number | null;
-  failed: boolean;
-  failureReason: "ball" | "core" | null;
-  botMetrics: BotMetrics;
-  botWaveSamples: BotWaveSample[];
-  botSampleKey: string;
-};
-
-type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
-type Flash = { text: string; x: number; y: number; life: number; color: string; emphasis?: "damage" };
-type GameEffect = { kind: "ring" | "beam" | "blast" | "drop" | "spark" | "lightning" | "skill"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string; variant: number; skillId: ClassSkillId | null };
-type PaddleCounter = { reflections: number; barrierReflections: number; missileReflections: number; safetyTimer: number; gravityTimer: number; directKills: number; pierceKills: number; feverMilestone: number; lastShotTimer: number; combo: number; comboTimer: number; skillCooldowns: Partial<Record<ClassSkillId, number>>; skillReflections?: Partial<Record<ClassSkillId, number>>; chargePulse?: number; chargeColor?: string };
+import type {
+  Ball,
+  BenchmarkRunMode,
+  BenchmarkRuleset,
+  BossRewardId,
+  BotMetrics,
+  BotPolicy,
+  BotRunResult,
+  BotSpeed,
+  Brick,
+  BrickKind,
+  BrickTrait,
+  DropItem,
+  Flash,
+  GameEffect,
+  GameState,
+  GhostRecord,
+  GravityWell,
+  ItemKind,
+  Particle,
+  PaddleCounter,
+  PayloadId,
+  SafetyBlock,
+  SkillBenchVariant,
+  SkillRunMetric,
+  SkillSelectionEvent,
+  SkillSelectionSource,
+  Upgrade,
+  UpgradeChoice,
+} from "./_types/game";
 const W = 900;
 const H = 600;
 const BENCHMARK_RULESET: BenchmarkRuleset = PARALLEL_BENCHMARK_RULESET;
