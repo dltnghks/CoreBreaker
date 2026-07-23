@@ -65,3 +65,9 @@ node --test tests\rendered-html.test.mjs tests\benchmark-parity.test.mjs
 - [외부 에셋과 라이선스](docs/THIRD_PARTY_ASSETS.md)
 
 기능 변경은 구현, 테스트, 문서 갱신, 기능 단위 커밋 순서로 마무리합니다.
+
+## GitHub Pages
+
+The repository includes `.github/workflows/deploy-pages.yml`. Pushes to `main` build a static Pages shell from the production renderer and deploy it to GitHub Pages.
+
+In the repository settings, set **Pages → Build and deployment → Source** to **GitHub Actions**. The workflow automatically uses the repository name as the project-site base path, so the deployed game and `/benchmark`, `/skill-lab`, and `/stage-lab` routes work under the Pages URL.

@@ -6,6 +6,8 @@ export const metadata: Metadata = {
   description: "A one-ball, 20-wave brick breaker with fixed patterns and core-loss recovery.",
 };
 
+export const dynamic = "force-static";
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <html lang="ko"><body>{children}</body></html>;
 }
