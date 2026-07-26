@@ -215,7 +215,7 @@ function buildWave(state: CanonicalState, wave: number) {
     const stage = definition.boss === "final" ? 4 : definition.boss === "late" ? 3 : definition.boss === "mid" ? 2 : 1;
     const hpMultiplier = [1, 0.85, 0.95, 1.05, 1.2][stage];
     const earlyBossHealthScale = stage <= 2 ? 0.4 : 1;
-    const hp = Math.round((state.balance.bossBaseHp + stage * state.balance.bossHpPerStage * 0.55) * hpMultiplier * definition.hpMultiplier * 0.5 * earlyBossHealthScale);
+    const hp = Math.round((state.balance.bossBaseHp + stage * state.balance.bossHpPerStage * 0.55 + state.ghostPaddles.length * 10) * hpMultiplier * definition.hpMultiplier * 0.5 * earlyBossHealthScale);
     state.bricks = [makeBrick(state, (GAME_WIDTH - 416) / 2, 94, 416, 102, hp, "standard", "boss-core", "multiball")];
     state.bossAttackTimer = Math.max(4.4, 6 - stage * 0.3);
     state.bossPattern = 0;
