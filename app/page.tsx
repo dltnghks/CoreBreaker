@@ -4691,5 +4691,9 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
 }
 
 export default function Home() {
-  return <GameRuntime />;
+  // Dev replay flag: keep the default Home route on legacy while allowing
+  // deterministic side-by-side legacy/canonical browser captures.
+  const canonicalReplay = typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).get("simulation") === "canonical";
+  return <GameRuntime canonicalEngineEnabled={canonicalReplay} />;
 }
