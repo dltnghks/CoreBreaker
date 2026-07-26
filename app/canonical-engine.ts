@@ -130,6 +130,10 @@ export type CanonicalState = {
   coreBreakX: number;
   coreBreakY: number;
   ghostPaddles: number[];
+  ghostPaddleWidths: number[];
+  ghostPaddleSpeeds: number[];
+  ghostPaddleActive: boolean[];
+  ghostPaddleUpgrades: UpgradeId[][];
 };
 
 export function seededRandom(seed: number) {
