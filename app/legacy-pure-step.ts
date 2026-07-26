@@ -1,6 +1,6 @@
-import type { GameState } from "./_types/game";
+import type { Ball, Brick, GameState } from "./_types/game";
 import { advanceTemporalState, applyPaddleInput } from "./game-update-prelude";
-import { ensureMinimumVerticalAngle } from "./collision-physics";
+import { circleRectangleCollision, ensureMinimumVerticalAngle } from "./collision-physics";
 
 export type LegacyStepInput = { move: -1 | 0 | 1; aimX: number; aimY: number };
 export type LegacyStepAdapters = {
@@ -36,6 +36,26 @@ export function advanceLegacyBallsPure(game: GameState, dt: number, width = 900,
     if (ball.x - ball.radius < 0) { ball.x = ball.radius; ball.vx = Math.abs(ball.vx); ensureMinimumVerticalAngle(ball); }
     if (ball.x + ball.radius > width) { ball.x = width - ball.radius; ball.vx = -Math.abs(ball.vx); ensureMinimumVerticalAngle(ball); }
     if (ball.y - ball.radius < top) { ball.y = top + ball.radius; ball.vy = Math.abs(ball.vy); ensureMinimumVerticalAngle(ball, 1); }
+  }
+  return game;
+}
+
+export function resolveLegacyBrickCollisionsPure(game: GameState, previous: Map<Ball, { x: number; y: number }>, onEvent?: (event: { type: "brick-hit" | "brick-destroyed"; brick: Brick; damage: number }) => void) {
+  for (const ball of game.balls) {
+    if (ball.owner !== "player") continue;
+    const prior = previous.get(ball) ?? { x: ball.x, y: ball.y };
+    for (const brick of game.bricks) {
+      if (!brick.alive || brick.trait === "indestructible") continue;
+      const collision = circleRectangleCollision(ball, brick, prior.x, prior.y);
+      if (!collision) continue;
+      const damage = Math.max(1, ball.attackPower);
+      brick.hp -= damage;
+      brick.lastHitPaddleId = ball.sourcePaddleId;
+      onEvent?.({ type: brick.hp <= 0 ? "brick-destroyed" : "brick-hit", brick, damage });
+      if (brick.hp <= 0) { brick.hp = 0; brick.alive = false; game.bricksBroken += 1; }
+      if (collision.normalX) ball.vx = collision.normalX * Math.abs(ball.vx); else ball.vy = collision.normalY * Math.abs(ball.vy);
+      break;
+    }
   }
   return game;
 }
