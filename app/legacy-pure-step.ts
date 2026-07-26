@@ -1,6 +1,6 @@
 import type { Ball, Brick, GameState } from "./_types/game";
 import { advanceTemporalState, applyPaddleInput } from "./game-update-prelude";
-import { circleRectangleCollision, ensureMinimumVerticalAngle } from "./collision-physics";
+import { circleRectangleCollision, ensureMinimumVerticalAngle, sweptPaddleContact } from "./collision-physics";
 
 export type LegacyStepInput = { move: -1 | 0 | 1; aimX: number; aimY: number };
 export type LegacyStepAdapters = {
@@ -58,4 +58,21 @@ export function resolveLegacyBrickCollisionsPure(game: GameState, previous: Map<
     }
   }
   return game;
+}
+
+export function resolveLegacyPaddleCollisionPure(game: GameState, previous: Map<Ball, { x: number; y: number }>, input: LegacyStepInput, options: { paddleY: number; paddleSpeed?: number; slop?: number; sideDepth?: number; forgiveness?: number; width?: number } = { paddleY: 530, width: 900 }) {
+  const width = options.width ?? 900;
+  for (const ball of game.balls) {
+    if (ball.owner !== "player" || ball.vy <= 0) continue;
+    const prior = previous.get(ball) ?? { x: ball.x, y: ball.y };
+    const contact = sweptPaddleContact(ball, prior.x, prior.y, { x: game.paddleX, previousX: game.paddleX, y: options.paddleY, width: game.paddleWidth }, options.slop ?? 4, options.sideDepth ?? 18, options.forgiveness ?? 10);
+    if (!contact) continue;
+    ball.x = contact.contactX; ball.y = options.paddleY - ball.radius - 0.1;
+    const speed = Math.max(300, Math.hypot(ball.vx, ball.vy));
+    const ratio = Math.max(-0.84, Math.min(0.84, (input.aimX - contact.contactX) / Math.max(1, width / 2)));
+    ball.vx = ratio * speed; ball.vy = -Math.sqrt(Math.max(1, speed * speed - ball.vx * ball.vx));
+    ensureMinimumVerticalAngle(ball, -1);
+    return { contactX: contact.contactX, hitRatio: contact.hitRatio };
+  }
+  return null;
 }
