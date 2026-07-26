@@ -40,6 +40,12 @@ export function createCanonicalBridge(options: {
     // the bridge boundary; subsequent frames are canonical-owned.
     state.paddleX = options.game.paddleX;
     state.paddleWidth = options.game.paddleWidth;
+    const ghostCount = options.game.ghostPaddles?.length ?? 0;
+    state.ghostPaddles = [...(options.game.ghostPaddles ?? [])];
+    state.ghostPaddleWidths = state.ghostPaddles.map(() => 92);
+    state.ghostPaddleSpeeds = state.ghostPaddles.map(() => Math.max(125, 210 - (state.wave - 1) * 6));
+    state.ghostPaddleActive = state.ghostPaddles.map(() => true);
+    state.ghostPaddleUpgrades = Array.from({ length: ghostCount }, () => []);
     state.coreHp = options.game.coreHp;
     state.maxCoreHp = options.game.maxCoreHp;
     state.bricks = options.game.bricks.map((brick, index) => ({
