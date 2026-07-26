@@ -146,3 +146,8 @@ test("canonical and legacy paddle collision phases match contact and rebound", (
   assert.equal(right.contactX, left.contactX);
   for (const key of ["x", "y", "vx", "vy"]) assert.equal(Number(ball[key].toFixed(6)), Number(legacy.balls[0][key].toFixed(6)), key);
 });
+
+test("canonical SkillResult normalization matches legacy effect contract", () => {
+  const result = { damage: 2, control: { duration: 1, kind: "freeze" }, barrier: { charges: 1 }, pierce: 2, burn: { duration: 2, damage: 1 }, disableHealing: 3, summon: { count: 2, temporary: true } };
+  assert.deepEqual(engine.normalizeCanonicalSkillResult(result), legacyPure.normalizeLegacySkillResult(result));
+});

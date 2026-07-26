@@ -66,6 +66,18 @@ export type SkillResult = {
   disableHealing?: number;
   summon?: { count: number; temporary?: boolean };
 };
+export type CanonicalSkillEffect = { type: "damage" | "control" | "barrier" | "pierce" | "burn" | "disable-healing" | "summon"; value: unknown };
+export function normalizeCanonicalSkillResult(result: SkillResult): CanonicalSkillEffect[] {
+  const effects: CanonicalSkillEffect[] = [];
+  if (result.damage !== undefined) effects.push({ type: "damage", value: result.damage });
+  if (result.control) effects.push({ type: "control", value: result.control });
+  if (result.barrier) effects.push({ type: "barrier", value: result.barrier });
+  if (result.pierce !== undefined) effects.push({ type: "pierce", value: result.pierce });
+  if (result.burn) effects.push({ type: "burn", value: result.burn });
+  if (result.disableHealing !== undefined) effects.push({ type: "disable-healing", value: result.disableHealing });
+  if (result.summon) effects.push({ type: "summon", value: result.summon });
+  return effects;
+}
 export type CanonicalWaveMetric = BotWaveSample & { clearTime: number; skillChoices: UpgradeId[] };
 export type CanonicalState = {
   seed: number;
