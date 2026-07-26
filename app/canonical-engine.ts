@@ -130,10 +130,10 @@ export type CanonicalState = {
   coreBreakX: number;
   coreBreakY: number;
   ghostPaddles: number[];
-  ghostPaddleWidths: number[];
-  ghostPaddleSpeeds: number[];
-  ghostPaddleActive: boolean[];
-  ghostPaddleUpgrades: UpgradeId[][];
+  ghostPaddleWidths?: number[];
+  ghostPaddleSpeeds?: number[];
+  ghostPaddleActive?: boolean[];
+  ghostPaddleUpgrades?: UpgradeId[][];
 };
 
 export function seededRandom(seed: number) {
@@ -606,6 +606,22 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
   const moveMultiplier = 1 + skillValue(state, "common-move-speed") / 100;
   const previousPaddleX = state.paddleX;
   state.paddleX = Math.max(state.paddleWidth / 2, Math.min(GAME_WIDTH - state.paddleWidth / 2, state.paddleX + controls.move * PADDLE_SPEED * moveMultiplier * step));
+  // Ghost paddles occupy independent horizontal zones and follow the lowest
+  // descending ball, matching the legacy activeGhosts controller.
+  const ghostCount = state.ghostPaddles.length;
+  if (ghostCount > 0) {
+    const tracked = [...state.balls].filter((ball) => ball.vy > 0).sort((a, b) => b.y - a.y)[0];
+    for (let index = 0; index < ghostCount; index += 1) {
+      if (state.ghostPaddleActive && state.ghostPaddleActive[index] === false) continue;
+      const zoneWidth = GAME_WIDTH / ghostCount;
+      const zoneStart = zoneWidth * index;
+      const width = state.ghostPaddleWidths?.[index] ?? 92;
+      const speed = state.ghostPaddleSpeeds?.[index] ?? Math.max(125, 210 - (state.wave - 1) * 6);
+      const target = tracked?.x ?? zoneStart + zoneWidth / 2;
+      const clamped = Math.max(zoneStart + width / 2, Math.min(zoneStart + zoneWidth - width / 2, target));
+      state.ghostPaddles[index] += Math.max(-speed * step, Math.min(speed * step, clamped - state.ghostPaddles[index]));
+    }
+  }
   for (const brick of state.bricks) {
     if (!brick.alive) continue;
     brick.healBlockTime = Math.max(0, brick.healBlockTime - step);
@@ -750,6 +766,25 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
         state.balls.push(cloneEchoSplitBall(state, ball));
         state.visualEvents.push({ kind: "skill", skillId: "echo-split" as UpgradeId, x: state.paddleX, y: PLAYER_PADDLE_Y, radius: 68, duration: 0.6, color: "#fff27a" });
       }
+      }
+    }
+    if (ball.vy > 0 && state.ghostPaddles.length > 0) {
+      for (let index = 0; index < state.ghostPaddles.length; index += 1) {
+        if (state.ghostPaddleActive && state.ghostPaddleActive[index] === false) continue;
+        const zoneWidth = GAME_WIDTH / state.ghostPaddles.length;
+        const width = state.ghostPaddleWidths?.[index] ?? 92;
+        const contact = sweptPaddleContact(ball, previousBallX, previousBallY, {
+          x: state.ghostPaddles[index], previousX: state.ghostPaddles[index], y: GAME_HEIGHT - 42, width,
+        }, 4, 18, 10);
+        if (!contact) continue;
+        const speed = Math.max(300, Math.hypot(ball.vx, ball.vy));
+        const ratio = Math.max(-0.84, Math.min(0.84, contact.hitRatio * 0.74));
+        ball.x = contact.contactX;
+        ball.y = GAME_HEIGHT - 42 - ball.radius - 0.1;
+        ball.vx = ratio * speed;
+        ball.vy = -Math.sqrt(Math.max(1, speed * speed - ball.vx * ball.vx));
+        normalizeBallAngle(ball);
+        break;
       }
     }
     for (const brick of state.bricks) {
