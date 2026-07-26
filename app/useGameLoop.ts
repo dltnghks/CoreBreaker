@@ -5,13 +5,8 @@ type MutableRef<T> = { current: T };
 type UseGameLoopOptions = {
   enabledRef: MutableRef<boolean>;
   runningRef: MutableRef<boolean>;
-  botActiveRef: MutableRef<boolean>;
-  botSpeedRef: MutableRef<number>;
-  updateGame: (dt: number) => void;
   drawGame: () => void;
-  /** Optional canonical-only simulation step. When enabled, legacy update is not called. */
-  canonicalOnlyRef?: MutableRef<boolean>;
-  canonicalStep?: (dt: number) => "complete" | "game-over" | null;
+  canonicalStep: (dt: number) => "complete" | "game-over" | null;
   onCanonicalOutcome?: (outcome: "complete" | "game-over") => void;
 };
 
@@ -47,17 +42,15 @@ export function advanceCanonicalAccumulator(
   return { accumulator: Math.max(0, remaining), steps, outcome };
 }
 
-/** Owns the animation-frame clock and lifecycle for the legacy game runtime. */
-export function useGameLoop({ enabledRef, runningRef, botActiveRef, botSpeedRef, updateGame, drawGame, canonicalOnlyRef, canonicalStep, onCanonicalOutcome }: UseGameLoopOptions) {
+/** Owns the animation-frame clock and lifecycle for the canonical game runtime. */
+export function useGameLoop({ enabledRef, runningRef, drawGame, canonicalStep, onCanonicalOutcome }: UseGameLoopOptions) {
   const frameRef = useRef<number | null>(null);
   const lastRef = useRef(0);
-  const updateRef = useRef(updateGame);
   const drawRef = useRef(drawGame);
   const canonicalStepRef = useRef(canonicalStep);
   const canonicalOutcomeRef = useRef(onCanonicalOutcome);
   const canonicalAccumulatorRef = useRef(0);
   const loopRef = useRef<(time: number) => void>(() => undefined);
-  useEffect(() => { updateRef.current = updateGame; }, [updateGame]);
   useEffect(() => { drawRef.current = drawGame; }, [drawGame]);
   useEffect(() => { canonicalStepRef.current = canonicalStep; }, [canonicalStep]);
   useEffect(() => { canonicalOutcomeRef.current = onCanonicalOutcome; }, [onCanonicalOutcome]);
@@ -92,19 +85,10 @@ export function useGameLoop({ enabledRef, runningRef, botActiveRef, botSpeedRef,
       const dt = Math.max(0, Math.min(0.025, (time - lastRef.current) / 1000 || 0));
       lastRef.current = time;
       if (runningRef.current) {
-        const steps = botActiveRef.current ? botSpeedRef.current : 1;
-        if (canonicalOnlyRef?.current) {
-          const canonicalStep = canonicalStepRef.current;
-          if (!canonicalStep) throw new Error("canonical-only game loop requires canonicalStep");
-          // canonicalStepRef.current(dt) remains the legacy contract marker;
-          // fixed-step calls below use the same callback with canonical dt.
-          const result = advanceCanonicalAccumulator(canonicalAccumulatorRef.current, dt, (fixedDt) => canonicalStep(fixedDt));
-          canonicalAccumulatorRef.current = result.accumulator;
-          if (result.outcome) canonicalOutcomeRef.current?.(result.outcome);
-        } else {
-          for (let step = 0; step < steps && runningRef.current; step += 1) updateRef.current(dt);
-        }
-      } else if (canonicalOnlyRef?.current) {
+        const result = advanceCanonicalAccumulator(canonicalAccumulatorRef.current, dt, (fixedDt) => canonicalStepRef.current(fixedDt));
+        canonicalAccumulatorRef.current = result.accumulator;
+        if (result.outcome) canonicalOutcomeRef.current?.(result.outcome);
+      } else {
         // Pausing must not carry simulation debt into the next run.
         canonicalAccumulatorRef.current = 0;
       }
@@ -116,7 +100,7 @@ export function useGameLoop({ enabledRef, runningRef, botActiveRef, botSpeedRef,
       disposed = true;
       stop();
     };
-  }, [botActiveRef, botSpeedRef, enabledRef, runningRef, stop]);
+  }, [enabledRef, runningRef, stop]);
 
   return { resetClock, start, stop };
 }

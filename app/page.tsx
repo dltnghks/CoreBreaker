@@ -3898,11 +3898,7 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
   const { resetClock: resetLoopClock, start: startLoop, stop: stopLoop } = useGameLoop({
     enabledRef: loopEnabledRef,
     runningRef,
-    botActiveRef,
-    botSpeedRef,
-    updateGame,
     drawGame,
-    canonicalOnlyRef,
     canonicalStep,
     onCanonicalOutcome: handleCanonicalOutcome,
   });
