@@ -115,6 +115,18 @@ export function stepCanonicalBridge(state: CanonicalState, game: GameState, cont
   syncCanonicalWorldIntoGame(game, state);
 }
 
+/** Re-apply launch/park state after the legacy UI commits a start or wave skill. */
+export function syncCanonicalLaunchFromGame(state: CanonicalState | null, game: GameState | null) {
+  if (!state || !game?.balls[0]) return;
+  const source = game.balls[0];
+  const target = state.balls[0];
+  if (!target) return;
+  Object.assign(target, { x: source.x, y: source.y, vx: source.vx, vy: source.vy, temporaryTime: source.temporaryTime, waveBonus: source.waveBonus, missileTime: source.missileTime, visualSkill: source.visualSkill as any, attackPower: source.attackPower, pierce: source.pierce, maxPierce: source.maxPierce, payload: source.payload, payloadLevel: source.payloadLevel, payloads: { ...source.payloads }, cooldowns: { ...source.skillCooldowns }, skillCharges: { ...source.skillCharges } });
+  state.flashes = [...(game.flashes ?? [])];
+  state.effects = [...(game.effects ?? [])];
+  state.particles = [...(game.particles ?? [])];
+}
+
 /** Keep skill choices made by the React/legacy UI in sync with the canonical
  * simulation during the incremental cutover. */
 export function grantCanonicalBridgeSkill(state: CanonicalState | null, id: UpgradeId, source: "start" | "wave" | "boss" = "wave", ballCost: 0 | 1 | 2 = 0) {

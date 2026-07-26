@@ -16,7 +16,7 @@ import { BenchmarkDashboard } from "./_components/benchmark/BenchmarkDashboard";
 import { useGameLoop } from "./useGameLoop";
 import { hudSnapshotFromGame, hudSnapshotsEqual, type HudSnapshot } from "./hud-snapshot";
 import { circleRectangleCollision, ensureMinimumVerticalAngle, separateAndReflectBall, sweptPaddleContact } from "./collision-physics";
-import { canonicalEngineEnabledForRun, createCanonicalBridge, grantCanonicalBridgeSkill, stepCanonicalBridge } from "./canonical-bridge";
+import { canonicalEngineEnabledForRun, createCanonicalBridge, grantCanonicalBridgeSkill, stepCanonicalBridge, syncCanonicalLaunchFromGame } from "./canonical-bridge";
 import type { CanonicalState } from "./canonical-engine";
 import { drainGameEvents, emitGameEvent, type GameEvent, type GameEventBuffer } from "./game-events";
 import { beginGameCanvasFrame, endGameCanvasFrame, renderBalls, renderBricks, renderHud, renderPaddles, renderTransientFeedback, renderWorldOverlays } from "./game-renderer";
@@ -1618,6 +1618,7 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
     if (!game) return;
     applyUpgrade(upgrade, 0, false, "start");
     parkBallsAbovePaddle(game, pointerXRef.current, pointerYRef.current);
+    syncCanonicalLaunchFromGame(canonicalBridgeRef.current, game);
     levelUpRef.current = false;
     runningRef.current = true;
     setMode("playing");
