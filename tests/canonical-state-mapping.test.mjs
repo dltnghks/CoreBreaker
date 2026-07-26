@@ -82,6 +82,11 @@ test("legacy pure ball movement is deterministic over 120 frames", () => {
   assert.deepEqual(a.balls.map((ball) => [ball.x, ball.y, ball.vx, ball.vy]), b.balls.map((ball) => [ball.x, ball.y, ball.vx, ball.vy]));
 });
 
+test("canonical skill result normalizes representative legacy effects", () => {
+  const effects = legacyPure.normalizeLegacySkillResult({ damage: 2, control: { duration: 1 }, barrier: { charges: 1 }, burn: { duration: 2, damage: 1 } });
+  assert.deepEqual(effects.map((effect) => effect.type), ["damage", "control", "barrier", "burn"]);
+});
+
 test("canonical and extracted legacy temporal+paddle phases match exactly", () => {
   const canonical = engine.createCanonicalState({ seed: 99, targetWave: 1, waves: waves.WAVE_DEFINITIONS });
   const legacy = legacyState();

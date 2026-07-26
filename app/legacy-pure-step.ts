@@ -1,6 +1,7 @@
 import type { Ball, Brick, GameState } from "./_types/game";
 import { advanceTemporalState, applyPaddleInput } from "./game-update-prelude";
 import { circleRectangleCollision, ensureMinimumVerticalAngle, sweptPaddleContact } from "./collision-physics";
+import type { SkillResult } from "./canonical-engine";
 
 export type LegacyStepInput = { move: -1 | 0 | 1; aimX: number; aimY: number };
 export type LegacyStepAdapters = {
@@ -75,4 +76,19 @@ export function resolveLegacyPaddleCollisionPure(game: GameState, previous: Map<
     return { contactX: contact.contactX, hitRatio: contact.hitRatio };
   }
   return null;
+}
+
+export type LegacySkillEffect = { type: "damage" | "control" | "barrier" | "pierce" | "burn" | "disable-healing" | "summon"; value: unknown };
+
+/** Normalizes canonical SkillResult fields for the legacy event/result consumer. */
+export function normalizeLegacySkillResult(result: SkillResult): LegacySkillEffect[] {
+  const effects: LegacySkillEffect[] = [];
+  if (result.damage !== undefined) effects.push({ type: "damage", value: result.damage });
+  if (result.control) effects.push({ type: "control", value: result.control });
+  if (result.barrier) effects.push({ type: "barrier", value: result.barrier });
+  if (result.pierce !== undefined) effects.push({ type: "pierce", value: result.pierce });
+  if (result.burn) effects.push({ type: "burn", value: result.burn });
+  if (result.disableHealing !== undefined) effects.push({ type: "disable-healing", value: result.disableHealing });
+  if (result.summon) effects.push({ type: "summon", value: result.summon });
+  return effects;
 }
