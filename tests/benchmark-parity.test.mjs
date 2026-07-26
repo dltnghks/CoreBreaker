@@ -28,10 +28,9 @@ test("legacy Home runs and canonical benchmark runs use explicit simulation gate
   assert.match(bridge, /syncCanonicalBallsIntoGame\(game, state\)/);
 });
 
-test("Home always enables canonical simulation without changing benchmark mode", async () => {
+test("Home keeps legacy simulation until canonical parity is complete", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /return <GameRuntime canonicalEngineEnabled \/>/);
-  assert.doesNotMatch(page, /canonicalReplay/);
+  assert.match(page, /return <GameRuntime \/>/);
 });
 
 test("canonical visual events materialize into transient renderer state", async () => {

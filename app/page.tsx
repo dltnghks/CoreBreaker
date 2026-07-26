@@ -4692,7 +4692,7 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
 }
 
 export default function Home() {
-  // Canonical engine is now the sole Home simulation owner. Benchmark routes
-  // retain their independent bot/headless ruleset and are unaffected.
-  return <GameRuntime canonicalEngineEnabled />;
+  // Keep Home on legacy until the complete canonical parity audit is green.
+  // Benchmark routes retain their independent canonical ruleset.
+  return <GameRuntime />;
 }
