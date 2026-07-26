@@ -12,6 +12,7 @@ const policy = await load("/app/bot-policy.ts");
 const benchmark = await load("/app/benchmark-headless.ts");
 const waves = await load("/app/wave-config.ts");
 const skills = await load("/app/skill-config.ts");
+const bridge = await load("/app/canonical-bridge.ts");
 
 test("canonical bridge is enabled for Home runs and benchmark runs", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
@@ -63,6 +64,31 @@ test("canonical snapshots retain combat and payload fields at the bridge boundar
     skillCharges: { "warrior-guard": 2 },
     cooldowns: { "warrior-guard": 1.25 },
   });
+});
+
+test("canonical bridge preserves the visible initial brick layout and launch state", () => {
+  const source = engine.createCanonicalState({ seed: 9001, targetWave: 1 });
+  const visibleGame = {
+    paddleX: 417,
+    paddleWidth: 132,
+    coreHp: 7,
+    maxCoreHp: 9,
+    bricks: [
+      { ...source.bricks[0], id: undefined, x: 13.25, y: 211, w: 61, h: 24, hp: 3, maxHp: 3, trait: "guard", guardReady: true, drop: "core-repair", kind: "normal" },
+      { ...source.bricks[1], id: undefined, x: 271.5, y: 245, w: 61, h: 24, hp: 1, maxHp: 1, trait: "reflector", guardReady: false, drop: null, kind: "normal" },
+    ],
+    balls: [{ ...source.balls[0], x: 417, y: 528, vx: 240, vy: -320 }],
+    upgrades: [],
+  };
+  const canonical = bridge.createCanonicalBridge({ seed: 9001, balance: source.balance, skills: source.skills, waves: source.waves, game: visibleGame });
+  assert.deepEqual(canonical.bricks.map(({ id, x, y, w, h, hp, trait, drop }) => ({ id, x, y, w, h, hp, trait, drop })), [
+    { id: 1, x: 13.25, y: 211, w: 61, h: 24, hp: 3, trait: "guard", drop: "core-repair" },
+    { id: 2, x: 271.5, y: 245, w: 61, h: 24, hp: 1, trait: "reflector", drop: null },
+  ]);
+  assert.equal(canonical.paddleX, 417);
+  assert.equal(canonical.paddleWidth, 132);
+  assert.equal(canonical.balls[0].y, 528);
+  assert.equal(canonical.balls[0].vy, -320);
 });
 
 test("legacy echo-split enchantment summons a payload-preserving canonical ball", () => {

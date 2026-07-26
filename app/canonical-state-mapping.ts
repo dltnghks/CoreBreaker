@@ -110,10 +110,30 @@ export function syncCanonicalWorldIntoGame(target: GameState, source: CanonicalS
   target.canonicalComplete = source.complete;
 
   const brickByPosition = new Map(target.bricks.map((brick) => [`${Math.round(brick.x)}:${Math.round(brick.y)}`, brick]));
-  for (const canonicalBrick of source.bricks) {
+  // Rebuild the visible brick collection from canonical geometry. Mapping
+  // only hp/alive used to leave the previous wave's positions in the canvas
+  // (and silently dropped newly spawned boss/minion bricks). Geometry and
+  // collection membership are simulation state too, so carry them across in
+  // one deterministic pass while retaining renderer-only presentation fields.
+  target.bricks = source.bricks.map((canonicalBrick, index) => {
     const brick = brickByPosition.get(`${Math.round(canonicalBrick.x)}:${Math.round(canonicalBrick.y)}`)
       ?? target.bricks[canonicalBrick.id - 1];
-    if (!brick) continue;
+    const fallback = brick ?? {
+      x: canonicalBrick.x, y: canonicalBrick.y, w: canonicalBrick.w, h: canonicalBrick.h,
+      hp: canonicalBrick.hp, maxHp: canonicalBrick.maxHp, hue: 178 + source.wave * 9 + index * 2,
+      alive: canonicalBrick.alive, kind: "normal" as const, drop: canonicalBrick.drop,
+      trait: canonicalBrick.trait, guardReady: canonicalBrick.guardReady,
+      healTimer: canonicalBrick.healTimer, healBlockTime: canonicalBrick.healBlockTime,
+      poisonTime: 0, poisonTick: 0, poisonSourcePaddleId: null,
+      burnTime: canonicalBrick.burnTime, burnTick: canonicalBrick.burnTick, burnLevel: 0, burnSourcePaddleId: null,
+      blastVulnerability: 1, blastVulnerabilitySourcePaddleId: null,
+      frostVulnerability: canonicalBrick.frostVulnerability, traitLockTime: canonicalBrick.traitLockTime,
+      lastHitPaddleId: null,
+    };
+    brick.x = canonicalBrick.x;
+    brick.y = canonicalBrick.y;
+    brick.w = canonicalBrick.w;
+    brick.h = canonicalBrick.h;
     brick.hp = canonicalBrick.hp;
     brick.maxHp = canonicalBrick.maxHp;
     brick.alive = canonicalBrick.alive;
@@ -127,7 +147,8 @@ export function syncCanonicalWorldIntoGame(target: GameState, source: CanonicalS
     brick.traitLockTime = canonicalBrick.traitLockTime;
     brick.drop = canonicalBrick.drop;
     brick.kind = canonicalBrick.kind === "boss-core" ? "boss-core" : canonicalBrick.kind === "boss-minion" ? "boss-minion" : "normal";
-  }
+    return brick;
+  });
 
   // Canonical items do not need renderer identity; retain existing ids where
   // possible and allocate deterministic ids for newly spawned drops.

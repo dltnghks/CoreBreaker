@@ -31,6 +31,38 @@ export function createCanonicalBridge(options: {
 }) {
   const state = createCanonicalState({ ...options });
   for (const id of options.game?.upgrades ?? []) grantCanonicalSkill(state, id, "start");
+  if (options.game) {
+    // The visible run is created by the existing GameState factory.  During
+    // the cutover the canonical simulation must start from that exact world,
+    // otherwise its seeded wave layout (and random drop/trait choices) can
+    // differ from what the player just saw.  Copy the initial world once at
+    // the bridge boundary; subsequent frames are canonical-owned.
+    state.paddleX = options.game.paddleX;
+    state.paddleWidth = options.game.paddleWidth;
+    state.coreHp = options.game.coreHp;
+    state.maxCoreHp = options.game.maxCoreHp;
+    state.bricks = options.game.bricks.map((brick, index) => ({
+      id: index + 1,
+      x: brick.x,
+      y: brick.y,
+      w: brick.w,
+      h: brick.h,
+      hp: brick.hp,
+      maxHp: brick.maxHp,
+      alive: brick.alive,
+      trait: brick.trait,
+      guardReady: brick.guardReady,
+      healTimer: brick.healTimer,
+      healBlockTime: brick.healBlockTime,
+      burnTime: brick.burnTime,
+      burnTick: brick.burnTick,
+      traitLockTime: brick.traitLockTime,
+      frostVulnerability: brick.frostVulnerability,
+      drop: brick.drop === "multiball" || brick.drop === "auto-barrier" || brick.drop === "core-repair" || brick.drop === "cooldown-reset" ? brick.drop : null,
+      kind: brick.kind === "boss-core" ? "boss-core" : brick.kind === "boss-minion" ? "boss-minion" : "normal",
+    }));
+    state.nextBrickId = state.bricks.length + 1;
+  }
   if (options.game?.balls[0]) {
     const source = options.game.balls[0];
     const target = state.balls[0];
