@@ -126,3 +126,18 @@ test("canonical and legacy brick collision phases match exact damage/reflection"
   assert.equal(canonical.balls[0].vy, legacy.balls[0].vy);
   assert.deepEqual(canonicalEvents, legacyEvents);
 });
+
+test("canonical and legacy paddle collision phases match contact and rebound", () => {
+  const canonical = engine.createCanonicalState({ seed: 104, targetWave: 1, waves: waves.WAVE_DEFINITIONS });
+  canonical.bricks = [];
+  canonical.paddleX = 450; canonical.paddleWidth = 128;
+  const ball = canonical.balls[0]; ball.x = 460; ball.y = 520; ball.vx = 80; ball.vy = 320;
+  const legacy = legacyState(); legacy.bricks = []; legacy.paddleX = 450; legacy.paddleWidth = 128;
+  legacy.balls = [{ x: 460, y: 520, vx: 80, vy: 320, radius: ball.radius, owner: "player", color: "#fff", sourcePaddleId: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, gravityBaseSpeed: null, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0, canTriggerSkills: true, skillGeneration: 0, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false, respawnRecoveryTime: 0, respawnRecoveryDuration: 0, respawnRecoveryBaseSpeed: 0 }];
+  const prevC = new Map([[ball, { x: 450, y: 510 }]]); const prevL = new Map([[legacy.balls[0], { x: 450, y: 510 }]]);
+  const input = { move: 0, aimX: 500, aimY: 300 };
+  const left = legacyPure.resolveLegacyPaddleCollisionPure(legacy, prevL, input, { paddleY: 530, width: 900 });
+  const right = engine.resolveCanonicalPaddleCollisionPure(canonical, prevC, input, { paddleY: 530, width: 900 });
+  assert.equal(right.contactX, left.contactX);
+  for (const key of ["x", "y", "vx", "vy"]) assert.equal(Number(ball[key].toFixed(6)), Number(legacy.balls[0][key].toFixed(6)), key);
+});

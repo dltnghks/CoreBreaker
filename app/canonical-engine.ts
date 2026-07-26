@@ -923,3 +923,21 @@ export function resolveCanonicalBrickCollisionsPure(state: CanonicalState, previ
   }
   return state;
 }
+
+export function resolveCanonicalPaddleCollisionPure(state: CanonicalState, previous: Map<CanonicalBall, { x: number; y: number }>, controls: CanonicalControls, options: { paddleY?: number; slop?: number; sideDepth?: number; forgiveness?: number; width?: number } = {}) {
+  const paddleY = options.paddleY ?? PLAYER_PADDLE_Y;
+  const width = options.width ?? GAME_WIDTH;
+  for (const ball of state.balls) {
+    if (ball.vy <= 0) continue;
+    const prior = previous.get(ball) ?? { x: ball.x, y: ball.y };
+    const contact = sweptPaddleContact(ball, prior.x, prior.y, { x: state.paddleX, previousX: state.paddleX, y: paddleY, width: state.paddleWidth }, options.slop ?? 4, options.sideDepth ?? 18, options.forgiveness ?? 10);
+    if (!contact) continue;
+    ball.x = contact.contactX; ball.y = paddleY - ball.radius - 0.1;
+    const speed = Math.max(300, Math.hypot(ball.vx, ball.vy));
+    const ratio = Math.max(-0.84, Math.min(0.84, (controls.aimX - contact.contactX) / Math.max(1, width / 2)));
+    ball.vx = ratio * speed; ball.vy = -Math.sqrt(Math.max(1, speed * speed - ball.vx * ball.vx));
+    normalizeBallAngle(ball);
+    return { contactX: contact.contactX, hitRatio: contact.hitRatio };
+  }
+  return null;
+}
