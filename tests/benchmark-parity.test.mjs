@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
@@ -10,6 +11,87 @@ const engine = await load("/app/canonical-engine.ts");
 const policy = await load("/app/bot-policy.ts");
 const benchmark = await load("/app/benchmark-headless.ts");
 const waves = await load("/app/wave-config.ts");
+const skills = await load("/app/skill-config.ts");
+
+test("canonical bridge is explicitly opt-in for normal runs and always enabled for benchmark runs", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const bridge = await readFile(new URL("../app/canonical-bridge.ts", import.meta.url), "utf8");
+  assert.match(source, /canonicalEngineEnabledRef\.current\s*=\s*canonicalEngineEnabledForRun/);
+  assert.match(source, /canonicalBridgeRef\.current = canonicalEngineEnabledRef\.current\s*\?/);
+  assert.match(source, /if \(canonicalEngineEnabledRef\.current && canonicalBridgeRef\.current\)/);
+  assert.match(source, /canonicalBridgeRef\.current = null/);
+  const bridgeModule = await load("/app/canonical-bridge.ts");
+  assert.equal(bridgeModule.canonicalEngineEnabledForRun({ explicit: false, benchmarkMode: false }), false);
+  assert.equal(bridgeModule.canonicalEngineEnabledForRun({ explicit: true, benchmarkMode: false }), true);
+  assert.equal(bridgeModule.canonicalEngineEnabledForRun({ explicit: false, benchmarkMode: true }), true);
+  assert.match(bridge, /syncCanonicalBallsIntoGame\(game, state\)/);
+});
+
+test("canonical-only mode bypasses legacy updates and requires an explicit canonical step", async () => {
+  const loop = await readFile(new URL("../app/useGameLoop.ts", import.meta.url), "utf8");
+  assert.match(loop, /canonicalOnlyRef\?\.current/);
+  assert.match(loop, /canonicalStepRef\.current\(dt\)/);
+  assert.match(loop, /canonical-only game loop requires canonicalStep/);
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /canonicalOnly\s*=\s*false/);
+  assert.match(page, /if \(canonicalEngineEnabledRef\.current && canonicalBridgeRef\.current\)/);
+  assert.match(page, /if \(canonicalOnlyRef\.current\) return/);
+  assert.match(page, /canonicalOnlyRef,?\s*\n?\s*canonicalStep/);
+});
+
+test("canonical snapshots retain combat and payload fields at the bridge boundary", () => {
+  const state = engine.createCanonicalState({ seed: 712, targetWave: 1 });
+  const ball = state.balls[0];
+  ball.attackPower = 7;
+  ball.pierce = 3;
+  ball.maxPierce = 4;
+  ball.payload = "blast";
+  ball.payloadLevel = 2;
+  ball.payloads = { blast: 2, glass: 1 };
+  ball.skillCharges = { "warrior-guard": 2 };
+  ball.cooldowns = { "warrior-guard": 1.25 };
+  const snapshot = engine.canonicalSnapshot(state);
+  assert.deepEqual(snapshot.balls[0], {
+    x: snapshot.balls[0].x,
+    y: snapshot.balls[0].y,
+    vx: snapshot.balls[0].vx,
+    vy: snapshot.balls[0].vy,
+    attackPower: 7,
+    pierce: 3,
+    maxPierce: 4,
+    payload: "blast",
+    payloadLevel: 2,
+    payloads: { blast: 2, glass: 1 },
+    skillCharges: { "warrior-guard": 2 },
+    cooldowns: { "warrior-guard": 1.25 },
+  });
+});
+
+test("legacy echo-split enchantment summons a payload-preserving canonical ball", () => {
+  const state = engine.createCanonicalState({ seed: 713, targetWave: 1, legacyEnchantments: { "echo-split": 1 } });
+  assert.equal(engine.grantCanonicalSkill(state, "echo-split", "start"), true);
+  const source = state.balls[0];
+  source.x = state.paddleX;
+  source.y = engine.PLAYER_PADDLE_Y - source.radius - 1;
+  source.vx = 120;
+  source.vy = 320;
+  source.attackPower = 6;
+  source.pierce = 2;
+  source.maxPierce = 3;
+  source.payload = "blast";
+  source.payloadLevel = 2;
+  source.payloads = { blast: 2, glass: 1 };
+  engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  assert.equal(state.balls.length, 2);
+  const split = state.balls[1];
+  assert.equal(split.attackPower, source.attackPower);
+  assert.equal(split.pierce, source.pierce);
+  assert.equal(split.maxPierce, source.maxPierce);
+  assert.equal(split.payload, source.payload);
+  assert.equal(split.payloadLevel, source.payloadLevel);
+  assert.deepEqual(split.payloads, source.payloads);
+  assert.ok(state.visualEvents.some((event) => event.skillId === "echo-split"));
+});
 
 test("seeded gameplay stepping and benchmark stepping share canonical outcomes", () => {
   const left = engine.createCanonicalState({ seed: 90210, targetWave: 1 });
@@ -154,6 +236,104 @@ test("skill level stops at three and evolution is recorded on the fourth pick", 
   assert.equal(engine.grantCanonicalSkill(state, "mage-fireball", "wave"), true);
   assert.deepEqual(state.skillHistory.map((event) => [event.level, Boolean(event.evolved)]), [[1, false], [2, false], [3, false], [3, true]]);
   assert.equal(engine.grantCanonicalSkill(state, "mage-fireball", "wave"), false);
+});
+
+test("every configured ultimate is dispatched by the canonical collision path", () => {
+  const ultimateIds = skills.ULTIMATE_SKILLS.map((entry) => entry.id);
+  assert.equal(ultimateIds.length, 6, "the contract currently defines six ultimate skills");
+  for (const skillId of ultimateIds) {
+    const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+    definitions[0] = { ...definitions[0], pattern: ["............"] };
+    // A one-brick arena makes the collision deterministic while retaining the
+    // production skill table and canonical collision/dispatch path.
+    definitions[0] = { ...definitions[0], pattern: [".....s......"] };
+    const state = engine.createCanonicalState({ seed: 1000, targetWave: 1, waves: definitions });
+    assert.equal(engine.grantCanonicalSkill(state, skillId, "start"), true, `${skillId} should be grantable`);
+    const brick = state.bricks.find((entry) => entry.alive);
+    const ball = state.balls[0];
+    ball.x = brick.x + brick.w / 2;
+    ball.y = brick.y + brick.h + ball.radius - 1;
+    ball.vx = 0;
+    ball.vy = -320;
+    engine.stepCanonicalEngine(state, { move: 0, aimX: engine.GAME_WIDTH / 2, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+    assert.ok(state.skillMetrics[skillId]?.activations > 0, `${skillId} was granted but never dispatched on collision`);
+  }
+});
+
+test("canonical ultimate dispatch produces damage or a concrete effect event", () => {
+  for (const skillId of skills.ULTIMATE_SKILLS.map((entry) => entry.id)) {
+    const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+    definitions[0] = { ...definitions[0], pattern: [".....s......"] };
+    const state = engine.createCanonicalState({ seed: 12000, targetWave: 1, waves: definitions });
+    assert.equal(engine.grantCanonicalSkill(state, skillId, "start"), true);
+    const brick = state.bricks.find((entry) => entry.alive);
+    const ball = state.balls[0];
+    ball.x = brick.x + brick.w / 2;
+    ball.y = brick.y + brick.h + ball.radius - 1;
+    ball.vx = 0;
+    ball.vy = -320;
+    const before = state.totalDamage;
+    engine.stepCanonicalEngine(state, { move: 0, aimX: engine.GAME_WIDTH / 2, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+    assert.ok(state.visualEvents.some((event) => event.skillId === skillId), `${skillId} must emit a visual event`);
+    assert.ok(state.totalDamage > before || state.balls.length > 1 || state.barrierCharges > 0 || state.gravityWells.length > 0, `${skillId} must apply a gameplay effect`);
+  }
+});
+
+test("black-hole radius and evolved damage honor skill level, passive, and boss enhancement", () => {
+  const base = engine.createCanonicalState({ seed: 12001, targetWave: 1, waves: waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [".....s......"] })) });
+  const boosted = engine.createCanonicalState({ seed: 12001, targetWave: 1, waves: waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [".....s......"] })) });
+  for (const target of [base, boosted]) {
+    engine.grantCanonicalSkill(target, "mage-black-hole", "start");
+    engine.grantCanonicalSkill(target, "mage-black-hole", "wave");
+    engine.grantCanonicalSkill(target, "mage-black-hole", "wave");
+    engine.grantCanonicalSkill(target, "common-damage", "start");
+  }
+  boosted.bossEnhancements["mage-black-hole"] = 1;
+  const hit = (state) => {
+    const brick = state.bricks[0]; const ball = state.balls[0];
+    ball.x = brick.x + brick.w / 2; ball.y = brick.y + brick.h + ball.radius - 1; ball.vx = 0; ball.vy = -320;
+    engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+    return state.gravityWells[0];
+  };
+  const normal = hit(base); const enhanced = hit(boosted);
+  assert.ok(enhanced.radius > normal.radius, "boss enhancement must increase black-hole range");
+  assert.ok(enhanced.damagePerSecond >= normal.damagePerSecond, "passive/enhancement must not reduce black-hole damage");
+});
+
+test("canonical skill results expose the complete effect contract", async () => {
+  // This is a contract guard for the migration boundary. A runtime result must
+  // be able to carry every effect produced by the legacy page loop; omitting
+  // one silently drops behavior during canonical synchronization.
+  const requiredFields = ["damage", "control", "barrier", "pierce", "burn", "disableHealing", "summon"];
+  const source = await readFile(new URL("../app/canonical-engine.ts", import.meta.url), "utf8");
+  const contract = source.match(/(?:type|interface)\s+SkillResult\s*=?[\s\S]*?(?=\n(?:export\s+)?(?:type|interface|function|const)\s|$)/)?.[0] ?? "";
+  for (const field of requiredFields) {
+    assert.match(contract, new RegExp(`\\b${field}\\b`), `SkillResult is missing required field: ${field}`);
+  }
+});
+
+test("common passive modifiers are resolved by canonical dispatch", () => {
+  const base = engine.createCanonicalState({ seed: 301, targetWave: 1 });
+  const boosted = engine.createCanonicalState({ seed: 301, targetWave: 1 });
+  for (const id of ["common-move-speed", "common-combo", "common-magnet", "common-luck", "common-wide"]) {
+    assert.equal(engine.grantCanonicalSkill(boosted, id, "start"), true, `${id} should be grantable`);
+  }
+  const modifiers = engine.canonicalCommonPassiveValues(boosted);
+  assert.ok(modifiers.moveSpeedMultiplier > 1);
+  assert.ok(modifiers.comboScoreBonus > 0);
+  assert.ok(modifiers.magnetRange > 0);
+  assert.ok(modifiers.luckChance > 0);
+  assert.ok(modifiers.paddleWidth > base.paddleWidth);
+
+  const startX = base.paddleX;
+  engine.stepCanonicalEngine(base, { move: 1, aimX: 420, aimY: 120 }, engine.FIXED_STEP_SECONDS);
+  engine.stepCanonicalEngine(boosted, { move: 1, aimX: 420, aimY: 120 }, engine.FIXED_STEP_SECONDS);
+  assert.ok(boosted.paddleX - startX > base.paddleX - startX, "move-speed must affect canonical paddle dispatch");
+
+  boosted.items.push({ x: boosted.paddleX + 10, y: 500, vy: 0, kind: "core-repair", alive: true });
+  const before = boosted.items[0].x;
+  engine.stepCanonicalEngine(boosted, { move: 0, aimX: 420, aimY: 120 }, engine.FIXED_STEP_SECONDS);
+  assert.ok(boosted.items[0].x < before, "magnet must pull nearby canonical items toward the paddle");
 });
 
 test("indestructible bricks never carry item drops", () => {

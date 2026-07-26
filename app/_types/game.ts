@@ -217,6 +217,8 @@ export type GameState = {
   pendingWave: number | null;
   failed: boolean;
   failureReason: "ball" | "core" | null;
+  /** Set only by the opt-in canonical bridge when its target wave completes. */
+  canonicalComplete?: boolean;
   botMetrics: BotMetrics;
   botWaveSamples: BotWaveSample[];
   botSampleKey: string;

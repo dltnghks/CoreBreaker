@@ -9,9 +9,17 @@ import { applyWaveDefinitions, getActiveWaveDefinitions, MAX_WAVE, WAVE_STORAGE_
 import { PARALLEL_BENCHMARK_RULESET, type HeadlessBenchmarkRequest, type HeadlessBenchmarkResult, type HeadlessTerminationReason, type HeadlessTimeoutDiagnostic } from "./benchmark-headless";
 import { clearBenchmarkResults, getBenchmarkResults, putBenchmarkResults } from "./benchmark-result-store";
 import { createBotPolicyState, decideBotControls, POLICY_VERSION, reflectorBankAim, type BotPolicyState } from "./bot-policy";
+import { advanceTemporalState, applyPaddleInput } from "./game-update-prelude";
 import { appHref } from "./site-path";
 import { SkillSelectionModal } from "./_components/modals/SkillSelectionModal";
 import { BenchmarkDashboard } from "./_components/benchmark/BenchmarkDashboard";
+import { useGameLoop } from "./useGameLoop";
+import { hudSnapshotFromGame, hudSnapshotsEqual, type HudSnapshot } from "./hud-snapshot";
+import { circleRectangleCollision, ensureMinimumVerticalAngle, separateAndReflectBall, sweptPaddleContact } from "./collision-physics";
+import { canonicalEngineEnabledForRun, createCanonicalBridge, grantCanonicalBridgeSkill, stepCanonicalBridge } from "./canonical-bridge";
+import type { CanonicalState } from "./canonical-engine";
+import { drainGameEvents, emitGameEvent, type GameEvent, type GameEventBuffer } from "./game-events";
+import { beginGameCanvasFrame, endGameCanvasFrame, renderBalls, renderBricks, renderHud, renderPaddles, renderTransientFeedback, renderWorldOverlays } from "./game-renderer";
 
 import type {
   Ball,
@@ -107,7 +115,6 @@ const RADIAL_LIGHTNING_FRAMES = 8;
 const MAGE_SPELL_ASSETS = ["/assets/vfx/mage-fireball.png", "/assets/vfx/mage-sparks.png"] as const;
 const MAGE_SPELL_FRAME_SIZE = 16;
 const MAGE_SPELL_FRAMES = 6;
-const MIN_VERTICAL_SPEED_RATIO = 0.32;
 const MAX_ACTIVE_PARTICLES = 500;
 const MAX_ACTIVE_EFFECTS = 240;
 const MAX_ACTIVE_FLASHES = 120;
@@ -220,52 +227,6 @@ function pushPooledEffect(game: GameState, values: GameEffect) {
   effect.variant = variant;
   effect.skillId = skillId;
   game.effects.push(effect);
-}
-
-function circleRectangleCollision(ball: Pick<Ball, "x" | "y" | "radius">, brick: Pick<Brick, "x" | "y" | "w" | "h">, previousX: number, previousY: number) {
-  const closestX = Math.max(brick.x, Math.min(ball.x, brick.x + brick.w));
-  const closestY = Math.max(brick.y, Math.min(ball.y, brick.y + brick.h));
-  const dx = ball.x - closestX;
-  const dy = ball.y - closestY;
-  const distanceSquared = dx * dx + dy * dy;
-  if (distanceSquared > ball.radius * ball.radius) return null;
-  if (distanceSquared > 0.0001) {
-    const distance = Math.sqrt(distanceSquared);
-    return { normalX: dx / distance, normalY: dy / distance, penetration: ball.radius - distance };
-  }
-
-  const exits = [
-    { normalX: -1, normalY: 0, distance: Math.abs(previousX - (brick.x - ball.radius)) },
-    { normalX: 1, normalY: 0, distance: Math.abs(previousX - (brick.x + brick.w + ball.radius)) },
-    { normalX: 0, normalY: -1, distance: Math.abs(previousY - (brick.y - ball.radius)) },
-    { normalX: 0, normalY: 1, distance: Math.abs(previousY - (brick.y + brick.h + ball.radius)) },
-  ];
-  const exit = exits.sort((a, b) => a.distance - b.distance)[0];
-  const penetration = exit.normalX < 0 ? ball.x + ball.radius - brick.x
-    : exit.normalX > 0 ? brick.x + brick.w - (ball.x - ball.radius)
-      : exit.normalY < 0 ? ball.y + ball.radius - brick.y
-        : brick.y + brick.h - (ball.y - ball.radius);
-  return { normalX: exit.normalX, normalY: exit.normalY, penetration: Math.max(0, penetration) };
-}
-
-function ensureMinimumVerticalAngle(ball: Pick<Ball, "vx" | "vy">, fallbackDirection = -1) {
-  const speed = Math.max(1, Math.hypot(ball.vx, ball.vy));
-  const minimumVerticalSpeed = speed * MIN_VERTICAL_SPEED_RATIO;
-  if (Math.abs(ball.vy) >= minimumVerticalSpeed) return;
-  const verticalDirection = Math.sign(ball.vy) || Math.sign(fallbackDirection) || -1;
-  const horizontalDirection = Math.sign(ball.vx) || 1;
-  ball.vy = verticalDirection * minimumVerticalSpeed;
-  ball.vx = horizontalDirection * Math.sqrt(Math.max(0, speed * speed - minimumVerticalSpeed * minimumVerticalSpeed));
-}
-
-function separateAndReflectBall(ball: Ball, collision: { normalX: number; normalY: number; penetration: number }) {
-  ball.x += collision.normalX * (collision.penetration + 0.1);
-  ball.y += collision.normalY * (collision.penetration + 0.1);
-  const approachSpeed = ball.vx * collision.normalX + ball.vy * collision.normalY;
-  if (approachSpeed >= 0) return;
-  ball.vx -= 2 * approachSpeed * collision.normalX;
-  ball.vy -= 2 * approachSpeed * collision.normalY;
-  ensureMinimumVerticalAngle(ball, collision.normalY);
 }
 
 function seededRandom(seed: number) {
@@ -916,16 +877,11 @@ function formatScore(value: number) {
 }
 
 function hudFromGame(game: GameState) {
-  const skillLevels = [...new Set(game.upgrades)].map((id) => ({ id, level: upgradeLevel(game.upgrades, id), enhancement: game.bossEnhancements?.[id] ?? 0 }));
-  return {
-    score: game.score, time: game.elapsed, level: game.level,
-    combo: game.combo, bricks: game.bricksBroken, balls: game.balls.filter((ball) => ball.owner === "player").length,
-    wave: game.wave, nextRow: Math.max(0, game.rowTimer), coreHp: game.coreHp, maxCoreHp: game.maxCoreHp, barriers: game.paddleBarriers.player ?? 0,
-    overdriveLevel: game.overdriveLevel, overdriveMultiplier: overdriveMultiplier(game.overdriveLevel),
-    bossActive: game.bossActive, bossPending: game.bossPending, nextBossWave: game.nextBossWave, bossTimeRemaining: Math.max(0, game.bossTimeRemaining),
-    waveName: waveDefinition(game.wave).name, aliveBricks: game.bricks.filter((brick) => brick.alive).length,
-    skillLevels,
-  };
+  return hudSnapshotFromGame(game, {
+    waveName: waveDefinition(game.wave).name,
+    overdriveMultiplier: overdriveMultiplier(game.overdriveLevel),
+    upgradeLevel,
+  });
 }
 
 function recordBotWaveSample(game: GameState) {
@@ -978,7 +934,7 @@ function chooseBotUpgrade(choices: Upgrade[], existing: UpgradeId[], policy: Bot
     .sort((a, b) => b.score - a.score || a.upgrade.id.localeCompare(b.upgrade.id))[0].upgrade;
 }
 
-export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean }) {
+export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = false, canonicalOnly = false }: { benchmarkMode?: boolean; canonicalEngineEnabled?: boolean; canonicalOnly?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ringExplosionRef = useRef<HTMLImageElement | null>(null);
   const ringExplosionReadyRef = useRef(false);
@@ -988,9 +944,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const radialLightningReadyRef = useRef(false);
   const mageSpellRefs = useRef<Array<HTMLImageElement | null>>([null, null]);
   const mageSpellReadyRef = useRef([false, false]);
-  const frameRef = useRef<number | null>(null);
-  const lastRef = useRef<number>(0);
   const gameRef = useRef<GameState | null>(null);
+  // Frame-scoped side effects are emitted by update code and consumed by the
+  // canvas/audio boundary immediately before rendering the next frame.
+  const gameEventsRef = useRef<GameEventBuffer>({ events: [] });
+  // Populated when the caller explicitly opts into canonical simulation.
+  const canonicalBridgeRef = useRef<CanonicalState | null>(null);
   const activeGhostsRef = useRef<GhostRecord[]>([]);
   const pointerXRef = useRef(W / 2);
   const pointerYRef = useRef(H / 3);
@@ -1001,11 +960,20 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const botPolicyStateRef = useRef<BotPolicyState>(createBotPolicyState(1));
   const keyboardRef = useRef({ left: false, right: false });
   const runningRef = useRef(false);
+  const loopEnabledRef = useRef(false);
   const levelUpRef = useRef(false);
   const upgradeCatalogRef = useRef<Upgrade[]>(DEFAULT_UPGRADES);
   const audioRef = useRef<GameAudio | null>(null);
   const botActiveRef = useRef(false);
   const benchmarkWatchRef = useRef(false);
+  const canonicalEngineEnabledRef = useRef(canonicalEngineEnabled);
+  const canonicalOnlyRef = useRef(canonicalOnly);
+  // Terminal canonical states can be observed for more than one frame while
+  // the canvas is still being rendered. Keep the React lifecycle transition
+  // idempotent across those frames (and across the legacy/dual-run paths).
+  const canonicalTerminalRef = useRef<"complete" | "game-over" | null>(null);
+  useEffect(() => { canonicalEngineEnabledRef.current = canonicalEngineEnabled; }, [canonicalEngineEnabled]);
+  useEffect(() => { canonicalOnlyRef.current = canonicalOnly; }, [canonicalOnly]);
   const botPolicyRef = useRef<BotPolicy>("balanced");
   const botSpeedRef = useRef<BotSpeed>(1);
   const botTargetRunsRef = useRef(5);
@@ -1031,7 +999,13 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
   const [mode, setMode] = useState<"lobby" | "initialskills" | "playing" | "levelup" | "bossreward" | "waveclear" | "transition" | "result">("lobby");
   const [transitionWave, setTransitionWave] = useState<number | null>(null);
   const [clearedWave, setClearedWave] = useState<{ wave: number; boss: boolean } | null>(null);
-  const [hud, setHud] = useState({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, barriers: 0, overdriveLevel: 0, overdriveMultiplier: 1, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0, skillLevels: [] as { id: UpgradeId; level: number; enhancement?: number }[] });
+  const [hud, setHudState] = useState<HudSnapshot>({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, barriers: 0, overdriveLevel: 0, overdriveMultiplier: 1, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0, skillLevels: [] });
+  const lastHudSnapshotRef = useRef<HudSnapshot | null>(null);
+  const setHud = useCallback((next: HudSnapshot) => {
+    if (hudSnapshotsEqual(lastHudSnapshotRef.current, next)) return;
+    lastHudSnapshotRef.current = next;
+    setHudState(next);
+  }, []);
   const [choices, setChoices] = useState<UpgradeChoice[]>([]);
   const [bossRewardChoices, setBossRewardChoices] = useState<UpgradeId[]>([]);
   const [rerollsLeft, setRerollsLeft] = useState(1);
@@ -1360,7 +1334,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       levelUpRef.current = false;
       runningRef.current = true;
       setMode("playing");
-      lastRef.current = performance.now();
+      resetLoopClock();
       return;
     }
 
@@ -1388,7 +1362,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       startNextWave();
       runningRef.current = true;
       setMode("playing");
-      lastRef.current = performance.now();
+      resetLoopClock();
       return;
     }
 
@@ -1401,7 +1375,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
         setTransitionWave(null);
         setMode("playing");
         runningRef.current = true;
-        lastRef.current = performance.now();
+        resetLoopClock();
         transitionTimersRef.current = [];
       }, 900),
     ];
@@ -1425,9 +1399,11 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     const previousLevel = upgradeLevel(game.upgrades, upgrade.id);
     const wasEvolved = isSkillEvolved(game.upgrades, upgrade.id);
     game.upgrades.push(upgrade.id);
+    grantCanonicalBridgeSkill(canonicalBridgeRef.current, upgrade.id, source, ballCost);
     const nextLevel = upgradeLevel(game.upgrades, upgrade.id);
     const nowEvolved = isSkillEvolved(game.upgrades, upgrade.id);
     game.skillHistory.push({ wave: game.wave, skillId: upgrade.id, level: nextLevel, source });
+    emitGameEvent(gameEventsRef.current, { type: "skill-activated", skillId: upgrade.id as ClassSkillId, level: nextLevel });
     if (upgrade.id === "speed") {
       const previousBonus = 1 + skillValue("speed", previousLevel) / 100;
       const nextBonus = 1 + skillValue("speed", nextLevel) / 100;
@@ -1453,8 +1429,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.flashes.push({ text: `EVOLUTION // ${upgrade.name}`, x: W / 2, y: H / 2 + 38, life: 1.8, color: upgrade.color });
       pushPooledEffect(game, { kind: "ring", x: W / 2, y: H / 2, x2: W / 2, y2: H / 2, size: 230, life: 1.1, maxLife: 1.1, color: upgrade.color, variant: 0, skillId: upgrade.id as ClassSkillId });
     }
-    audioRef.current?.play("skill", nextLevel);
-    setImpactFeedback(game, 4 + nextLevel * 0.5, upgrade.color, 0.2, 0.1);
     setHud(hudFromGame(game));
     if (resume) {
       enterPendingWave(game);
@@ -1562,6 +1536,16 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     setMode("result");
   }, [benchmarkMode]);
 
+  const handleCanonicalOutcome = useCallback((outcome: "complete" | "game-over") => {
+    if (!canonicalOnlyRef.current || canonicalTerminalRef.current !== null) return;
+    canonicalTerminalRef.current = outcome;
+    // `finishRun` is the single UI terminal path for both engines: it records
+    // bot results, snapshots the final state, stops simulation, and switches
+    // to the result screen. The canonical bridge has already projected its
+    // final wave/core state into gameRef before this callback is invoked.
+    finishRun();
+  }, [finishRun]);
+
   const levelUp = useCallback(() => {
     const game = gameRef.current;
     if (!game || levelUpRef.current) return;
@@ -1621,7 +1605,7 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     levelUpRef.current = false;
     runningRef.current = true;
     setMode("playing");
-    lastRef.current = performance.now();
+    resetLoopClock();
   }, [applyUpgrade]);
 
   const updateGame = useCallback((dt: number) => {
@@ -1672,12 +1656,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       brick.frostVulnerability ??= 0;
       brick.traitLockTime ??= 0;
       brick.lastHitPaddleId ??= null;
-      brick.traitLockTime = Math.max(0, brick.traitLockTime - dt);
     });
     const brickHpAtFrameStart = new Map(game.bricks.map((brick) => [brick, brick.hp]));
-    game.elapsed += dt;
-    game.itemBarrierTime = Math.max(0, game.itemBarrierTime - dt);
-    game.rowTimer += dt;
+    advanceTemporalState(game, dt);
     const nextOverdriveLevel = overdriveLevelAt(game.rowTimer);
     if (nextOverdriveLevel > game.overdriveLevel) {
       const previousOverdriveLevel = game.overdriveLevel;
@@ -1730,15 +1711,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       pointerYRef.current = PLAYER_PADDLE_Y + verticalRatio * KEYBOARD_AIM_TARGET_DISTANCE;
     }
     const previousPaddleX = game.paddleX;
-    if (botActiveRef.current) {
-      const moveSpeedMultiplier = 1 + skillValue("common-move-speed", upgradeLevel(game.upgrades, "common-move-speed")) / 100;
-      game.paddleX += botMoveRef.current * PADDLE_KEYBOARD_SPEED * moveSpeedMultiplier * dt;
-    } else {
-      const movement = Number(keyboardRef.current.right) - Number(keyboardRef.current.left);
-      const moveSpeedMultiplier = 1 + skillValue("common-move-speed", upgradeLevel(game.upgrades, "common-move-speed")) / 100;
-      game.paddleX += movement * PADDLE_KEYBOARD_SPEED * moveSpeedMultiplier * dt;
-    }
-    game.paddleX = Math.max(game.paddleWidth / 2, Math.min(W - game.paddleWidth / 2, game.paddleX));
+    const moveSpeedMultiplier = 1 + skillValue("common-move-speed", upgradeLevel(game.upgrades, "common-move-speed")) / 100;
+    const movement = botActiveRef.current ? botMoveRef.current as -1 | 0 | 1 : (Number(keyboardRef.current.right) - Number(keyboardRef.current.left)) as -1 | 0 | 1;
+    applyPaddleInput(game, movement, PADDLE_KEYBOARD_SPEED * moveSpeedMultiplier, dt, W);
 
     const trackIndex = Math.floor(game.elapsed * 10);
     if (game.paddleTrack.length <= trackIndex) game.paddleTrack.push(game.paddleX / W);
@@ -1763,12 +1738,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       game.ghostPaddles[index] = Math.max(zoneStart + width / 2, Math.min(zoneEnd - width / 2, game.ghostPaddles[index] + delta));
     });
 
-    Object.values(game.paddleCounters).forEach((counter) => {
-      counter.missileReflections ??= 0;
-      counter.safetyTimer = Number.isFinite(counter.safetyTimer) ? counter.safetyTimer - dt : 0;
-      counter.gravityTimer = Number.isFinite(counter.gravityTimer) ? counter.gravityTimer - dt : 0;
-      counter.lastShotTimer -= dt;
-    });
     game.particles.forEach((p) => { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 150 * dt; p.life -= dt; });
     let liveParticleCount = 0;
     game.particles.forEach((particle) => {
@@ -1794,13 +1763,6 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     game.coreBreakTime = Math.max(0, (game.coreBreakTime ?? 0) - dt);
     game.gravityWells.forEach((well) => { well.life -= dt; });
     game.gravityWells = game.gravityWells.filter((well) => well.life > 0);
-    Object.values(game.paddleCounters).forEach((counter) => {
-      counter.skillCooldowns ??= {};
-      Object.keys(counter.skillCooldowns).forEach((id) => {
-        const skillId = id as ClassSkillId;
-        counter.skillCooldowns[skillId] = Math.max(0, (counter.skillCooldowns[skillId] ?? 0) - dt);
-      });
-    });
 
     const paddleY = PLAYER_PADDLE_Y;
     const paddles = [
@@ -1984,7 +1946,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       const dropX = brick.x + brick.w / 2;
       const dropY = brick.y + brick.h / 2;
       if (earnedDrop && game.items.length < 120) {
-        game.items.push({ id: Date.now() + effectRandom(), x: dropX, y: dropY, vy: 105, alive: true, kind: earnedDrop });
+        const itemId = Date.now() + effectRandom();
+        game.items.push({ id: itemId, x: dropX, y: dropY, vy: 105, alive: true, kind: earnedDrop });
+        emitGameEvent(gameEventsRef.current, { type: "item-dropped", itemId, kind: earnedDrop });
       }
 
       const feverLevel = upgradeLevel(sourcePaddle.upgrades, "fever");
@@ -2490,24 +2454,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
 
       if (ball.vy > 0) {
         for (const paddle of paddles) {
-          const verticalTravel = ball.y - previousBallY;
-          const rawContactTime = verticalTravel > 0 ? (paddle.y - ball.radius - previousBallY) / verticalTravel : -1;
-          const crossedPaddleTop = rawContactTime >= 0 && rawContactTime <= 1;
-          const alreadyTouchingTop = previousBallY <= paddle.y + PADDLE_COLLISION_SLOP
-            && previousBallY + ball.radius >= paddle.y - PADDLE_COLLISION_SLOP
-            && ball.y - ball.radius <= paddle.y + 12;
-          const sweptLeft = Math.min(previousBallX, ball.x) - ball.radius;
-          const sweptRight = Math.max(previousBallX, ball.x) + ball.radius;
-          const sideDepthContact = previousBallY + ball.radius >= paddle.y - PADDLE_COLLISION_SLOP
-            && ball.y - ball.radius <= paddle.y + PADDLE_SIDE_DEPTH
-            && sweptRight >= Math.min(paddle.previousX, paddle.x) - paddle.width / 2 - PADDLE_SIDE_FORGIVENESS
-            && sweptLeft <= Math.max(paddle.previousX, paddle.x) + paddle.width / 2 + PADDLE_SIDE_FORGIVENESS;
-          if (!crossedPaddleTop && !alreadyTouchingTop && !sideDepthContact) continue;
-          const contactTime = crossedPaddleTop ? Math.max(0, Math.min(1, rawContactTime)) : 1;
-          const contactX = previousBallX + (ball.x - previousBallX) * contactTime;
-          const paddleContactX = paddle.previousX + (paddle.x - paddle.previousX) * contactTime;
-          if (contactX + ball.radius + PADDLE_SIDE_FORGIVENESS < paddleContactX - paddle.width / 2 || contactX - ball.radius - PADDLE_SIDE_FORGIVENESS > paddleContactX + paddle.width / 2) continue;
-          const hit = Math.max(-1, Math.min(1, (contactX - paddleContactX) / (paddle.width / 2)));
+          const paddleContact = sweptPaddleContact(ball, previousBallX, previousBallY, paddle, PADDLE_COLLISION_SLOP, PADDLE_SIDE_DEPTH, PADDLE_SIDE_FORGIVENESS);
+          if (!paddleContact) continue;
+          const { contactX, hitRatio: hit } = paddleContact;
           const reboundSpeed = Math.max(MIN_PADDLE_REBOUND_SPEED, Math.min(MAX_PADDLE_REBOUND_SPEED, Math.hypot(ball.vx, ball.vy)));
           const aim = paddleAimDirection(contactX, paddle.y, pointerXRef.current, pointerYRef.current);
           const horizontalRatio = paddle.id === "player"
@@ -3054,7 +3003,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
           guardAbsorbed ? 0.18 : 0.24,
           guardAbsorbed ? 1 : 0,
         );
-        if (brick.hp > 0) audioRef.current?.play("brick-hit", directDamage);
+        if (brick.hp > 0) {
+          emitGameEvent(gameEventsRef.current, { type: "brick-damaged", brickIndex: game.bricks.indexOf(brick), damage: directDamage });
+        }
         if (corrosionDamage > 0) emitEffect("ring", brick.x + brick.w / 2, brick.y + brick.h / 2, "#c18cff", 28 + corrosionDamage * 5, brick.x + brick.w / 2, brick.y + brick.h / 2, 0.32);
         if (!guardAbsorbed && isSkillEvolved(sourcePaddle.upgrades, "warrior-smash")) strikeEvolutionPulse(brick, ball, "warrior-smash", 115, 2);
         if (!guardAbsorbed && berserkerLevel > 0) {
@@ -3315,1068 +3266,118 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
     }
 
+    // Canonical stepping is explicitly gated to benchmark watch mode. It is
+    // an observer/snapshot bridge here; no canonical state is created for
+    // ordinary player runs, preserving legacy gameplay parity.
+    if (canonicalEngineEnabledRef.current && canonicalBridgeRef.current) {
+      if (canonicalOnlyRef.current) return;
+      stepCanonicalBridge(canonicalBridgeRef.current, game, {
+        move: botMoveRef.current,
+        aimX: pointerXRef.current,
+        aimY: pointerYRef.current,
+      }, dt, gameEventsRef.current);
+    }
     setHud(hudFromGame(game));
   }, [applyBossReward, benchmarkMode, enterPendingWave, finishRun, levelUp]);
 
-  const drawGame = useCallback(() => {
-    const canvas = canvasRef.current;
+  // Canonical-only mode intentionally bypasses the legacy updateGame pipeline.
+  // The canonical state is the sole simulation owner; the legacy GameState is
+  // only a render/HUD compatibility projection at this boundary.
+  const canonicalStep = useCallback((dt: number): "complete" | "game-over" | null => {
     const game = gameRef.current;
-    if (!canvas || !game) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, W, H);
-    const shakeRatio = game.shakeDuration > 0 ? Math.min(1, game.shakeTime / game.shakeDuration) : 0;
-    const shakeAmplitude = game.shakeStrength * shakeRatio * shakeRatio;
-    const shakeX = Math.sin(game.elapsed * 97) * shakeAmplitude;
-    const shakeY = Math.cos(game.elapsed * 131) * shakeAmplitude * 0.72;
-    ctx.save();
-    ctx.translate(shakeX, shakeY);
-
-    const bg = ctx.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, "#11131a");
-    bg.addColorStop(0.58, "#090b11");
-    bg.addColorStop(1, "#050608");
-    ctx.fillStyle = bg;
-    ctx.fillRect(-18, -18, W + 36, H + 36);
-
-    const arenaGlow = ctx.createRadialGradient(W / 2, H * 0.38, 40, W / 2, H * 0.42, W * 0.62);
-    arenaGlow.addColorStop(0, "rgba(181,145,70,.055)");
-    arenaGlow.addColorStop(0.55, "rgba(77,88,112,.025)");
-    arenaGlow.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = arenaGlow;
-    ctx.fillRect(0, 0, W, H);
-
-    ctx.save();
-    ctx.translate(W / 2, H * 0.46);
-    ctx.strokeStyle = "rgba(205,176,112,.035)";
-    ctx.lineWidth = 1;
-    for (let ring = 0; ring < 4; ring++) {
-      ctx.beginPath();
-      ctx.arc(0, 0, 96 + ring * 38, 0, Math.PI * 2);
-      ctx.stroke();
+    const state = canonicalBridgeRef.current;
+    if (!game || !state) throw new Error("canonical-only run started without canonical state");
+    if (state.complete) return "complete";
+    if (state.gameOver) return "game-over";
+    const move = botActiveRef.current
+      ? botMoveRef.current
+      : (Number(keyboardRef.current.right) - Number(keyboardRef.current.left)) as -1 | 0 | 1;
+    stepCanonicalBridge(state, game, {
+      move,
+      aimX: pointerXRef.current,
+      aimY: pointerYRef.current,
+    }, dt, gameEventsRef.current);
+    setHud(hudFromGame(game));
+    if (state.complete || state.gameOver) {
+      runningRef.current = false;
+      return state.complete ? "complete" : "game-over";
     }
-    ctx.rotate(Math.PI / 4);
-    ctx.strokeRect(-104, -104, 208, 208);
-    ctx.restore();
+    return null;
+  }, []);
 
-    if (game.bossActive) {
-      const fortressGlow = ctx.createRadialGradient(W / 2, 220, 30, W / 2, 220, 360);
-      fortressGlow.addColorStop(0, "rgba(255,79,120,.2)");
-      fortressGlow.addColorStop(0.45, "rgba(88,124,255,.08)");
-      fortressGlow.addColorStop(1, "rgba(5,8,18,0)");
-      ctx.fillStyle = fortressGlow;
-      ctx.fillRect(0, 0, W, H);
-      ctx.save();
-      ctx.globalAlpha = 0.32 + Math.sin(game.elapsed * 4) * 0.08;
-      ctx.fillStyle = "#ff4f78";
-      for (let railY = 110; railY < PLAYER_LINE_Y - 30; railY += 44) {
-        ctx.beginPath();
-        ctx.moveTo(7, railY);
-        ctx.lineTo(19, railY + 10);
-        ctx.lineTo(7, railY + 20);
-        ctx.closePath();
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(W - 7, railY);
-        ctx.lineTo(W - 19, railY + 10);
-        ctx.lineTo(W - 7, railY + 20);
-        ctx.closePath();
-        ctx.fill();
-      }
-      ctx.restore();
-    }
+  const drawGame = useCallback(() => {
+    const game = gameRef.current;
+    if (!game) return;
 
-    ctx.strokeStyle = "rgba(201, 180, 132, .035)";
-    ctx.lineWidth = 1;
-    for (let x = 0; x < W; x += 45) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-    for (let y = 0; y < H; y += 45) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-
-    const traceBrickBody = (brick: Brick, inset = 0) => {
-      const x = brick.x + inset;
-      const y = brick.y + inset;
-      const w = brick.w - inset * 2;
-      const h = brick.h - inset * 2;
-      const cut = brick.trait === "indestructible" ? 8 : brick.trait === "explosive" ? 6 : brick.trait === "reflector" ? 4 : 3;
-      ctx.beginPath();
-      if (brick.trait === "healer") {
-        ctx.roundRect(x, y, w, h, Math.min(8, h / 2));
-        return;
+    // UI/audio adapter: simulation emits declarative events; only this
+    // consumer touches GameAudio and the legacy pooled feedback state.
+    const events = drainGameEvents(gameEventsRef.current);
+    events.forEach((event: GameEvent) => {
+      if (event.type === "skill-activated") {
+        const skill = activeSkillMap[event.skillId];
+        audioRef.current?.play("skill", event.level);
+        setImpactFeedback(game, 4 + event.level * 0.5, skill?.color, 0.2, 0.1);
       }
-      ctx.moveTo(x + cut, y);
-      ctx.lineTo(x + w - cut, y);
-      ctx.lineTo(x + w, y + cut);
-      ctx.lineTo(x + w - (brick.trait === "reflector" ? 2 : 0), y + h - cut);
-      ctx.lineTo(x + w - cut, y + h);
-      ctx.lineTo(x + cut, y + h);
-      ctx.lineTo(x + (brick.trait === "reflector" ? 2 : 0), y + h - cut);
-      ctx.lineTo(x, y + cut);
-      ctx.closePath();
-    };
-
-    game.bricks.forEach((brick) => {
-      if (!brick.alive) return;
-      const alpha = 0.42 + (brick.hp / brick.maxHp) * 0.5;
-      ctx.shadowBlur = 12;
-      const brickColor = brick.kind === "boss-core" ? "#ff4f78"
-        : brick.kind === "boss-armor" ? "#587cff"
-          : brick.kind === "boss-minion" ? "#ff9658"
-            : brick.trait === "guard" ? "#fff27a"
-              : brick.trait === "explosive" ? "#ff8a3d"
-                : brick.trait === "indestructible" ? "#8d96a8"
-                  : brick.trait === "healer" ? "#72f1b8"
-                    : brick.trait === "reflector" ? "#65dcff"
-                      : brick.maxHp >= 5 ? "#c5a766" : brick.maxHp >= 3 ? "#aeb4bd" : "#8f969f";
-      ctx.shadowColor = brickColor;
-      ctx.fillStyle = brick.kind === "normal"
-        ? brick.trait === "guard" ? `rgba(135,115,25,${alpha})`
-          : brick.trait === "explosive" ? `rgba(174,61,20,${alpha})`
-            : brick.trait === "indestructible" ? "rgba(55,62,76,.98)"
-              : brick.trait === "healer" ? `rgba(30,122,91,${alpha})`
-                : brick.trait === "reflector" ? `rgba(22,102,145,${alpha})`
-                  : brick.maxHp >= 5 ? `rgba(111,88,43,${alpha})` : brick.maxHp >= 3 ? `rgba(78,83,92,${alpha})` : `rgba(61,66,73,${alpha})`
-        : brickColor;
-      ctx.globalAlpha = brick.kind === "normal" ? 1 : alpha;
-      traceBrickBody(brick);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.shadowBlur = 0;
-      traceBrickBody(brick, 1.5);
-      ctx.strokeStyle = brickColor;
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      ctx.fillStyle = "rgba(255,255,255,.3)";
-      ctx.fillRect(brick.x + 8, brick.y + 3, brick.w - 16, 2);
-      if (brick.kind === "boss-core") {
-        const coreX = brick.x + brick.w / 2;
-        const coreY = brick.y + brick.h / 2;
-        const pulse = 0.78 + Math.sin(game.elapsed * 7) * 0.16;
-        ctx.save();
-        ctx.translate(coreX, coreY);
-        ctx.rotate(game.elapsed * 0.45);
-        ctx.strokeStyle = "#ffd7e1";
-        ctx.shadowColor = "#ff4f78";
-        ctx.shadowBlur = 18;
-        ctx.lineWidth = 3;
-        ctx.strokeRect(-brick.w * 0.22 * pulse, -brick.h * 0.22 * pulse, brick.w * 0.44 * pulse, brick.h * 0.44 * pulse);
-        ctx.rotate(Math.PI / 4);
-        ctx.fillStyle = "rgba(255,215,225,.72)";
-        ctx.fillRect(-5, -5, 10, 10);
-        ctx.restore();
-      } else if (brick.kind === "boss-armor") {
-        ctx.save();
-        ctx.strokeStyle = "rgba(180,198,255,.72)";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(brick.x + 5, brick.y + brick.h - 5);
-        ctx.lineTo(brick.x + brick.w / 2, brick.y + 6);
-        ctx.lineTo(brick.x + brick.w - 5, brick.y + brick.h - 5);
-        ctx.stroke();
-        ctx.restore();
-      }
-      if (brick.kind === "normal" && brick.trait !== "standard") {
-        const traitColor = BRICK_TRAIT_COLORS[brick.trait];
-        const traitPulse = 0.72 + Math.sin(game.elapsed * 6 + brick.x * 0.04) * 0.18;
-        ctx.save();
-        ctx.strokeStyle = brick.trait === "guard" && !brick.guardReady ? "rgba(255,242,122,.32)" : traitColor;
-        ctx.lineWidth = brick.trait === "indestructible" ? 3 : brick.trait === "guard" && brick.guardReady ? 3 : 2;
-        if (brick.trait === "explosive") ctx.setLineDash([5, 3]);
-        ctx.strokeRect(brick.x + 1.5, brick.y + 1.5, brick.w - 3, brick.h - 3);
-        ctx.setLineDash([]);
-        if (brick.trait === "indestructible") {
-          ctx.strokeStyle = "rgba(190,199,216,.42)";
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.moveTo(brick.x + 8, brick.y + brick.h - 4);
-          ctx.lineTo(brick.x + brick.w - 8, brick.y + 4);
-          ctx.moveTo(brick.x + 20, brick.y + brick.h - 4);
-          ctx.lineTo(brick.x + brick.w - 2, brick.y + 3);
-          ctx.stroke();
-        }
-        if (brick.trait === "guard") {
-          const plateY = brick.y + 5;
-          const plateH = Math.max(8, brick.h - 10);
-          ctx.fillStyle = brick.guardReady ? "rgba(255,242,122,.18)" : "rgba(255,242,122,.05)";
-          ctx.strokeStyle = brick.guardReady ? "#fff27a" : "rgba(255,242,122,.3)";
-          ctx.lineWidth = brick.guardReady ? 2.5 : 1;
-          ctx.beginPath();
-          ctx.moveTo(brick.x + 8, plateY);
-          ctx.lineTo(brick.x + brick.w - 8, plateY);
-          ctx.lineTo(brick.x + brick.w - 4, plateY + plateH / 2);
-          ctx.lineTo(brick.x + brick.w - 8, plateY + plateH);
-          ctx.lineTo(brick.x + 8, plateY + plateH);
-          ctx.lineTo(brick.x + 4, plateY + plateH / 2);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-        }
-        if (brick.trait === "explosive") {
-          const coreX = brick.x + brick.w / 2;
-          const coreY = brick.y + brick.h / 2;
-          const coreRadius = Math.min(7, brick.h * 0.24) + Math.sin(game.elapsed * 8 + brick.x) * 1.2;
-          ctx.shadowColor = "#ff8a3d";
-          ctx.shadowBlur = 14;
-          ctx.fillStyle = "#ffd166";
-          ctx.beginPath();
-          ctx.arc(coreX, coreY, coreRadius, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowBlur = 0;
-          ctx.strokeStyle = "rgba(255,209,102,.82)";
-          ctx.lineWidth = 1.5;
-          for (let crack = 0; crack < 6; crack++) {
-            const angle = crack * Math.PI / 3 + 0.18;
-            ctx.beginPath();
-            ctx.moveTo(coreX + Math.cos(angle) * (coreRadius + 2), coreY + Math.sin(angle) * (coreRadius + 2));
-            ctx.lineTo(coreX + Math.cos(angle) * Math.min(18, brick.w * 0.3), coreY + Math.sin(angle) * Math.min(11, brick.h * 0.38));
-            ctx.stroke();
-          }
-        }
-        if (brick.trait === "healer") {
-          ctx.globalAlpha = traitPulse;
-          ctx.shadowColor = traitColor;
-          ctx.shadowBlur = 12;
-          ctx.strokeStyle = traitColor;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(brick.x + brick.w / 2, brick.y + brick.h / 2, 8 + traitPulse * 3, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.moveTo(brick.x + brick.w / 2 - 5, brick.y + brick.h / 2);
-          ctx.lineTo(brick.x + brick.w / 2 + 5, brick.y + brick.h / 2);
-          ctx.moveTo(brick.x + brick.w / 2, brick.y + brick.h / 2 - 5);
-          ctx.lineTo(brick.x + brick.w / 2, brick.y + brick.h / 2 + 5);
-          ctx.stroke();
-          ctx.globalAlpha = 1;
-          ctx.shadowBlur = 0;
-        }
-        if (brick.trait === "reflector" && brick.traitLockTime <= 0) {
-          const reflectorShieldPulse = 0.55 + (Math.sin(game.elapsed * 7 + brick.x * 0.03) + 1) * 0.2;
-          const reflectorThreatened = game.balls.some((ball) => ball.vy < 0 && ball.y > brick.y + brick.h && ball.y < brick.y + brick.h + 75 && ball.x > brick.x - 8 && ball.x < brick.x + brick.w + 8);
-          const reflectorLineY = brick.y + brick.h + 4;
-          const reflectorScan = (game.elapsed * 0.85 + brick.x / W) % 1;
-          const reflectorAlpha = Math.min(1, reflectorShieldPulse + (reflectorThreatened ? 0.28 : 0));
-          ctx.save();
-          ctx.shadowColor = "#65dcff";
-          ctx.shadowBlur = 10 + reflectorAlpha * 12;
-          ctx.strokeStyle = `rgba(101,220,255,${0.2 + reflectorAlpha * 0.28})`;
-          ctx.lineWidth = 8;
-          ctx.lineCap = "round";
-          ctx.beginPath();
-          ctx.moveTo(brick.x + 2, brick.y + brick.h - 1);
-          ctx.quadraticCurveTo(brick.x + 4, reflectorLineY, brick.x + 9, reflectorLineY);
-          ctx.lineTo(brick.x + brick.w - 9, reflectorLineY);
-          ctx.quadraticCurveTo(brick.x + brick.w - 4, reflectorLineY, brick.x + brick.w - 2, brick.y + brick.h - 1);
-          ctx.stroke();
-          const reflectorShieldGradient = ctx.createLinearGradient(brick.x, reflectorLineY, brick.x + brick.w, reflectorLineY);
-          reflectorShieldGradient.addColorStop(0, "#1a8fb3");
-          reflectorShieldGradient.addColorStop(0.35, "#65dcff");
-          reflectorShieldGradient.addColorStop(0.5, "#e8fcff");
-          reflectorShieldGradient.addColorStop(0.65, "#65dcff");
-          reflectorShieldGradient.addColorStop(1, "#1a8fb3");
-          ctx.strokeStyle = reflectorShieldGradient;
-          ctx.lineWidth = reflectorThreatened ? 4 : 3;
-          ctx.shadowBlur = reflectorThreatened ? 24 : 13;
-          ctx.beginPath();
-          ctx.moveTo(brick.x + 2, brick.y + brick.h - 1);
-          ctx.quadraticCurveTo(brick.x + 4, reflectorLineY, brick.x + 9, reflectorLineY);
-          ctx.lineTo(brick.x + brick.w - 9, reflectorLineY);
-          ctx.quadraticCurveTo(brick.x + brick.w - 4, reflectorLineY, brick.x + brick.w - 2, brick.y + brick.h - 1);
-          ctx.stroke();
-          const glintX = brick.x + 9 + (brick.w - 18) * reflectorScan;
-          ctx.strokeStyle = "rgba(255,255,255,.95)";
-          ctx.lineWidth = reflectorThreatened ? 6 : 4;
-          ctx.beginPath();
-          ctx.moveTo(glintX - 4, reflectorLineY);
-          ctx.lineTo(glintX + 4, reflectorLineY);
-          ctx.stroke();
-          ctx.restore();
-        }
-        ctx.restore();
-      }
-      if (brick.drop) {
-        const dropData = ITEM_DATA[brick.drop];
-        ctx.shadowBlur = brick.drop === "multiball" ? 16 : 8;
-        ctx.shadowColor = dropData.color;
-        ctx.strokeStyle = dropData.color;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(brick.x + 1, brick.y + 1, brick.w - 2, brick.h - 2);
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = dropData.color;
-        ctx.font = "900 12px monospace";
-        ctx.textAlign = "center";
-        ctx.fillText(dropData.symbol, brick.x + 11, brick.y + 17);
-      }
-      if (brick.poisonTime > 0) {
-        ctx.fillStyle = "rgba(114,241,184,.16)";
-        ctx.fillRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4);
-        ctx.strokeStyle = "#72f1b8";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(brick.x + 3, brick.y + 3, brick.w - 6, brick.h - 6);
-        ctx.fillStyle = "#72f1b8";
-        for (let dot = 0; dot < 3; dot++) {
-          ctx.beginPath();
-          ctx.arc(brick.x + brick.w - 7 - dot * 6, brick.y + 7 + Math.sin(game.elapsed * 5 + dot) * 2, 2, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-      if (brick.burnTime > 0) {
-        ctx.save();
-        const pulse = 0.65 + Math.sin(game.elapsed * 11 + brick.x * 0.03) * 0.2;
-        ctx.globalAlpha = pulse;
-        ctx.fillStyle = "rgba(255,112,67,.2)";
-        ctx.fillRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4);
-        ctx.strokeStyle = "#ff8a3d";
-        ctx.shadowColor = "#ff5a36";
-        ctx.shadowBlur = 14;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(brick.x - 1, brick.y - 1, brick.w + 2, brick.h + 2);
-        ctx.fillStyle = "#ffd166";
-        for (let flame = 0; flame < Math.min(4, 1 + brick.burnLevel); flame++) {
-          const flameX = brick.x + brick.w - 8 - flame * 8;
-          const flameY = brick.y + 8 + Math.sin(game.elapsed * 9 + flame) * 2;
-          ctx.beginPath();
-          ctx.moveTo(flameX, flameY - 6);
-          ctx.lineTo(flameX - 3, flameY + 3);
-          ctx.lineTo(flameX + 3, flameY + 3);
-          ctx.closePath();
-          ctx.fill();
-        }
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = "#fff3d6";
-        ctx.font = "900 8px monospace";
-        ctx.textAlign = "left";
-        ctx.fillText(`BURN ${Math.max(0, Math.ceil(brick.burnTime))}s`, brick.x + 5, brick.y + brick.h - 5);
-        ctx.restore();
-      } else if (brick.healBlockTime > 0) {
-        ctx.save();
-        ctx.globalAlpha = 0.72 + Math.sin(game.elapsed * 7 + brick.x * 0.02) * 0.16;
-        ctx.strokeStyle = "#ff9b5c";
-        ctx.setLineDash([5, 3]);
-        ctx.lineWidth = 2;
-        ctx.strokeRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4);
-        ctx.setLineDash([]);
-        ctx.fillStyle = "#ffe2bd";
-        ctx.font = "900 8px monospace";
-        ctx.textAlign = "left";
-        ctx.fillText(`HEAL LOCK ${Math.ceil(brick.healBlockTime)}s`, brick.x + 5, brick.y + brick.h - 5);
-        ctx.restore();
-      }
-      if (brick.blastVulnerability > 1) {
-        ctx.save();
-        ctx.globalAlpha = 0.7 + Math.sin(game.elapsed * 8) * 0.2;
-        ctx.strokeStyle = "#ff6b87";
-        ctx.shadowColor = "#ff6b87";
-        ctx.shadowBlur = 10;
-        ctx.lineWidth = 2;
-        ctx.setLineDash([4, 3]);
-        ctx.strokeRect(brick.x - 2, brick.y - 2, brick.w + 4, brick.h + 4);
-        ctx.setLineDash([]);
-        ctx.fillStyle = "rgba(4,8,20,.86)";
-        ctx.fillRect(brick.x + brick.w / 2 - 24, brick.y - 9, 48, 10);
-        ctx.fillStyle = "#ff8ca3";
-        ctx.font = "900 8px monospace";
-        ctx.textAlign = "center";
-        ctx.fillText(`EXP ×${brick.blastVulnerability}`, brick.x + brick.w / 2, brick.y - 1);
-        ctx.restore();
-      }
-      if (brick.frostVulnerability > 0) {
-        ctx.save();
-        ctx.globalAlpha = 0.72 + Math.sin(game.elapsed * 7 + brick.x * 0.02) * 0.18;
-        ctx.fillStyle = "rgba(101,220,255,.18)";
-        ctx.fillRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4);
-        ctx.strokeStyle = "#b9f4ff";
-        ctx.shadowColor = "#65dcff";
-        ctx.shadowBlur = 12;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(brick.x - 2, brick.y - 2, brick.w + 4, brick.h + 4);
-        ctx.fillStyle = "#e8fcff";
-        ctx.font = "900 10px monospace";
-        ctx.textAlign = "left";
-        ctx.fillText(`❄+${brick.frostVulnerability}`, brick.x + 5, brick.y + 12);
-        ctx.restore();
-      }
-      if (brick.traitLockTime > 0) {
-        ctx.save();
-        const lockPulse = 0.72 + Math.sin(game.elapsed * 9 + brick.x * 0.025) * 0.18;
-        ctx.globalAlpha = lockPulse;
-        ctx.strokeStyle = classSkillColor("mage-mana-blast");
-        ctx.shadowColor = classSkillColor("mage-mana-blast");
-        ctx.shadowBlur = 14;
-        ctx.lineWidth = 3;
-        ctx.setLineDash([7, 4]);
-        ctx.strokeRect(brick.x - 4, brick.y - 4, brick.w + 8, brick.h + 8);
-        ctx.setLineDash([]);
-        ctx.fillStyle = "rgba(7,4,18,.9)";
-        ctx.fillRect(brick.x + brick.w / 2 - 26, brick.y + brick.h - 12, 52, 12);
-        ctx.fillStyle = "#e4b7ff";
-        ctx.font = "900 9px monospace";
-        ctx.textAlign = "center";
-        ctx.fillText(`LOCK ${Math.ceil(brick.traitLockTime)}s`, brick.x + brick.w / 2, brick.y + brick.h - 3);
-        ctx.restore();
-      }
-      if (brick.lastHitPaddleId) {
-        ctx.strokeStyle = "#c18cff";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(brick.x + 5, brick.y + brick.h - 4);
-        ctx.lineTo(brick.x + brick.w * 0.35, brick.y + 5);
-        ctx.moveTo(brick.x + brick.w * 0.55, brick.y + brick.h - 4);
-        ctx.lineTo(brick.x + brick.w - 5, brick.y + 5);
-        ctx.stroke();
-      }
-      if (brick.kind === "boss-core") {
-        ctx.textAlign = "center";
-        ctx.strokeStyle = "rgba(4,8,20,.95)";
-        ctx.lineWidth = 5;
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "900 18px monospace";
-        ctx.strokeText("BOSS CORE", brick.x + brick.w / 2, brick.y + brick.h / 2 - 13);
-        ctx.fillText("BOSS CORE", brick.x + brick.w / 2, brick.y + brick.h / 2 - 13);
-        ctx.font = "900 44px monospace";
-        const bossHpText = String(Math.max(0, Math.ceil(brick.hp)));
-        ctx.strokeText(bossHpText, brick.x + brick.w / 2, brick.y + brick.h / 2 + 30);
-        ctx.fillText(bossHpText, brick.x + brick.w / 2, brick.y + brick.h / 2 + 30);
-      } else if (brick.trait !== "indestructible") {
-        const hpText = String(Math.max(0, Math.ceil(brick.hp)));
-        ctx.strokeStyle = "rgba(4,8,20,.95)";
-        ctx.lineWidth = 4;
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "900 18px monospace";
-        ctx.textAlign = "center";
-        const hpBaselineY = brick.y + brick.h / 2 + 6;
-        ctx.strokeText(hpText, brick.x + brick.w / 2, hpBaselineY);
-        ctx.fillText(hpText, brick.x + brick.w / 2, hpBaselineY);
-      }
+      if (event.type === "audio") audioRef.current?.play(event.cue, event.volume);
+      if (event.type === "shake") setImpactFeedback(game, event.strength, undefined, event.duration);
+      if (event.type === "brick-damaged") audioRef.current?.play("brick-hit", event.damage);
+      if (event.type === "item-dropped") audioRef.current?.play("item", 0.5);
     });
 
-    game.gravityWells.forEach((well) => {
-      const pulse = 0.78 + Math.sin(game.elapsed * 8) * 0.12;
-      ctx.save();
-      ctx.globalAlpha = Math.min(1, well.life / 0.45);
-      ctx.translate(well.x, well.y);
-      ctx.rotate(game.elapsed * 1.6);
-      const gradient = ctx.createRadialGradient(0, 0, 5, 0, 0, well.radius);
-      gradient.addColorStop(0, "rgba(5,7,18,.98)");
-      gradient.addColorStop(0.2, "rgba(193,140,255,.42)");
-      gradient.addColorStop(1, "rgba(193,140,255,0)");
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(0, 0, well.radius * pulse, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = well.color;
-      ctx.lineWidth = 2;
-      ctx.setLineDash([10, 14]);
-      ctx.beginPath();
-      ctx.arc(0, 0, well.radius * 0.58, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = "#ecf2ff";
-      ctx.font = "900 9px monospace";
-      ctx.textAlign = "center";
-      ctx.fillText(`GRAVITY ${well.life.toFixed(1)}s`, 0, -well.radius * 0.62);
-      ctx.restore();
-    });
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const frame = beginGameCanvasFrame(canvas, game, W, H, PLAYER_LINE_Y);
+    if (!frame) return;
+    const { ctx } = frame;
 
-    game.safetyBlocks.forEach((block) => {
-      ctx.save();
-      ctx.shadowColor = block.color;
-      ctx.shadowBlur = 18;
-      ctx.fillStyle = block.color;
-      ctx.fillRect(block.x - block.width / 2, block.y, block.width, 7);
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = "#07101b";
-      ctx.font = "900 8px monospace";
-      ctx.textAlign = "center";
-      ctx.fillText("AUTO REFLECT", block.x, block.y + 6);
-      ctx.restore();
-    });
-
-    if (game.itemBarrierTime > 0) {
-      const barrierColor = ITEM_DATA["auto-barrier"].color;
-      const pulse = 0.72 + Math.sin(game.elapsed * 10) * 0.2;
-      ctx.save();
-      ctx.globalAlpha = pulse;
-      ctx.strokeStyle = barrierColor;
-      ctx.shadowColor = barrierColor;
-      ctx.shadowBlur = 18;
-      ctx.lineWidth = 4;
-      ctx.setLineDash([22, 8]);
-      ctx.beginPath();
-      ctx.moveTo(24, ITEM_BARRIER_Y);
-      ctx.lineTo(W - 24, ITEM_BARRIER_Y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = barrierColor;
-      ctx.font = "900 10px monospace";
-      ctx.textAlign = "center";
-      ctx.fillText(`AUTO BARRIER ${game.itemBarrierTime.toFixed(1)}s`, W / 2, ITEM_BARRIER_Y - 9);
-      ctx.restore();
-    }
-
-    if (game.bossActive) {
-      const bossCore = game.bricks.find((brick) => brick.alive && brick.kind === "boss-core");
-      const bossRatio = Math.max(0, Math.min(1, (bossCore?.hp ?? 0) / Math.max(1, bossCore?.maxHp ?? 1)));
-      const attackCharge = Math.max(0, Math.min(1, 1 - game.bossSkillTimer / 5));
-      ctx.fillStyle = "rgba(4,7,16,.88)";
-      ctx.fillRect(W / 2 - 190, 38, 380, 42);
-      ctx.strokeStyle = "rgba(255,79,120,.65)";
-      ctx.strokeRect(W / 2 - 190, 38, 380, 42);
-      ctx.fillStyle = "#ff6b87";
-      ctx.font = "900 14px monospace";
-      ctx.textAlign = "center";
-      ctx.fillText(`CORE FORTRESS ${game.bossStage} // HP ${Math.max(0, Math.ceil(bossCore?.hp ?? 0))}`, W / 2, 54);
-      ctx.fillStyle = "rgba(255,255,255,.1)";
-      ctx.fillRect(W / 2 - 170, 62, 340, 6);
-      ctx.fillStyle = "#ff4f78";
-      ctx.fillRect(W / 2 - 170, 62, 340 * bossRatio, 6);
-      ctx.fillStyle = attackCharge > 0.72 ? "#ffcf4a" : "rgba(157,180,225,.36)";
-      ctx.fillRect(W / 2 - 170, 72, 340 * attackCharge, 2);
-      if (attackCharge > 0.72) {
-        ctx.fillStyle = "#ffcf4a";
-        ctx.font = "900 8px monospace";
-        ctx.fillText("FORTRESS ATTACK CHARGING", W / 2, 91);
-      }
-    }
-
-    const emergencyDanger = game.bricks.some((brick) => brick.alive && brick.y + brick.h >= PLAYER_LINE_Y - BRICK_ROW_STEP * 2);
-    const drawMagnetLinks = (x: number, y: number, width: number, upgrades: UpgradeId[]) => {
+    renderBricks({ ctx, game, width: W, height: H, playerLineY: PLAYER_LINE_Y, traitColors: BRICK_TRAIT_COLORS, itemData: ITEM_DATA, classSkillColor });
+    const magnetLinks: Array<{ x: number; y: number; itemX: number; itemY: number; alpha: number; color: string }> = [];
+    const addMagnetLinks = (x: number, y: number, width: number, upgrades: UpgradeId[]) => {
       const rangeBonus = Math.max(skillValue("magnet", upgradeLevel(upgrades, "magnet")), skillValue("common-magnet", upgradeLevel(upgrades, "common-magnet")));
       if (rangeBonus <= 0) return;
       const range = width / 2 + rangeBonus;
-      ctx.save();
-      ctx.strokeStyle = classSkillColor("common-magnet");
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 6]);
-      game.items.forEach((item) => {
-        if (item.y > y + 12 || item.y < y - range || Math.abs(item.x - x) > range) return;
-        ctx.globalAlpha = 0.18 + 0.28 * (1 - Math.min(1, Math.abs(item.y - y) / range));
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.quadraticCurveTo((x + item.x) / 2, item.y + 24, item.x, item.y);
-        ctx.stroke();
-      });
-      ctx.setLineDash([]);
-      ctx.restore();
+      game.items.forEach((item) => { if (item.y > y + 12 || item.y < y - range || Math.abs(item.x - x) > range) return; magnetLinks.push({ x, y, itemX: item.x, itemY: item.y, alpha: .18 + .28 * (1 - Math.min(1, Math.abs(item.y - y) / range)), color: classSkillColor("common-magnet") }); });
     };
-    drawMagnetLinks(game.paddleX, PLAYER_PADDLE_Y, game.paddleWidth, game.upgrades);
-    activeGhostsRef.current.forEach((ghost, index) => drawMagnetLinks(game.ghostPaddles[index], ghostPaddleY(), ghostPaddleWidth(ghost), ghost.upgrades));
-    const countedProgress = (id: UpgradeId, level: number, counter: PaddleCounter) => {
-      const goal = Math.max(1, Math.round(skillValue(id, level)));
-      const rawCurrent = counter.skillReflections?.[id as ClassSkillId] ?? 0;
-      return { current: Math.max(0, Math.min(goal, Math.floor(rawCurrent))), goal };
-    };
-    const countedEntriesFor = (ownerId: string, upgrades: UpgradeId[]) => {
-      const counter = game.paddleCounters[ownerId] ?? newPaddleCounter();
-      return COUNTED_SKILL_IDS
-        .map((id) => ({ id, level: upgradeLevel(upgrades, id) }))
-        .filter(({ level }) => level > 0)
-        .map(({ id, level }) => ({ id, ...countedProgress(id, level, counter) }));
-    };
-    const paddleChargeVisual = (ownerId: string, upgrades: UpgradeId[]) => {
-      const counter = game.paddleCounters[ownerId] ?? newPaddleCounter();
-      if ((counter.chargePulse ?? 0) > 0) return { color: counter.chargeColor ?? PLAYER_BALL_COLOR, intensity: 1, pulse: counter.chargePulse / 1.2 };
-      const nearest = countedEntriesFor(ownerId, upgrades)
-        .map((entry) => ({ ...entry, ratio: entry.current / entry.goal }))
-        .sort((a, b) => b.ratio - a.ratio)[0];
-      if (!nearest || nearest.ratio < 0.75) return null;
-      return { color: activeSkillMap[nearest.id]?.color ?? PLAYER_BALL_COLOR, intensity: nearest.ratio, pulse: 0 };
-    };
-    const drawPaddleChargeAura = (x: number, y: number, width: number, visual: ReturnType<typeof paddleChargeVisual>, alpha = 1) => {
-      if (!visual) return;
-      const beat = 0.65 + Math.sin(game.elapsed * (visual.pulse > 0 ? 15 : 8)) * 0.25;
-      ctx.save();
-      ctx.globalAlpha = alpha * (0.45 + visual.intensity * 0.45) * beat;
-      ctx.strokeStyle = visual.color;
-      ctx.shadowColor = visual.color;
-      ctx.shadowBlur = 18 + visual.intensity * 18;
-      ctx.lineWidth = visual.pulse > 0 ? 5 : 3;
-      ctx.strokeRect(x - width / 2 - 6, y - 6, width + 12, 28);
-      ctx.fillStyle = visual.color;
-      ctx.fillRect(x - width / 2, y, width * Math.max(0.2, visual.intensity), 4);
-      ctx.restore();
-    };
-    const drawPaddleBody = (x: number, y: number, width: number, color: string, alpha = 1) => {
-      const height = 18;
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 12;
-      const bodyGradient = ctx.createLinearGradient(x, y, x, y + height);
-      bodyGradient.addColorStop(0, "rgba(235,242,255,.3)");
-      bodyGradient.addColorStop(0.2, color);
-      bodyGradient.addColorStop(1, "rgba(5,9,17,.96)");
-      ctx.fillStyle = bodyGradient;
-      ctx.beginPath();
-      ctx.roundRect(x - width / 2, y, width, height, 5);
-      ctx.fill();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = "rgba(255,255,255,.42)";
-      ctx.fillRect(x - width / 2 + 7, y + 3, Math.max(0, width - 14), 2);
-      ctx.restore();
-    };
-    const drawCoreCrystal = (x: number, y: number, scale: number, alpha: number, danger: boolean) => {
-      const color = danger ? "#ff6b87" : "#72e7ff";
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.scale(scale, scale);
-      ctx.globalAlpha = alpha;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = danger ? 15 : 11;
-      const gradient = ctx.createLinearGradient(-7, -9, 7, 10);
-      gradient.addColorStop(0, "#ffffff");
-      gradient.addColorStop(0.28, danger ? "#ffb0c0" : "#bdf8ff");
-      gradient.addColorStop(0.62, color);
-      gradient.addColorStop(1, danger ? "#7d1738" : "#17617c");
-      ctx.fillStyle = gradient;
-      ctx.strokeStyle = danger ? "#ffd5df" : "#e9fdff";
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.moveTo(0, -9);
-      ctx.lineTo(7, -2);
-      ctx.lineTo(5, 7);
-      ctx.lineTo(0, 11);
-      ctx.lineTo(-5, 7);
-      ctx.lineTo(-7, -2);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha *= 0.72;
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 0.8;
-      ctx.beginPath();
-      ctx.moveTo(0, -8);
-      ctx.lineTo(0, 9);
-      ctx.moveTo(-6, -2);
-      ctx.lineTo(0, 1);
-      ctx.lineTo(6, -2);
-      ctx.stroke();
-      ctx.restore();
-    };
-    const drawPlayerCores = () => {
-      const count = Math.max(0, Math.floor(game.coreHp));
-      const gap = Math.min(20, count > 1 ? 156 / (count - 1) : 20);
-      const startX = game.paddleX - (count - 1) * gap / 2;
-      const y = PLAYER_PADDLE_Y + 36;
-      const danger = count <= 3;
-      for (let index = 0; index < count; index++) {
-        const pulse = danger ? 0.96 + Math.sin(game.elapsed * 8 + index) * 0.08 : 1;
-        drawCoreCrystal(startX + index * gap, y, pulse, 1, danger);
-      }
-      if (game.coreBreakTime > 0) {
-        const progress = 1 - game.coreBreakTime / Math.max(0.001, game.coreBreakDuration);
-        drawCoreCrystal(game.coreBreakX, game.coreBreakY, 1 + progress * 0.8, Math.max(0, 1 - progress), true);
-        ctx.save();
-        ctx.translate(game.coreBreakX, game.coreBreakY);
-        ctx.strokeStyle = `rgba(255,107,135,${1 - progress})`;
-        ctx.lineWidth = 2.5;
-        ctx.shadowColor = "#ff6b87";
-        ctx.shadowBlur = 12;
-        for (let shard = 0; shard < 8; shard++) {
-          const angle = shard / 8 * Math.PI * 2 + 0.2;
-          const inner = 8 + progress * 12;
-          const outer = 14 + progress * 34;
-          ctx.beginPath();
-          ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
-          ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
-          ctx.stroke();
+    addMagnetLinks(game.paddleX, PLAYER_PADDLE_Y, game.paddleWidth, game.upgrades);
+    activeGhostsRef.current.forEach((ghost, index) => addMagnetLinks(game.ghostPaddles[index], ghostPaddleY(), ghostPaddleWidth(ghost), ghost.upgrades));
+    renderWorldOverlays({ ctx, elapsed: game.elapsed, gravityWells: game.gravityWells, itemBarrierTime: game.itemBarrierTime, itemBarrierY: ITEM_BARRIER_Y, width: W, barrierColor: ITEM_DATA["auto-barrier"].color, magnetLinks });
+    renderPaddles({
+      ctx,
+      playerX: game.paddleX,
+      playerY: PLAYER_PADDLE_Y,
+      playerWidth: Math.min(280, game.paddleWidth),
+      playerColor: PLAYER_BALL_COLOR,
+      ghostPaddles: activeGhostsRef.current.map((ghost, index) => ({ x: game.ghostPaddles[index], y: ghostPaddleY(), width: ghostPaddleWidth(ghost), color: GHOST_COLORS[index % GHOST_COLORS.length], name: ghost.name })),
+      safetyBlocks: game.safetyBlocks,
+      playerCharge: game.paddleCounters?.player?.chargePulse && game.paddleCounters.player.chargePulse > 0
+        ? {
+          color: game.paddleCounters.player.chargeColor ?? PLAYER_BALL_COLOR,
+          intensity: Math.min(1, game.paddleCounters.player.chargePulse),
+          pulse: game.paddleCounters.player.chargePulse,
         }
-        ctx.restore();
-      }
-    };
-    activeGhostsRef.current.forEach((ghost, index) => {
-      const x = game.ghostPaddles[index];
-      const y = ghostPaddleY();
-      const width = Math.min(280, ghostPaddleWidth(ghost) + (emergencyDanger ? skillValue("emergency-wide", upgradeLevel(ghost.upgrades, "emergency-wide")) : 0));
-      const color = GHOST_COLORS[index % GHOST_COLORS.length];
-      const chargeVisual = paddleChargeVisual(`ghost-${index}`, ghost.upgrades);
-      drawPaddleBody(x, y, width, color, 0.74);
-      drawPaddleChargeAura(x, y, width, chargeVisual, 0.74);
-      ctx.fillStyle = color;
-      ctx.font = "800 9px monospace";
-      ctx.textAlign = "center";
-      ctx.fillText(ghost.name, x, y + 24);
+        : undefined,
+      elapsed: game.elapsed,
+      playerCores: Array.from({ length: Math.max(0, Math.floor(game.coreHp)) }, (_, index) => {
+        const count = Math.max(1, Math.floor(game.coreHp));
+        const gap = Math.min(20, count > 1 ? 156 / (count - 1) : 20);
+        return { x: game.paddleX - (count - 1) * gap / 2 + index * gap, y: PLAYER_PADDLE_Y + 36, danger: count <= 3, scale: count <= 3 ? 0.96 + Math.sin(game.elapsed * 8 + index) * 0.08 : 1 };
+      }),
+      coreBreak: game.coreBreakTime > 0 ? { x: game.coreBreakX, y: game.coreBreakY, progress: 1 - game.coreBreakTime / Math.max(0.001, game.coreBreakDuration) } : undefined,
+      aim: !botActiveRef.current ? (() => {
+        const a = paddleAimDirection(game.paddleX, PLAYER_PADDLE_Y, pointerXRef.current, pointerYRef.current);
+        const targetY = Math.max(BRICK_ROW_Y, Math.min(PLAYER_PADDLE_Y - MIN_AIM_VERTICAL_DISTANCE, pointerYRef.current));
+        const verticalTravel = PLAYER_PADDLE_Y - targetY;
+        const ray = (hr: number, vr: number, max = Number.POSITIVE_INFINITY) => {
+          const vt = verticalTravel / Math.max(0.001, -vr); const st = hr > 0 ? (W - 12 - game.paddleX) / hr : hr < 0 ? (12 - game.paddleX) / hr : Number.POSITIVE_INFINITY; const t = Math.max(0, Math.min(vt, st, max));
+          return { x: game.paddleX + hr * t, y: PLAYER_PADDLE_Y + vr * t };
+        };
+        const edge = -Math.sqrt(1 - MAX_PADDLE_REBOUND_RATIO * MAX_PADDLE_REBOUND_RATIO);
+        return { ...ray(a.horizontalRatio, a.verticalRatio, AIM_LINE_LENGTH), left: ray(-MAX_PADDLE_REBOUND_RATIO, edge, AIM_LIMIT_GUIDE_LENGTH), right: ray(MAX_PADDLE_REBOUND_RATIO, edge, AIM_LIMIT_GUIDE_LENGTH), limited: a.limited };
+      })() : undefined,
     });
 
-    const playerDrawWidth = Math.min(280, game.paddleWidth + skillValue("common-wide", upgradeLevel(game.upgrades, "common-wide")) + (emergencyDanger ? skillValue("emergency-wide", upgradeLevel(game.upgrades, "emergency-wide")) : 0));
-    const playerChargeVisual = paddleChargeVisual("player", game.upgrades);
-    drawPaddleBody(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, PLAYER_BALL_COLOR, 1);
-    drawPaddleChargeAura(game.paddleX, PLAYER_PADDLE_Y, playerDrawWidth, playerChargeVisual);
-    drawPlayerCores();
-    if (!botActiveRef.current) {
-      const aim = paddleAimDirection(game.paddleX, PLAYER_PADDLE_Y, pointerXRef.current, pointerYRef.current);
-      const targetY = Math.max(BRICK_ROW_Y, Math.min(PLAYER_PADDLE_Y - MIN_AIM_VERTICAL_DISTANCE, pointerYRef.current));
-      const verticalTravel = PLAYER_PADDLE_Y - targetY;
-      const rayEnd = (horizontalRatio: number, verticalRatio: number, maxTravel = Number.POSITIVE_INFINITY) => {
-        const verticalTime = verticalTravel / Math.max(0.001, -verticalRatio);
-        const sideTime = horizontalRatio > 0
-          ? (W - 12 - game.paddleX) / horizontalRatio
-          : horizontalRatio < 0 ? (12 - game.paddleX) / horizontalRatio : Number.POSITIVE_INFINITY;
-        const travel = Math.max(0, Math.min(verticalTime, sideTime, maxTravel));
-        return { x: game.paddleX + horizontalRatio * travel, y: PLAYER_PADDLE_Y + verticalRatio * travel };
-      };
-      const aimEnd = rayEnd(aim.horizontalRatio, aim.verticalRatio, AIM_LINE_LENGTH);
-      const edgeVerticalRatio = -Math.sqrt(1 - MAX_PADDLE_REBOUND_RATIO * MAX_PADDLE_REBOUND_RATIO);
-      const leftLimit = rayEnd(-MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio, AIM_LIMIT_GUIDE_LENGTH);
-      const rightLimit = rayEnd(MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio, AIM_LIMIT_GUIDE_LENGTH);
-      ctx.save();
-      ctx.strokeStyle = "rgba(101,220,255,.18)";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 8]);
-      ctx.beginPath();
-      ctx.moveTo(game.paddleX, PLAYER_PADDLE_Y - 6);
-      ctx.lineTo(leftLimit.x, leftLimit.y);
-      ctx.moveTo(game.paddleX, PLAYER_PADDLE_Y - 6);
-      ctx.lineTo(rightLimit.x, rightLimit.y);
-      ctx.stroke();
-      const aimColor = aim.limited ? "#ffcf4a" : "#65dcff";
-      ctx.strokeStyle = aimColor;
-      ctx.fillStyle = aimColor;
-      ctx.shadowColor = aimColor;
-      ctx.shadowBlur = 10;
-      ctx.lineWidth = 2;
-      ctx.setLineDash([8, 7]);
-      ctx.beginPath();
-      ctx.moveTo(game.paddleX, PLAYER_PADDLE_Y - 6);
-      ctx.lineTo(aimEnd.x, aimEnd.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.arc(aimEnd.x, aimEnd.y, 5, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(aimEnd.x - 9, aimEnd.y);
-      ctx.lineTo(aimEnd.x + 9, aimEnd.y);
-      ctx.moveTo(aimEnd.x, aimEnd.y - 9);
-      ctx.lineTo(aimEnd.x, aimEnd.y + 9);
-      ctx.stroke();
-      ctx.restore();
-    }
-    game.balls.filter((ball) => ball.owner === "player").forEach((ball) => {
-      const drawColor = ballBodyColor(ball);
-      const isExtraBall = ball.waveBonus || ball.temporaryTime > 0 || ball.visualSkill !== null;
-      const skillEffectAlpha = isExtraBall ? 0.38 : 1;
-      const cooldownGaugeAlpha = isExtraBall ? 0.5 : 1;
-      const speed = Math.max(1, Math.hypot(ball.vx, ball.vy));
-      const powerBoost = Math.max(0, ball.attackPower - 1);
-      const visualRadius = ball.radius + Math.min(3.5, powerBoost * 0.7);
-      const trailSteps = 4 + Math.min(5, Math.floor(powerBoost));
-      for (let trail = trailSteps; trail >= 1; trail--) {
-        ctx.globalAlpha = 0.035 + ((trailSteps + 1 - trail) / trailSteps) * 0.15;
-        ctx.fillStyle = drawColor;
-        ctx.beginPath();
-        ctx.arc(ball.x - (ball.vx / speed) * trail * (7 + powerBoost), ball.y - (ball.vy / speed) * trail * (7 + powerBoost), Math.max(2, visualRadius - trail * 1.05), 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-      ctx.shadowBlur = 24;
-      ctx.shadowColor = drawColor;
-      ctx.fillStyle = drawColor;
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, visualRadius, 0, Math.PI * 2);
-      ctx.fill();
-      const powerRingCount = Math.min(3, Math.floor(powerBoost / 1.25));
-      for (let ring = 0; ring < powerRingCount; ring++) {
-        ctx.globalAlpha = 0.48 - ring * 0.1;
-        ctx.strokeStyle = drawColor;
-        ctx.lineWidth = 1.5 + powerBoost * 0.25;
-        ctx.beginPath();
-        ctx.arc(ball.x, ball.y, visualRadius + 3 + ring * 3, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      const ballCooldownEntries = (ball.canTriggerSkills ? [...new Set(game.upgrades)] : [])
-        .map((id) => {
-          const skillId = id as ClassSkillId;
-          const level = upgradeLevel(game.upgrades, id);
-          return { id: skillId, level, total: skillCooldownSeconds(skillId, level, game.upgrades), remaining: ball.skillCooldowns[skillId] ?? 0 };
-        })
-        .filter((entry) => entry.level > 0 && entry.total > 0);
-      const coolingSkills = ballCooldownEntries.filter((entry) => entry.remaining > 0);
-      if (coolingSkills.length > 0) {
-        const gaugeRadius = visualRadius + 5 + powerRingCount * 3;
-        const segmentSpan = Math.PI * 2 / coolingSkills.length;
-        const gap = Math.min(0.12, segmentSpan * 0.12);
-        ctx.save();
-        ctx.lineCap = "round";
-        coolingSkills.forEach((entry, index) => {
-          const progress = Math.max(0, Math.min(1, 1 - entry.remaining / entry.total));
-          const start = -Math.PI / 2 + index * segmentSpan + gap / 2;
-          const segmentLength = segmentSpan - gap;
-          const color = classSkillColor(entry.id);
-          ctx.globalAlpha = 0.2 * cooldownGaugeAlpha;
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.arc(ball.x, ball.y, gaugeRadius, start, start + segmentLength);
-          ctx.stroke();
-          if (progress > 0) {
-            ctx.globalAlpha = 0.95 * cooldownGaugeAlpha;
-            ctx.shadowColor = color;
-            ctx.shadowBlur = 8;
-            ctx.beginPath();
-            ctx.arc(ball.x, ball.y, gaugeRadius, start, start + segmentLength * progress);
-            ctx.stroke();
-            ctx.shadowBlur = 0;
-          }
-        });
-        if (!ball.waveBonus && ball.temporaryTime <= 0) {
-          const nextReady = [...coolingSkills].sort((a, b) => a.remaining - b.remaining)[0];
-          const label = `${SKILL_ICONS[nextReady.id] ?? "CD"} ${nextReady.remaining.toFixed(1)}s`;
-          ctx.globalAlpha = 0.95;
-          ctx.font = "900 9px monospace";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = "rgba(3,7,18,.92)";
-          ctx.strokeText(label, ball.x, ball.y + gaugeRadius + 10);
-          ctx.fillStyle = classSkillColor(nextReady.id);
-          ctx.fillText(label, ball.x, ball.y + gaugeRadius + 10);
-        }
-        ctx.restore();
-      }
-      const activeClassCharges = ballCooldownEntries
-        .filter((entry) => entry.remaining <= 0)
-        .map(({ id, level }) => [id, level] as [ClassSkillId, number]);
-      const readyCategories = [...new Set(activeClassCharges
-        .map(([id]) => activeSkillMap[id]?.category)
-        .filter((category): category is SkillCategory => Boolean(category) && category !== "common"))];
-      readyCategories.forEach((category, categoryIndex) => {
-        const color = CLASS_META[category].color;
-        const signatureRadius = visualRadius + 12 + categoryIndex * 6;
-        ctx.save();
-        ctx.globalAlpha = 0.72 * skillEffectAlpha;
-        ctx.strokeStyle = color;
-        ctx.fillStyle = color;
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 10;
-        ctx.translate(ball.x, ball.y);
-        if (category === "warrior") {
-          ctx.rotate(game.elapsed * 0.7);
-          ctx.lineWidth = 3;
-          for (let shard = 0; shard < 4; shard++) {
-            ctx.rotate(Math.PI / 2);
-            ctx.beginPath();
-            ctx.moveTo(signatureRadius - 5, -5);
-            ctx.lineTo(signatureRadius + 4, 0);
-            ctx.lineTo(signatureRadius - 5, 5);
-            ctx.stroke();
-          }
-        } else if (category === "archer") {
-          ctx.rotate(Math.atan2(ball.vy, ball.vx));
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(signatureRadius + 7, 0);
-          ctx.lineTo(signatureRadius - 2, -6);
-          ctx.moveTo(signatureRadius + 7, 0);
-          ctx.lineTo(signatureRadius - 2, 6);
-          for (let lane = -1; lane <= 1; lane++) {
-            ctx.moveTo(-signatureRadius - 10 - Math.abs(lane) * 5, lane * 5);
-            ctx.lineTo(-signatureRadius + 1, lane * 5);
-          }
-          ctx.stroke();
-        } else if (category === "mage") {
-          ctx.rotate(game.elapsed * 0.85);
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([3, 5]);
-          ctx.beginPath();
-          ctx.arc(0, 0, signatureRadius, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.setLineDash([]);
-          for (let rune = 0; rune < 3; rune++) {
-            const angle = rune * Math.PI * 2 / 3;
-            ctx.beginPath();
-            ctx.arc(Math.cos(angle) * signatureRadius, Math.sin(angle) * signatureRadius, 2.5, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-        ctx.restore();
-      });
-      activeClassCharges.slice(0, 4).forEach(([id, level], index) => {
-        const mageSpellVariant = id === "mage-fireball" ? 0 : id === "mage-lightning" ? 1 : -1;
-        const mageSpellImage = mageSpellVariant >= 0 ? mageSpellRefs.current[mageSpellVariant] : null;
-        if (mageSpellVariant >= 0 && mageSpellReadyRef.current[mageSpellVariant] && mageSpellImage) {
-          const frame = Math.floor(game.elapsed * 14 + index) % MAGE_SPELL_FRAMES;
-          const spriteSize = (id === "mage-fireball" ? 42 : 36) + (level ?? 1) * 3;
-          ctx.save();
-          ctx.translate(ball.x, ball.y);
-          if (id === "mage-fireball") ctx.rotate(Math.atan2(ball.vy, ball.vx));
-          ctx.globalAlpha = 0.92 * skillEffectAlpha;
-          ctx.imageSmoothingEnabled = false;
-          ctx.shadowBlur = 16;
-          ctx.shadowColor = classSkillColor(id);
-          ctx.drawImage(
-            mageSpellImage,
-            frame * MAGE_SPELL_FRAME_SIZE,
-            0,
-            MAGE_SPELL_FRAME_SIZE,
-            MAGE_SPELL_FRAME_SIZE,
-            -spriteSize / 2,
-            -spriteSize / 2,
-            spriteSize,
-            spriteSize,
-          );
-          ctx.restore();
-          return;
-        }
-        const effectColor = classSkillColor(id);
-        const classCategory = activeSkillMap[id]?.category;
-        ctx.save();
-        ctx.globalAlpha = 0.78 * skillEffectAlpha;
-        ctx.shadowBlur = 12;
-        ctx.shadowColor = effectColor;
-        ctx.strokeStyle = effectColor;
-        ctx.fillStyle = effectColor;
-        if (classCategory === "warrior") {
-          ctx.translate(ball.x, ball.y);
-          ctx.lineWidth = 2.5 + (level ?? 1) * 0.5;
-          if (id === "warrior-smash") {
-            ctx.rotate(-0.4);
-            ctx.beginPath();
-            ctx.moveTo(-visualRadius - 7, -visualRadius - 4);
-            ctx.lineTo(visualRadius + 7, visualRadius + 4);
-            ctx.stroke();
-          } else if (id === "warrior-shockwave") {
-            for (let wave = 0; wave < 2; wave++) {
-              const pulse = (game.elapsed * 2.8 + wave * 0.5) % 1;
-              ctx.globalAlpha = 0.8 * (1 - pulse) * skillEffectAlpha;
-              ctx.beginPath();
-              ctx.arc(0, 0, visualRadius + 3 + pulse * (10 + wave * 4), 0, Math.PI * 2);
-              ctx.stroke();
-            }
-          } else if (id === "warrior-execute") {
-            const pulse = 1 + Math.sin(game.elapsed * 9) * 0.18;
-            ctx.scale(pulse, pulse);
-            ctx.beginPath();
-            ctx.moveTo(0, -visualRadius - 11);
-            ctx.lineTo(0, visualRadius + 8);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(-5, visualRadius + 3);
-            ctx.lineTo(0, visualRadius + 9);
-            ctx.lineTo(5, visualRadius + 3);
-            ctx.stroke();
-          } else if (id === "warrior-crush") {
-            ctx.rotate(game.elapsed * 2.8);
-            for (let shard = 0; shard < 4; shard++) {
-              ctx.rotate(Math.PI / 2);
-              ctx.save();
-              ctx.translate(visualRadius + 7, 0);
-              ctx.rotate(Math.PI / 4);
-              ctx.fillRect(-3.5, -3.5, 7, 7);
-              ctx.restore();
-            }
-          }
-        } else if (classCategory === "archer") {
-          ctx.translate(ball.x, ball.y);
-          ctx.rotate(Math.atan2(ball.vy, ball.vx));
-          ctx.lineWidth = 2.5;
-          if (id === "archer-pierce") {
-            ctx.beginPath();
-            ctx.moveTo(-visualRadius - 10, 0);
-            ctx.lineTo(visualRadius + 13, 0);
-            ctx.lineTo(visualRadius + 5, -6);
-            ctx.moveTo(visualRadius + 13, 0);
-            ctx.lineTo(visualRadius + 5, 6);
-            ctx.stroke();
-          } else if (id === "archer-ricochet") {
-            ctx.beginPath();
-            ctx.moveTo(-visualRadius - 13, 7);
-            ctx.lineTo(-visualRadius - 5, -6);
-            ctx.lineTo(visualRadius + 4, 5);
-            ctx.lineTo(visualRadius + 12, -5);
-            ctx.stroke();
-          } else if (id === "archer-focus") {
-            ctx.rotate(-Math.atan2(ball.vy, ball.vx));
-            const reticle = visualRadius + 7 + Math.sin(game.elapsed * 6) * 2;
-            ctx.beginPath();
-            ctx.arc(0, 0, reticle, 0.2, Math.PI / 2 - 0.2);
-            ctx.arc(0, 0, reticle, Math.PI / 2 + 0.2, Math.PI - 0.2);
-            ctx.arc(0, 0, reticle, Math.PI + 0.2, Math.PI * 1.5 - 0.2);
-            ctx.arc(0, 0, reticle, Math.PI * 1.5 + 0.2, Math.PI * 2 - 0.2);
-            ctx.stroke();
-          } else if (id === "archer-weakpoint") {
-            ctx.rotate(-Math.atan2(ball.vy, ball.vx) + game.elapsed * 1.8);
-            const mark = visualRadius + 7;
-            ctx.beginPath();
-            ctx.arc(0, 0, mark, 0, Math.PI * 2);
-            ctx.moveTo(-mark - 5, 0);
-            ctx.lineTo(mark + 5, 0);
-            ctx.moveTo(0, -mark - 5);
-            ctx.lineTo(0, mark + 5);
-            ctx.stroke();
-          } else {
-            for (let chevron = 0; chevron < 2; chevron++) {
-              const rear = -visualRadius - 5 - chevron * 7 - index * 2;
-              ctx.beginPath();
-              ctx.moveTo(rear - 5, -5);
-              ctx.lineTo(rear, 0);
-              ctx.lineTo(rear - 5, 5);
-              ctx.stroke();
-            }
-          }
-        } else {
-          const orbitRadius = visualRadius + 6 + index * 3;
-          for (let mote = 0; mote < 3; mote++) {
-            const angle = game.elapsed * (2.2 + index * 0.25) + mote * Math.PI * 2 / 3;
-            ctx.beginPath();
-            ctx.arc(ball.x + Math.cos(angle) * orbitRadius, ball.y + Math.sin(angle) * orbitRadius, 2.2 + (level ?? 1) * 0.25, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-        ctx.restore();
-      });
-      if (ball.temporaryTime > 0) {
-        const lifeRatio = Math.min(1, ball.temporaryTime / 7);
-        ctx.globalAlpha = 0.8;
-        ctx.strokeStyle = ball.color;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(ball.x, ball.y, ball.radius + 7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * lifeRatio);
-        ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
-      if (ball.missileTime > 0) {
-        const angle = Math.atan2(ball.vy, ball.vx);
-        ctx.save();
-        ctx.translate(ball.x, ball.y);
-        ctx.rotate(angle);
-        ctx.shadowColor = "#ff9658";
-        ctx.shadowBlur = 18;
-        ctx.fillStyle = "#ff9658";
-        ctx.beginPath();
-        ctx.moveTo(ball.radius + 9, 0);
-        ctx.lineTo(-ball.radius - 4, -ball.radius * 0.75);
-        ctx.lineTo(-ball.radius - 1, 0);
-        ctx.lineTo(-ball.radius - 4, ball.radius * 0.75);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-      }
-      if (ball.pierce > 0) {
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = PAYLOAD_COLORS.pierce;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(ball.x, ball.y, ball.radius + 4, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      const activePayloads = PAYLOAD_IDS.filter((id) => (ball.payloads[id] ?? 0) > 0);
-      if (activePayloads.length > 0 || ball.attackPower > 1.05) {
-        ctx.shadowBlur = 0;
-        ctx.font = "900 9px monospace";
-        ctx.textAlign = "center";
-        const payloadLabel = activePayloads.map((id) => id === "pierce" ? `P×${ball.pierce}` : `${PAYLOAD_LABELS[id]}${ball.payloads[id]}`).join("+");
-        const label = `${ball.attackPower.toFixed(1)} ATK${ball.missileTime > 0 ? ` // MISSILE ${ball.missileTime.toFixed(1)}s` : ""}${payloadLabel ? ` // ${payloadLabel}` : ""}`;
-        ctx.fillText(label, ball.x, ball.y - 13);
-      }
-      ctx.globalAlpha = 1;
-      ctx.shadowBlur = 0;
-    });
+    renderBalls({ ctx, game });
+    renderHud({ ctx, game, width: W, height: H });
 
     game.items.forEach((item) => {
       const data = ITEM_DATA[item.kind];
@@ -4888,77 +3889,23 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     });
     ctx.restore();
 
-    game.particles.forEach((p) => {
-      ctx.globalAlpha = Math.max(0, p.life * 1.5);
-      ctx.strokeStyle = p.color;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-      ctx.lineTo(p.x - p.vx * 0.025, p.y - p.vy * 0.025);
-      ctx.stroke();
-      ctx.fillStyle = p.color;
-      ctx.fillRect(p.x, p.y, 4, 4);
-    });
-    ctx.globalAlpha = 1;
+    renderTransientFeedback(ctx, game, W, H);
 
-    game.flashes.forEach((f) => {
-      ctx.globalAlpha = Math.min(1, f.life * 1.5);
-      ctx.fillStyle = f.color;
-      ctx.textAlign = "center";
-      if (f.emphasis === "damage") {
-        const pulse = 1 + Math.max(0, f.life - 0.55) * 0.45;
-        ctx.save();
-        ctx.translate(f.x, f.y);
-        ctx.scale(pulse, pulse);
-        ctx.font = "1000 24px monospace";
-        ctx.lineJoin = "round";
-        ctx.lineWidth = 5;
-        ctx.strokeStyle = "rgba(5, 8, 16, .95)";
-        ctx.shadowColor = f.color;
-        ctx.shadowBlur = 12;
-        ctx.strokeText(f.text, 0, 0);
-        ctx.fillText(f.text, 0, 0);
-        ctx.restore();
-      } else {
-        ctx.font = `900 ${f.text.includes("BOARD") ? 28 : 15}px monospace`;
-        ctx.fillText(f.text, f.x, f.y);
-      }
-    });
-    ctx.globalAlpha = 1;
-
-    if (game.combo >= 3) {
-      ctx.textAlign = "right";
-      ctx.font = "900 28px monospace";
-      ctx.fillStyle = game.combo >= 15 ? "#ffcf4a" : "#72f1b8";
-      ctx.fillText(`${game.combo} COMBO`, W - 28, 44);
-    }
     ctx.restore();
-    if (game.screenFlashTime > 0 && game.screenFlashDuration > 0) {
-      const flashRatio = game.screenFlashTime / game.screenFlashDuration;
-      ctx.save();
-      ctx.globalCompositeOperation = "screen";
-      ctx.globalAlpha = Math.min(0.24, flashRatio * 0.24);
-      ctx.fillStyle = game.screenFlashColor;
-      ctx.fillRect(0, 0, W, H);
-      ctx.restore();
-    }
+    endGameCanvasFrame(frame);
   }, []);
 
-  const loop = useCallback((time: number) => {
-    const dt = Math.max(0, Math.min(0.025, (time - lastRef.current) / 1000 || 0));
-    lastRef.current = time;
-    if (runningRef.current) {
-      const steps = botActiveRef.current ? botSpeedRef.current : 1;
-      for (let step = 0; step < steps && runningRef.current; step++) updateGame(dt);
-    }
-    drawGame();
-    frameRef.current = requestAnimationFrame(loop);
-  }, [drawGame, updateGame]);
-
-  useEffect(() => {
-    frameRef.current = requestAnimationFrame(loop);
-    return () => { if (frameRef.current) cancelAnimationFrame(frameRef.current); };
-  }, [loop]);
+  const { resetClock: resetLoopClock, start: startLoop, stop: stopLoop } = useGameLoop({
+    enabledRef: loopEnabledRef,
+    runningRef,
+    botActiveRef,
+    botSpeedRef,
+    updateGame,
+    drawGame,
+    canonicalOnlyRef,
+    canonicalStep,
+    onCanonicalOutcome: handleCanonicalOutcome,
+  });
 
   const startRun = (asBot = false) => {
     transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
@@ -5010,6 +3957,16 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       }
     }
     gameRef.current = game;
+    canonicalBridgeRef.current = canonicalEngineEnabledRef.current
+      ? createCanonicalBridge({
+        seed: benchSeed ?? 1,
+        balance: balanceConfigRef.current,
+        skills: activeSkillConfigsRef.current,
+        waves: getActiveWaveDefinitions(),
+        targetWave: benchmarkConfigRef.current.targetWave,
+        game,
+      })
+      : null;
     const openingAim = asBot ? botAimPoint(game.bricks, game.paddleX, PLAYER_PADDLE_Y) : { x: W / 2, y: H / 3 };
     pointerXRef.current = openingAim.x;
     pointerYRef.current = openingAim.y;
@@ -5021,17 +3978,19 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     if (asBot) parkBallsAbovePaddle(game, openingAim.x, openingAim.y);
     keyboardRef.current.left = false;
     keyboardRef.current.right = false;
-    lastRef.current = performance.now();
+    resetLoopClock();
     setSavedMessage("");
     setHud(hudFromGame(game));
     if (!asBot) {
       const openingChoices = pickUpgradeChoices([], upgradeCatalogRef.current, false);
       setChoices(priceUpgradeChoices(openingChoices, false));
       runningRef.current = false;
+      startLoop();
       levelUpRef.current = true;
       setMode("initialskills");
     } else {
       runningRef.current = true;
+      startLoop();
       levelUpRef.current = false;
       setMode("playing");
     }
@@ -5151,6 +4110,12 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
       : 0;
     botActiveRef.current = true;
     benchmarkWatchRef.current = benchmarkMode;
+    // Canonical simulation is an explicit runtime capability, independent of
+    // benchmark/watch mode. This keeps normal runs legacy-compatible by
+    // default while allowing controlled canonical playtest runs.
+    canonicalEngineEnabledRef.current = canonicalEngineEnabledForRun({ explicit: canonicalEngineEnabled || canonicalOnly, benchmarkMode });
+    canonicalOnlyRef.current = canonicalOnly;
+    canonicalTerminalRef.current = null;
     botPolicyRef.current = botPolicy;
     botSpeedRef.current = botSpeed;
     botTargetRunsRef.current = targetRuns;
@@ -5238,7 +4203,9 @@ export function GameRuntime({ benchmarkMode = false }: { benchmarkMode?: boolean
     setTransitionWave(null);
     setClearedWave(null);
     runningRef.current = false;
+    stopLoop();
     gameRef.current = null;
+    canonicalBridgeRef.current = null;
     setResult(null);
     setMode("lobby");
     activeGhostsRef.current = [];

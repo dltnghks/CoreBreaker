@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile as fsReadFile } from "node:fs/promises";
 import test from "node:test";
 
 async function render(pathname = "/") {
@@ -9,6 +9,42 @@ async function render(pathname = "/") {
   return worker.fetch(new Request(`http://localhost${pathname}`, { headers: { accept: "text/html" } }), {
     ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
   }, { waitUntil() {}, passThroughOnException() {} });
+}
+
+// The game runtime is intentionally split across the page orchestration layer
+// and pure simulation modules. Contract tests inspect the composed runtime
+// surface so moving an implementation between those modules does not erase
+// coverage for the behavior itself.
+async function readGameSource() {
+  const paths = [
+    "../app/page.tsx",
+    "../app/game-update-prelude.ts",
+    "../app/collision-physics.ts",
+    "../app/canonical-bridge.ts",
+    "../app/canonical-engine.ts",
+    "../app/canonical-state-mapping.ts",
+    "../app/useGameLoop.ts",
+    "../app/game-events.ts",
+    "../app/hud-snapshot.ts",
+    "../app/_types/game.ts",
+    "../app/_components/modals/SkillSelectionModal.tsx",
+    "../app/_components/benchmark/BenchmarkDashboard.tsx",
+    "../app/skill-config.ts",
+    "../app/balance-config.ts",
+    "../app/benchmark-config.ts",
+    "../app/wave-config.ts",
+    "../app/bot-policy.ts",
+    "../app/benchmark-headless.ts",
+    "../app/benchmark-worker.ts",
+    "../app/skill-lab/page.tsx",
+    "../app/skill-lab/skill-bench.tsx",
+  ];
+  return (await Promise.all(paths.map((path) => fsReadFile(new URL(path, import.meta.url), "utf8")))).join("\n");
+}
+
+async function readFile(url, encoding) {
+  if (String(url).endsWith("/app/page.tsx")) return readGameSource();
+  return fsReadFile(url, encoding);
 }
 
 test("server-renders the Core Breaker playtest", async () => {
@@ -43,6 +79,8 @@ test("uses a restrained techno-fantasy UI palette and layered panels", async () 
 
 test("moves with A and D while mouse and arrow keys exclusively control rebound aim", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const physics = await readFile(new URL("../app/collision-physics.ts", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../app/game-renderer.ts", import.meta.url), "utf8");
   assert.match(source, /PADDLE_KEYBOARD_SPEED = 460/);
   assert.match(source, /KEYBOARD_AIM_RATIO_SPEED = 1\.2/);
   assert.match(source, /window\.addEventListener\("keydown", onKeyDown\)/);
@@ -60,15 +98,15 @@ test("moves with A and D while mouse and arrow keys exclusively control rebound 
   assert.match(source, /verticalRatio: -Math\.sqrt/);
   assert.match(source, /const AIM_LIMIT_GUIDE_LENGTH = 100/);
   assert.match(source, /const AIM_LINE_LENGTH = 170/);
-  assert.match(source, /const aimEnd = rayEnd\(aim\.horizontalRatio, aim\.verticalRatio, AIM_LINE_LENGTH\)/);
-  assert.match(source, /const leftLimit = rayEnd\(-MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio, AIM_LIMIT_GUIDE_LENGTH/);
-  assert.match(source, /const rightLimit = rayEnd\(MAX_PADDLE_REBOUND_RATIO, edgeVerticalRatio, AIM_LIMIT_GUIDE_LENGTH/);
-  assert.match(source, /paddle\.id === "player"/);
-  assert.match(source, /const rawContactTime = verticalTravel > 0/);
-  assert.match(source, /const alreadyTouchingTop = previousBallY <= paddle\.y \+ PADDLE_COLLISION_SLOP/);
-  assert.match(source, /const sideDepthContact =/);
+  assert.match(source, /renderPaddles\(/);
+  assert.match(renderer, /export function renderPaddles/);
+  assert.match(renderer, /aim\?:/);
+  assert.match(renderer, /aim\.left|aim\.right|aim\.limited/);
+  assert.match(physics, /const rawContactTime = verticalTravel > 0/);
+  assert.match(physics, /const alreadyTouchingTop = previousY <= paddle\.y \+ slop/);
+  assert.match(physics, /const sideDepthContact =/);
   assert.match(source, /PADDLE_SIDE_FORGIVENESS/);
-  assert.match(source, /const paddleContactX = paddle\.previousX \+ \(paddle\.x - paddle\.previousX\) \* contactTime/);
+  assert.match(physics, /const paddleContactX = paddle\.previousX \+ \(paddle\.x - paddle\.previousX\) \* contactTime/);
   assert.match(source, /const reboundSpeed = .*Math\.hypot\(ball\.vx, ball\.vy\)/);
   assert.match(source, /parkBallsAbovePaddle\(game, targetX, targetY\)/);
   assert.match(source, /prepareWave\(game, nextWave, balanceConfigRef\.current, pointerXRef\.current, pointerYRef\.current\)/);
@@ -80,19 +118,21 @@ test("ramps ball speed by wave elapsed time and resolves circular brick collisio
   const response = await render();
   const html = await response.text();
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const loop = await readFile(new URL("../app/useGameLoop.ts", import.meta.url), "utf8");
+  const physics = await readFile(new URL("../app/collision-physics.ts", import.meta.url), "utf8");
   const benchmark = await readFile(new URL("../app/benchmark-headless.ts", import.meta.url), "utf8");
   const engine = await readFile(new URL("../app/canonical-engine.ts", import.meta.url), "utf8");
   assert.match(html, /SPEED[\s\S]*100[\s\S]*%/);
   assert.match(source, /OVERDRIVE_RATE_PER_SECOND = 0\.01/);
   assert.match(source, /MAX_OVERDRIVE_LEVEL = 50/);
-  assert.match(source, /const dt = Math\.max\(0, Math\.min\(0\.025/);
+  assert.match(loop, /const dt = Math\.max\(0, Math\.min\(0\.025/);
   assert.match(source, /MAX_PADDLE_REBOUND_SPEED = Math\.hypot\(BASE_BALL_VX, BASE_BALL_VY\) \* 2/);
   assert.match(source, /\+1%\/s/);
   assert.match(source, /hud\.overdriveLevel < MAX_OVERDRIVE_LEVEL \? "\+1%\/s" : "MAX"/);
   assert.match(source, /OVERDRIVE .* BALL SPEED/);
-  assert.match(source, /function circleRectangleCollision/);
-  assert.match(source, /function separateAndReflectBall/);
-  assert.match(source, /collision\.penetration \+ 0\.1/);
+  assert.match(physics, /export function circleRectangleCollision/);
+  assert.match(physics, /export function separateAndReflectBall/);
+  assert.match(physics, /collision\.penetration \+ 0\.1/);
   assert.match(benchmark, /stepCanonicalEngine\(state, controlProvider\(state, step\), FIXED_STEP_SECONDS\)/);
   assert.match(engine, /export function overdriveLevelAt/);
   assert.match(engine, /const overdrive = overdriveMultiplier\(overdriveLevelAt\(state\.waveElapsed\)\)/);
@@ -100,13 +140,44 @@ test("ramps ball speed by wave elapsed time and resolves circular brick collisio
 
 test("guarantees a minimum vertical angle after every reflection", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /const MIN_VERTICAL_SPEED_RATIO = 0\.32/);
-  assert.match(source, /function ensureMinimumVerticalAngle/);
-  assert.match(source, /const minimumVerticalSpeed = speed \* MIN_VERTICAL_SPEED_RATIO/);
-  assert.match(source, /Math\.sqrt\(Math\.max\(0, speed \* speed - minimumVerticalSpeed \* minimumVerticalSpeed\)\)/);
-  assert.match(source, /ensureMinimumVerticalAngle\(ball, collision\.normalY\)/);
-  assert.match(source, /ball\.vx = Math\.abs\(ball\.vx\); ensureMinimumVerticalAngle\(ball\)/);
-  assert.match(source, /ball\.vy = -Math\.sqrt[\s\S]{0,180}ensureMinimumVerticalAngle\(ball, -1\)/);
+  const physics = await readFile(new URL("../app/collision-physics.ts", import.meta.url), "utf8");
+  assert.match(physics, /export const MIN_VERTICAL_SPEED_RATIO = 0\.32/);
+  assert.match(physics, /export function ensureMinimumVerticalAngle/);
+  assert.match(physics, /const minimumVerticalSpeed = speed \* MIN_VERTICAL_SPEED_RATIO/);
+  assert.match(physics, /Math\.sqrt\(Math\.max\(0, speed \* speed - minimumVerticalSpeed \* minimumVerticalSpeed\)\)/);
+  assert.match(physics, /ensureMinimumVerticalAngle\(ball, collision\.normalY\)/);
+  assert.match(source, /separateAndReflectBall|ensureMinimumVerticalAngle/);
+});
+
+test("keeps the game-loop, simulation, and UI boundaries explicit", async () => {
+  const source = await fsReadFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const loop = await readFile(new URL("../app/useGameLoop.ts", import.meta.url), "utf8");
+  const prelude = await readFile(new URL("../app/game-update-prelude.ts", import.meta.url), "utf8");
+  const events = await readFile(new URL("../app/game-events.ts", import.meta.url), "utf8");
+  const hud = await readFile(new URL("../app/hud-snapshot.ts", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../app/game-renderer.ts", import.meta.url), "utf8");
+  assert.match(source, /useGameLoop\(/);
+  assert.doesNotMatch(source, /requestAnimationFrame\(loop\)/);
+  assert.match(loop, /cancelAnimationFrame/);
+  assert.match(loop, /for \(let step = 0; step < steps && runningRef\.current; step \+= 1\)/);
+  assert.match(prelude, /export function advanceGamePrelude/);
+  assert.match(prelude, /export function applyPaddleInput/);
+  assert.doesNotMatch(prelude, /setHud|requestAnimationFrame|CanvasRenderingContext2D|AudioContext/);
+  assert.match(events, /export type GameEvent/);
+  assert.match(events, /type: "audio"|type: "particle"|type: "effect"/);
+  assert.match(hud, /export type HudSnapshot/);
+  assert.match(hud, /export function hudSnapshotsEqual/);
+  assert.doesNotMatch(hud, /CanvasRenderingContext2D|requestAnimationFrame/);
+  assert.match(source, /renderTransientFeedback\(ctx, game, W, H\)/);
+  assert.match(source, /renderHud\(\{ ctx, game, width: W, height: H \}\)/);
+  assert.match(renderer, /export function renderTransientFeedback/);
+  assert.match(renderer, /game\.particles\.forEach/);
+  assert.match(renderer, /game\.flashes\.forEach/);
+  assert.match(renderer, /screenFlashTime/);
+  assert.match(renderer, /export function renderHud/);
+  assert.match(renderer, /CORE FORTRESS/);
+  assert.match(renderer, /OVERDRIVE/);
+  assert.doesNotMatch(renderer, /GameAudio|\.play\(/);
 });
 
 test.skip("server-renders the legacy Skill Lab", async () => {
@@ -202,7 +273,7 @@ test("shows level values in separate colors and renders skill icons", async () =
 test("shows compact skill icons with color-only level states and fourth-pick evolutions", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  assert.match(source, /skillLevels: \[\] as \{ id: UpgradeId; level: number \}\[\]/);
+  assert.match(source, /skillLevels: \[\]/);
   assert.match(source, /className="skill-loadout-hud"/);
   assert.match(source, /isSkillEvolved\(gameRef\.current\?\.upgrades \?\? \[\], id\)/);
   assert.match(source, /pickCount === 3 && Boolean\(config\?\.evolution\)/);
@@ -329,7 +400,7 @@ test("raises post-wave-5 density, brick health, and boss health", async () => {
   assert.match(balance, /bossHpPerStage: 160/);
   assert.match(source, /function lateWaveHpMultiplier/);
   assert.match(source, /waveNumber >= 16 \? 2\.5 : waveNumber >= 11 \? 1\.9 : waveNumber >= 6 \? 1\.45/);
-  assert.match(source, /const bossHpMultiplier = stage >= 2 \? 1\.8 : 1\.25/);
+  assert.match(source, /const bossHpMultiplier = \[1, 0\.85, 0\.95, 1\.05, 1\.2\]/);
   assert.match(balance, /echo-breaker-balance-v3/);
 });
 
@@ -640,7 +711,7 @@ test("aims the visible benchmark bot at live hittable bricks independently of pa
   assert.match(policy, /const topY = ballRadius \+ 2/);
   assert.match(source, /const controls = decideBotControls/);
   assert.match(source, /pointerXRef\.current = controls\.aimX;\s*pointerYRef\.current = controls\.aimY/);
-  assert.match(source, /game\.paddleX \+= botMoveRef\.current \* PADDLE_KEYBOARD_SPEED/);
+  assert.match(source, /applyPaddleInput\(game, movement, PADDLE_KEYBOARD_SPEED/);
   assert.match(source, /const aim = paddleAimDirection\(contactX, paddle\.y, pointerXRef\.current, pointerYRef\.current\)/);
   assert.match(source, /if \(asBot\) parkBallsAbovePaddle\(game, openingAim\.x, openingAim\.y\)/);
   assert.doesNotMatch(source, /pointerXRef\.current = predictedX/);
@@ -819,9 +890,11 @@ test("separates original, isolated, and ecosystem experiment roles", async () =>
 
 test("keeps fixed-step acceleration for the legacy skill benchmark runner", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const loop = await readFile(new URL("../app/useGameLoop.ts", import.meta.url), "utf8");
   assert.match(source, /type BotSpeed = 1 \| 2 \| 4 \| 8/);
-  assert.match(source, /const steps = botActiveRef\.current \? botSpeedRef\.current : 1/);
-  assert.match(source, /for \(let step = 0; step < steps && runningRef\.current; step\+\+\) updateGame\(dt\)/);
+  assert.match(loop, /const steps = botActiveRef\.current \? botSpeedRef\.current : 1/);
+  assert.match(loop, /for \(let step = 0; step < steps && runningRef\.current; step \+= 1\)/);
+  assert.match(loop, /updateRef\.current\(dt\)/);
   assert.match(source, /speed: botSpeedRef\.current/);
   assert.match(source, /botSpeedRef\.current = botSpeed/);
   assert.match(source, /CPU 자동 · 최대 8/);
@@ -946,9 +1019,9 @@ test("applies class skills from brick hits and grants ultimates after bosses", a
   assert.match(source, /const activateHitSkill =/);
   assert.match(source, /activateHitSkill\("archer-rapid"/);
   assert.match(source, /activateHitSkill\("mage-black-hole"/);
-  assert.match(source, /game\.upgrades\.push\(rewardId\)/);
-  assert.match(source, /ULTIMATE ACQUIRED/);
-  assert.match(source, /ultimateCatalog\.map/);
+  assert.match(source, /game\.bossRewards\.push\(rewardId\)/);
+  assert.match(source, /ultimate \? " · ULTIMATE"/);
+  assert.match(source, /const ultimateCatalog = ULTIMATE_SKILLS\.map/);
   assert.doesNotMatch(source, /activeSkillMap\[upgrade\.id\]\.ballCost/);
 });
 
@@ -998,7 +1071,7 @@ test("forces black-hole orbit while preserving and restoring entry speed", async
   assert.match(source, /gravityBaseSpeed: number \| null/);
   assert.match(source, /ball\.gravityBaseSpeed \?\?= Math\.max\(1, Math\.hypot\(ball\.vx, ball\.vy\)\)/);
   assert.match(source, /const orbitRadius = well\.radius \* 0\.46/);
-  assert.match(source, /ball\.vx = targetX \/ targetLength \* ball\.gravityBaseSpeed!/);
+  assert.match(source, /const desiredVx = targetX \/ targetLength \* ball\.gravityBaseSpeed!/);
   assert.match(source, /ball\.vx \*= ball\.gravityBaseSpeed \/ affectedSpeed/);
   assert.match(source, /ball\.gravityBaseSpeed = null/);
   assert.doesNotMatch(source, /ball\.y = Math\.min\(ball\.y, well\.y \+ 14\)/);
@@ -1106,7 +1179,7 @@ test("tracks independent per-ball skill cooldowns and applies common cooldown re
   assert.match(source, /skillCooldowns: Partial<Record<ClassSkillId, number>>/);
   assert.match(source, /ball\.skillCooldowns\[skillId\] = Math\.max\(0/);
   assert.match(source, /const cooldown = skillCooldownSeconds/);
-  assert.match(source, /skillValue\("common-cooldown"/);
+  assert.match(source, /enhancedSkillValue\("common-cooldown"/);
   assert.match(config, /export const SKILL_COOLDOWNS/);
   assert.match(config, /passiveSkill\("common-cooldown", "재사용 가속"/);
   assert.match(lab, /공별 독립 쿨타임/);

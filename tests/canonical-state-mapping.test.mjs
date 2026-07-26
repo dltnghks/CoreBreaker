@@ -1,0 +1,53 @@
+import test, { after } from "node:test";
+import assert from "node:assert/strict";
+import { createServer } from "vite";
+import { fileURLToPath } from "node:url";
+
+const vite = await createServer({ root: fileURLToPath(new URL("..", import.meta.url)), configFile: false, appType: "custom", server: { middlewareMode: true }, logLevel: "silent" });
+const load = (path) => vite.environments.ssr.runner.import(path);
+const mapping = await load("/app/canonical-state-mapping.ts");
+const engine = await load("/app/canonical-engine.ts");
+const waves = await load("/app/wave-config.ts");
+const hud = await load("/app/hud-snapshot.ts");
+after(async () => { await vite.close(); });
+
+function legacyState() {
+  return {
+    balls: [], bricks: [{ x: 72, y: 74, w: 60, h: 24, hp: 9, maxHp: 9, hue: 180, alive: true, drop: null, kind: "normal", trait: "standard", guardReady: false, healTimer: 3, poisonTime: 0, poisonTick: 0, poisonSourcePaddleId: null, burnTime: 0, burnTick: 0, burnLevel: 0, burnSourcePaddleId: null, healBlockTime: 0, blastVulnerability: 0, blastVulnerabilitySourcePaddleId: null, frostVulnerability: 0, traitLockTime: 0, lastHitPaddleId: null }],
+    paddleX: 450, paddleWidth: 128, ghostPaddles: [], elapsed: 0, score: 0, level: 1, combo: 0, maxCombo: 0, comboTimer: 0, bricksBroken: 0, upgrades: [], skillHistory: [], skillMetrics: {}, paddleTrack: [], particles: [], particlePool: [], particlePoolCursor: 0, flashes: [], effects: [], effectPool: [], effectPoolCursor: 0, items: [], safetyBlocks: [], gravityWells: [], paddleBarriers: {}, itemBarrierTime: 0, ultimateAuras: {}, paddleCounters: {}, coreHp: 8, maxCoreHp: 8, bossActive: false, bossPending: false, bossStage: 0, nextBossWave: 5, bossTimeRemaining: 0, bossSkillTimer: 0, bossAttackPattern: 0, bossMultiballsRemaining: 0, bossRewards: [], bossEnhancements: {}, autoGuard: false, rowTimer: 0, rowInterval: 1, overdriveLevel: 0, shakeStrength: 0, shakeTime: 0, shakeDuration: 0, screenFlashColor: "", screenFlashTime: 0, screenFlashDuration: 0, coreBreakTime: 0, coreBreakDuration: 0, coreBreakX: 0, coreBreakY: 0, wave: 1, pendingWave: null, failed: false, failureReason: null, botMetrics: { maxBalls: 1, ballLosses: 0, missileActivations: 0, safetySaves: 0, gravityRescues: 0 }, botWaveSamples: [], botSampleKey: "",
+  };
+}
+
+test("canonical world sync copies bricks, items, metrics, and completion state", () => {
+  const state = engine.createCanonicalState({ seed: 77, targetWave: 1, waves: waves.WAVE_DEFINITIONS });
+  const game = legacyState();
+  const brick = state.bricks[0];
+  brick.hp = 2; brick.alive = false; brick.trait = "guard"; brick.guardReady = true;
+  state.items = [{ x: 321, y: 200, vy: 48, kind: "core-repair", alive: true }];
+  state.skillMetrics["warrior-guard"] = { activations: 3, damage: 12, kills: 1 };
+  state.bricksBroken = 8; state.score = 900; state.combo = 4; state.barrierCharges = 2; state.barrierTime = 6; state.coreHp = 0; state.gameOver = true; state.complete = true;
+  mapping.syncCanonicalWorldIntoGame(game, state);
+  assert.equal(game.bricks[0].hp, 2);
+  assert.equal(game.bricks[0].alive, false);
+  assert.equal(game.bricks[0].trait, "guard");
+  assert.deepEqual(game.items[0], { id: 1, x: 321, y: 200, vy: 48, alive: true, kind: "core-repair" });
+  assert.deepEqual(game.skillMetrics["warrior-guard"], { activations: 3, damage: 12, kills: 1 });
+  assert.equal(game.bricksBroken, 8);
+  assert.equal(game.score, 900);
+  assert.equal(game.paddleBarriers.canonical, 2);
+  assert.equal(game.itemBarrierTime, 6);
+  assert.equal(game.failed, true);
+  assert.equal(game.failureReason, "core");
+  assert.equal(game.canonicalComplete, true);
+});
+
+test("canonical score crossing the HUD boundary is always finite", () => {
+  const state = engine.createCanonicalState({ seed: 78, targetWave: 1, waves: waves.WAVE_DEFINITIONS });
+  const game = legacyState();
+  state.score = Number.NaN;
+  mapping.syncCanonicalWorldIntoGame(game, state);
+  assert.equal(game.score, 0);
+  const snapshot = hud.hudSnapshotFromGame(game, { waveName: "TEST", overdriveMultiplier: 1, upgradeLevel: () => 0 });
+  assert.equal(snapshot.score, 0);
+  assert.ok(Number.isFinite(snapshot.score));
+});
