@@ -3284,6 +3284,14 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = tr
     const game = gameRef.current;
     const state = canonicalBridgeRef.current;
     if (!game || !state) throw new Error("canonical-only run started without canonical state");
+    // Canonical-only runs bypass the legacy updateGame prelude, so transient
+    // camera/screen feedback must be aged here as part of the runtime tick.
+    // Without this decay, a shake emitted by a canonical ultimate remains
+    // active forever because the renderer only reads these compatibility
+    // fields and never mutates them.
+    game.shakeTime = Math.max(0, (game.shakeTime ?? 0) - dt);
+    if (game.shakeTime <= 0) game.shakeStrength = 0;
+    game.screenFlashTime = Math.max(0, (game.screenFlashTime ?? 0) - dt);
     if (state.complete) return "complete";
     if (state.gameOver) return "game-over";
     const move = botActiveRef.current
@@ -3315,10 +3323,39 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = tr
         audioRef.current?.play("skill", event.level);
         setImpactFeedback(game, 4 + event.level * 0.5, skill?.color, 0.2, 0.1);
       }
-      if (event.type === "audio") audioRef.current?.play(event.cue, event.volume);
+      if (event.type === "audio") audioRef.current?.play(event.cue as Parameters<GameAudio["play"]>[0], event.volume);
       if (event.type === "shake") setImpactFeedback(game, event.strength, undefined, event.duration);
       if (event.type === "brick-damaged") audioRef.current?.play("brick-hit", event.damage);
       if (event.type === "item-dropped") audioRef.current?.play("item", 0.5);
+      // Canonical visuals cross the simulation/UI boundary as declarative
+      // events. Materialize them into the legacy pooled presentation state
+      // consumed by the extracted canvas renderer; otherwise canonical-only
+      // runs would play the audio cue but draw no ring/impact effect.
+      if (event.type === "effect") {
+        pushPooledEffect(game, {
+          kind: event.kind,
+          x: event.x,
+          y: event.y,
+          x2: event.x2 ?? event.x,
+          y2: event.y2 ?? event.y,
+          size: event.kind === "skill" ? 72 : 45,
+          life: event.kind === "skill" ? 0.9 : 0.45,
+          maxLife: event.kind === "skill" ? 0.9 : 0.45,
+          color: event.color,
+          variant: 0,
+          skillId: event.skillId ?? null,
+        });
+      }
+      if (event.type === "particle") {
+        const count = Math.max(1, Math.min(12, event.count ?? 4));
+        for (let i = 0; i < count; i += 1) {
+          const angle = (Math.PI * 2 * i) / count;
+          pushPooledParticle(game, { x: event.x, y: event.y, vx: Math.cos(angle) * 85, vy: Math.sin(angle) * 85, life: 0.35, color: event.color });
+        }
+      }
+      if (event.type === "flash") {
+        game.flashes.push({ text: event.text, x: event.x, y: event.y, life: 0.8, color: event.color, emphasis: event.emphasis });
+      }
     });
 
     const canvas = canvasRef.current;

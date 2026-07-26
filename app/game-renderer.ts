@@ -130,6 +130,29 @@ export function renderBalls({ ctx, game }: { ctx: CanvasRenderingContext2D; game
     const speed = Math.max(1, Math.hypot(ball.vx, ball.vy));
     const radius = ball.radius + Math.min(3.5, Math.max(0, ball.attackPower - 1) * 0.7);
     ctx.save();
+    // Preserve the legacy projectile language in canonical-only runs: payload
+    // enchantments and temporary/multiball projectiles get visible rings and
+    // directional trails instead of collapsing to a plain glowing circle.
+    const payloadCount = Object.values(ball.payloads ?? {}).filter((level) => Number(level) > 0).length;
+    const extra = ball.temporaryTime > 0 || ball.waveBonus || ball.visualSkill !== null;
+    if (extra || payloadCount > 0 || ball.pierce > 0) {
+      ctx.globalAlpha = extra ? 0.52 : 0.36;
+      ctx.strokeStyle = extra ? "#9a8cff" : ball.color;
+      ctx.shadowColor = ctx.strokeStyle;
+      ctx.shadowBlur = 16;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, radius + 6 + payloadCount * 2, 0, Math.PI * 2);
+      ctx.stroke();
+      if (ball.pierce > 0) {
+        ctx.globalAlpha = 0.72;
+        ctx.setLineDash([4, 5]);
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, radius + 11, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
     ctx.globalAlpha = 0.16;
     ctx.fillStyle = ball.color;
     ctx.beginPath();
@@ -140,6 +163,15 @@ export function renderBalls({ ctx, game }: { ctx: CanvasRenderingContext2D; game
     ctx.shadowBlur = 24;
     ctx.fillStyle = ball.color;
     ctx.beginPath(); ctx.arc(ball.x, ball.y, radius, 0, Math.PI * 2); ctx.fill();
+    if (ball.missileTime > 0) {
+      ctx.globalAlpha = 0.8;
+      ctx.strokeStyle = "#ff9658";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(ball.x - ball.vx / speed * 34, ball.y - ball.vy / speed * 34);
+      ctx.lineTo(ball.x - ball.vx / speed * 8, ball.y - ball.vy / speed * 8);
+      ctx.stroke();
+    }
     ctx.restore();
   });
 }
