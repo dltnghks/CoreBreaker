@@ -609,7 +609,13 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
       brick.healTimer -= step;
       if (brick.healTimer <= 0) {
         brick.healTimer += 3;
-        for (const near of state.bricks) if (near.alive && near !== brick && near.healBlockTime <= 0 && Math.hypot(near.x - brick.x, near.y - brick.y) < 120) near.hp = Math.min(near.maxHp, near.hp + 1);
+        const healerCenterX = brick.x + brick.w / 2;
+        const healerCenterY = brick.y + brick.h / 2;
+        for (const near of state.bricks) {
+          const nearCenterX = near.x + near.w / 2;
+          const nearCenterY = near.y + near.h / 2;
+          if (near.alive && near !== brick && near.healBlockTime <= 0 && Math.hypot(nearCenterX - healerCenterX, nearCenterY - healerCenterY) < 135) near.hp = Math.min(near.maxHp, near.hp + 1);
+        }
       }
     }
     if (brick.burnTime > 0) {
