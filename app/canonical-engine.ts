@@ -1,6 +1,7 @@
 import { DEFAULT_BALANCE_CONFIG, type BalanceConfig, type BotWaveSample } from "./balance-config";
 import { DEFAULT_SKILLS, type LegacyUpgradeId, type SkillConfig, type UpgradeId } from "./skill-config";
 import { WAVE_DEFINITIONS, waveDefinitionFrom, type WaveDefinition } from "./wave-config";
+import { sweptPaddleContact } from "./collision-physics";
 
 export const ENGINE_VERSION = "canonical-fixed-step-v2-boss-tuning" as const;
 export const ENGINE_PARITY = "fixed-step-canonical-rules" as const;
@@ -536,7 +537,7 @@ function completeWave(state: CanonicalState) {
 export function createCanonicalState(options: { seed: number; targetWave?: number; balance?: BalanceConfig; skills?: SkillConfig[]; waves?: WaveDefinition[]; legacyEnchantments?: Partial<Record<LegacyUpgradeId, number>> }): CanonicalState {
   const state: CanonicalState = {
     seed: options.seed, random: seededRandom(options.seed), balance: { ...DEFAULT_BALANCE_CONFIG, ...options.balance }, skills: options.skills?.length ? options.skills : DEFAULT_SKILLS, waves: options.waves?.length === WAVE_DEFINITIONS.length ? options.waves : WAVE_DEFINITIONS, targetWave: options.targetWave ?? 20,
-    wave: 1, waveElapsed: 0, elapsed: 0, rowTimer: 0, itemBarrierTime: 0, overdriveLevel: 0, shakeStrength: 0, shakeTime: 0, screenFlashTime: 0, paddleX: GAME_WIDTH / 2, paddleWidth: BASE_PADDLE_WIDTH, balls: [], bricks: [], items: [], gravityWells: [], visualEvents: [], particles: [], flashes: [], effects: [], upgrades: [], bossEnhancements: {}, legacyEnchantments: { ...(options.legacyEnchantments ?? {}) }, echoSplitReflections: 0, safetyBlocks: [], ultimateAuras: {}, paddleChargePulse: 0, paddleChargeColor: "#ffffff", coreBreakTime: 0, coreBreakDuration: 0, coreBreakX: GAME_WIDTH / 2, coreBreakY: PLAYER_PADDLE_Y + 36, ghostPaddles: [], skillHistory: [], skillMetrics: {}, waveMetrics: [], coreHp: 8, maxCoreHp: 8, ballLosses: 0, maxBalls: 1, totalDamage: 0, lastDamageElapsed: 0, reflectorBlockedHits: 0, barrierTime: 0, barrierCharges: 0, bossAttackTimer: 0, bossPattern: 0, nextBrickId: 1, complete: false, gameOver: false,
+    wave: 1, waveElapsed: 0, elapsed: 0, rowTimer: 0, itemBarrierTime: 0, overdriveLevel: 0, shakeStrength: 0, shakeTime: 0, screenFlashTime: 0, paddleX: GAME_WIDTH / 2, paddleWidth: BASE_PADDLE_WIDTH, balls: [], bricks: [], items: [], gravityWells: [], visualEvents: [], particles: [], flashes: [], effects: [], upgrades: [], bossEnhancements: {}, legacyEnchantments: { ...(options.legacyEnchantments ?? {}) }, echoSplitReflections: 0, safetyBlocks: [], ultimateAuras: {}, paddleChargePulse: 0, paddleChargeColor: "#ffffff", coreBreakTime: 0, coreBreakDuration: 0, coreBreakX: GAME_WIDTH / 2, coreBreakY: PLAYER_PADDLE_Y + 36, ghostPaddles: [], skillHistory: [], skillMetrics: {}, waveMetrics: [], coreHp: 8, maxCoreHp: 8, score: 0, bricksBroken: 0, combo: 0, maxCombo: 0, ballLosses: 0, maxBalls: 1, totalDamage: 0, lastDamageElapsed: 0, reflectorBlockedHits: 0, barrierTime: 0, barrierCharges: 0, bossAttackTimer: 0, bossPattern: 0, nextBrickId: 1, complete: false, gameOver: false,
   };
   buildWave(state, 1);
   state.balls = [makeBall(state)];
@@ -599,6 +600,7 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
   state.flashes = state.flashes.filter((flash) => flash.life > 0);
   state.barrierTime = Math.max(0, state.barrierTime - step);
   const moveMultiplier = 1 + skillValue(state, "common-move-speed") / 100;
+  const previousPaddleX = state.paddleX;
   state.paddleX = Math.max(state.paddleWidth / 2, Math.min(GAME_WIDTH - state.paddleWidth / 2, state.paddleX + controls.move * PADDLE_SPEED * moveMultiplier * step));
   for (const brick of state.bricks) {
     if (!brick.alive) continue;
@@ -708,12 +710,27 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
       ball.vx = targetX / length * speed;
       ball.vy = targetY / length * speed;
     }
+    const previousBallX = ball.x;
+    const previousBallY = ball.y;
     ball.x += ball.vx * step;
     ball.y += ball.vy * step;
     if (ball.x - ball.radius < 0) { ball.x = ball.radius; ball.vx = Math.abs(ball.vx); normalizeBallAngle(ball); }
     if (ball.x + ball.radius > GAME_WIDTH) { ball.x = GAME_WIDTH - ball.radius; ball.vx = -Math.abs(ball.vx); normalizeBallAngle(ball); }
     if (ball.y - ball.radius < 0) { ball.y = ball.radius; ball.vy = Math.abs(ball.vy); normalizeBallAngle(ball); }
-    if (ball.vy > 0 && ball.y + ball.radius >= PLAYER_PADDLE_Y && ball.y - ball.radius <= PLAYER_PADDLE_Y + 18 && Math.abs(ball.x - state.paddleX) <= state.paddleWidth / 2 + ball.radius) {
+    if (ball.vy > 0) {
+      const paddleContact = sweptPaddleContact(
+        ball,
+        previousBallX,
+        previousBallY,
+        { x: state.paddleX, previousX: previousPaddleX, y: PLAYER_PADDLE_Y, width: state.paddleWidth },
+        4,
+        18,
+        10,
+      );
+      if (!paddleContact) {
+        // Continue into brick/loss processing below.
+      } else {
+      ball.x = paddleContact.contactX;
       ball.y = PLAYER_PADDLE_Y - ball.radius - 0.1;
       const speed = ball.respawnRecoveryTime > 0 ? Math.max(300, Math.hypot(ball.vx, ball.vy)) : Math.max(300, Math.hypot(BASE_BALL_VX, BASE_BALL_VY) * overdrive);
       const aim = paddleAimDirection(state.paddleX, PLAYER_PADDLE_Y, controls.aimX, controls.aimY);
@@ -725,6 +742,7 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
         state.echoSplitReflections = 0;
         state.balls.push(cloneEchoSplitBall(state, ball));
         state.visualEvents.push({ kind: "skill", skillId: "echo-split" as UpgradeId, x: state.paddleX, y: PLAYER_PADDLE_Y, radius: 68, duration: 0.6, color: "#fff27a" });
+      }
       }
     }
     for (const brick of state.bricks) {

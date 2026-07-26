@@ -273,6 +273,20 @@ test("canonical parity mode accepts the legacy variable frame delta", () => {
   assert.equal(Number(fixed.elapsed.toFixed(6)), Number((1 / 120).toFixed(6)));
 });
 
+test("canonical paddle collision uses swept contact and legacy rebound semantics", () => {
+  const state = engine.createCanonicalState({ seed: 19 });
+  state.bricks = [];
+  const ball = state.balls[0];
+  state.paddleX = 450;
+  ball.x = 450;
+  ball.y = 515;
+  ball.vx = 40;
+  ball.vy = 320;
+  engine.stepCanonicalEngine(state, { move: 0, aimX: 470, aimY: 300 }, 0.02, { clampToFixedStep: false });
+  assert.ok(state.balls[0].vy < 0, "swept paddle contact must rebound upward");
+  assert.ok(state.balls[0].y <= 600 - 70 - state.balls[0].radius, "ball must be separated above paddle");
+});
+
 test("every configured ultimate is dispatched by the canonical collision path", () => {
   const ultimateIds = skills.ULTIMATE_SKILLS.map((entry) => entry.id);
   assert.equal(ultimateIds.length, 6, "the contract currently defines six ultimate skills");
