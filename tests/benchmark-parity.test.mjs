@@ -14,12 +14,12 @@ const waves = await load("/app/wave-config.ts");
 const skills = await load("/app/skill-config.ts");
 const bridge = await load("/app/canonical-bridge.ts");
 
-test("canonical bridge is enabled for Home runs and benchmark runs", async () => {
+test("legacy Home runs and canonical benchmark runs use explicit simulation gates", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const bridge = await readFile(new URL("../app/canonical-bridge.ts", import.meta.url), "utf8");
   assert.match(source, /canonicalEngineEnabledRef\.current\s*=\s*canonicalEngineEnabledForRun/);
   assert.match(source, /canonicalBridgeRef\.current = canonicalEngineEnabledRef\.current\s*\?/);
-  assert.match(source, /if \(canonicalEngineEnabledRef\.current && canonicalBridgeRef\.current\)/);
+  assert.match(source, /simulationMode: canonicalEngineEnabled \|\| benchmarkMode \? "canonical" : "legacy"/);
   assert.match(source, /canonicalBridgeRef\.current = null/);
   const bridgeModule = await load("/app/canonical-bridge.ts");
   assert.equal(bridgeModule.canonicalEngineEnabledForRun({ explicit: false, benchmarkMode: false }), false);
@@ -28,13 +28,14 @@ test("canonical bridge is enabled for Home runs and benchmark runs", async () =>
   assert.match(bridge, /syncCanonicalBallsIntoGame\(game, state\)/);
 });
 
-test("the game loop uses the canonical step as its sole simulation update", async () => {
+test("the game loop selects legacy or canonical simulation explicitly", async () => {
   const loop = await readFile(new URL("../app/useGameLoop.ts", import.meta.url), "utf8");
   assert.match(loop, /canonicalStepRef\.current\(fixedDt\)/);
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /canonicalEngineEnabled\s*=\s*true/);
-  assert.match(page, /return <GameRuntime canonicalEngineEnabled \/>/);
-  assert.match(page, /if \(canonicalEngineEnabledRef\.current && canonicalBridgeRef\.current\)/);
+  assert.match(loop, /legacyStepRef\.current\?\.\(dt\)/);
+  assert.match(page, /canonicalEngineEnabled\s*=\s*false/);
+  assert.match(page, /return <GameRuntime \/>/);
+  assert.match(page, /legacyStep: updateGame/);
   assert.doesNotMatch(page, /canonicalOnlyRef/);
 });
 
