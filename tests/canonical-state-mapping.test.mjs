@@ -170,3 +170,10 @@ test("canonical item effect normalization matches legacy drop contract", () => {
   const kinds = ["multiball", "auto-barrier", "core-repair", "cooldown-reset"];
   assert.deepEqual(kinds.map((kind) => engine.normalizeCanonicalItemEffect(kind)), kinds.map((kind) => legacyPure.normalizeLegacyItemEffect(kind)));
 });
+
+test("canonical wave outcomes normalize all legacy terminal phases", () => {
+  const ids = ["common-damage", "warrior-guard"];
+  for (const type of ["wave-clear", "reward", "complete", "game-over"]) {
+    assert.deepEqual(engine.normalizeCanonicalWaveOutcome(type, 3, ids), legacyPure.normalizeLegacyWaveOutcome(type, 3, ids));
+  }
+});

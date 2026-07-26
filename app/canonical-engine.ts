@@ -80,6 +80,8 @@ export function normalizeCanonicalSkillResult(result: SkillResult): CanonicalSki
 }
 export type CanonicalItemEffect = { type: CanonicalItemKind; value: number };
 export function normalizeCanonicalItemEffect(kind: CanonicalItemKind, amount = 1): CanonicalItemEffect { return { type: kind, value: amount }; }
+export type CanonicalWaveOutcome = { type: "wave-clear" | "reward" | "complete" | "game-over"; wave: number; rewardIds: string[] };
+export function normalizeCanonicalWaveOutcome(type: CanonicalWaveOutcome["type"], wave: number, rewardIds: string[] = []): CanonicalWaveOutcome { return { type, wave, rewardIds: [...rewardIds] }; }
 export type CanonicalWaveMetric = BotWaveSample & { clearTime: number; skillChoices: UpgradeId[] };
 export type CanonicalState = {
   seed: number;
