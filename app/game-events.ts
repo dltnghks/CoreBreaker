@@ -27,6 +27,14 @@ export function drainGameEvents(buffer: GameEventBuffer): GameEvent[] {
 /** Convert canonical simulation visuals into the UI/audio event contract. */
 export function emitCanonicalVisualEvents(buffer: GameEventBuffer, events: CanonicalVisualEvent[]): void {
   for (const event of events) {
+    if (event.kind === "impact") {
+      emitGameEvent(buffer, {
+        type: "effect", kind: "spark", x: event.x, y: event.y,
+        x2: event.x, y2: event.y, color: "#fff3d6",
+      });
+      emitGameEvent(buffer, { type: "particle", x: event.x, y: event.y, color: "#fff3d6", count: 4 });
+      continue;
+    }
     emitGameEvent(buffer, {
       type: "effect",
       kind: event.kind === "ultimate" ? "skill" : "ring",

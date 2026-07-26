@@ -172,6 +172,29 @@ export function renderBalls({ ctx, game }: { ctx: CanvasRenderingContext2D; game
       ctx.lineTo(ball.x - ball.vx / speed * 8, ball.y - ball.vy / speed * 8);
       ctx.stroke();
     }
+    // Keep the legacy combat readout on the projectile itself.  This is
+    // especially important for canonical runs where the GameState is only a
+    // presentation snapshot: cooldowns, attack power and active skill aura
+    // must remain visible even when no transient event is pending.
+    const cooldownEntries = Object.entries(ball.skillCooldowns ?? {}).filter(([, remaining]) => Number(remaining) > 0);
+    if (cooldownEntries.length > 0) {
+      const gaugeRadius = radius + 14;
+      cooldownEntries.forEach(([, remaining], index) => {
+        const progress = Math.max(0, Math.min(1, 1 - Number(remaining) / Math.max(0.25, Number(remaining) + 0.5)));
+        const start = -Math.PI / 2 + index * 0.42;
+        ctx.globalAlpha = extra ? 0.5 : 0.9;
+        ctx.strokeStyle = progress >= 0.99 ? "#72f1b8" : "#c18cff";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, gaugeRadius + index * 2, start, start + Math.PI * 1.35 * progress);
+        ctx.stroke();
+      });
+    }
+    ctx.globalAlpha = extra ? 0.72 : 0.92;
+    ctx.fillStyle = "#fff3d6";
+    ctx.font = "900 9px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(`ATK ${Math.max(1, Math.round(ball.attackPower))}`, ball.x, ball.y - radius - 12);
     ctx.restore();
   });
 }

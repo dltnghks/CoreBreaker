@@ -19,10 +19,10 @@ export function canonicalBallToLegacy(ball: CanonicalBall, overrides: Partial<Pi
     owner: overrides.owner ?? "player", color: overrides.color ?? "#ffffff", sourcePaddleId: overrides.sourcePaddleId ?? "player",
     pierce: ball.pierce, maxPierce: ball.maxPierce, blast: payloads.blast ?? 0,
     payload: (ball.payload as PayloadId | null) ?? null, payloadLevel: ball.payloadLevel, payloads,
-    attackPower: ball.attackPower, missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0,
+    attackPower: ball.attackPower, missileTime: finiteNumber(ball.missileTime), missileHitCooldown: 0, gravityRescueCooldown: 0,
     gravityBaseSpeed: null, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0,
     canTriggerSkills: true, skillGeneration: 0, skillCharges: { ...ball.skillCharges }, skillCooldowns: { ...ball.cooldowns },
-    visualSkill: null, temporaryTime: ball.temporary ? 1 : 0, waveBonus: false,
+    visualSkill: ball.visualSkill as Ball["visualSkill"], temporaryTime: finiteNumber(ball.temporaryTime), waveBonus: Boolean(ball.waveBonus),
     respawnRecoveryTime: ball.respawnRecoveryTime, respawnRecoveryDuration: ball.respawnRecoveryDuration,
     respawnRecoveryBaseSpeed: ball.respawnRecoveryBaseSpeed,
   };

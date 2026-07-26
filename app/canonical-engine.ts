@@ -26,7 +26,7 @@ export type CanonicalTrait = "standard" | "guard" | "explosive" | "indestructibl
 export type CanonicalItemKind = "multiball" | "auto-barrier" | "core-repair" | "cooldown-reset";
 export type CanonicalPayloadId = "pierce" | "blast" | "glass" | "link";
 export type CanonicalControls = { move: -1 | 0 | 1; aimX: number; aimY: number };
-export type CanonicalBall = { x: number; y: number; vx: number; vy: number; radius: number; temporary: boolean; temporaryTime: number; cooldowns: Record<string, number>; skillCharges: Partial<Record<UpgradeId, number>>; attackPower: number; pierce: number; maxPierce: number; payload: CanonicalPayloadId | null; payloadLevel: number; payloads: Partial<Record<CanonicalPayloadId, number>>; respawnRecoveryTime: number; respawnRecoveryDuration: number; respawnRecoveryBaseSpeed: number };
+export type CanonicalBall = { x: number; y: number; vx: number; vy: number; radius: number; temporary: boolean; temporaryTime: number; missileTime: number; waveBonus: boolean; visualSkill: UpgradeId | null; visualSkillTime: number; cooldowns: Record<string, number>; skillCharges: Partial<Record<UpgradeId, number>>; attackPower: number; pierce: number; maxPierce: number; payload: CanonicalPayloadId | null; payloadLevel: number; payloads: Partial<Record<CanonicalPayloadId, number>>; respawnRecoveryTime: number; respawnRecoveryDuration: number; respawnRecoveryBaseSpeed: number };
 export type CanonicalBrick = { id: number; x: number; y: number; w: number; h: number; hp: number; maxHp: number; alive: boolean; trait: CanonicalTrait; guardReady: boolean; healTimer: number; healBlockTime: number; burnTime: number; burnTick: number; traitLockTime: number; frostVulnerability: number; drop: CanonicalItemKind | null; kind: "normal" | "boss-core" | "boss-minion" };
 export type CanonicalItem = { x: number; y: number; vy: number; kind: CanonicalItemKind; alive: boolean };
 export type CanonicalGravityWell = { x: number; y: number; radius: number; life: number; damagePerSecond: number; damageTick: number };
@@ -179,7 +179,7 @@ function makeBall(state: CanonicalState, x = GAME_WIDTH / 2, temporary = false, 
   const baseSpeed = Math.hypot(BASE_BALL_VX, BASE_BALL_VY);
   const speed = baseSpeed * (recovering ? 1 : overdriveMultiplier(overdriveLevelAt(state.waveElapsed)));
   const aim = paddleAimDirection(x, PLAYER_PADDLE_Y, GAME_WIDTH / 2, GAME_HEIGHT / 3);
-  return { x, y: PLAYER_PADDLE_Y - 11, vx: aim.horizontalRatio * speed, vy: aim.verticalRatio * speed, radius: 8 + skillValue(state, "common-ball-size"), temporary, temporaryTime, cooldowns: {}, skillCharges: {}, attackPower: Math.max(1, 1 + skillValue(state, "common-damage")), pierce: 0, maxPierce: 0, payload: null, payloadLevel: 0, payloads: {}, respawnRecoveryTime: recovering ? RESPAWN_SPEED_RECOVERY_SECONDS : 0, respawnRecoveryDuration: recovering ? RESPAWN_SPEED_RECOVERY_SECONDS : 0, respawnRecoveryBaseSpeed: recovering ? baseSpeed : 0 };
+  return { x, y: PLAYER_PADDLE_Y - 11, vx: aim.horizontalRatio * speed, vy: aim.verticalRatio * speed, radius: 8 + skillValue(state, "common-ball-size"), temporary, temporaryTime, missileTime: 0, waveBonus: temporary, visualSkill: null, visualSkillTime: 0, cooldowns: {}, skillCharges: {}, attackPower: Math.max(1, 1 + skillValue(state, "common-damage")), pierce: 0, maxPierce: 0, payload: null, payloadLevel: 0, payloads: {}, respawnRecoveryTime: recovering ? RESPAWN_SPEED_RECOVERY_SECONDS : 0, respawnRecoveryDuration: recovering ? RESPAWN_SPEED_RECOVERY_SECONDS : 0, respawnRecoveryBaseSpeed: recovering ? baseSpeed : 0 };
 }
 /** Common passive values are resolved by the canonical simulation so the
  * benchmark/watch bridge observes the same modifiers as normal gameplay. */
@@ -232,6 +232,17 @@ function damageBrick(state: CanonicalState, brick: CanonicalBrick, damage: numbe
   if (applied > 0) {
     state.totalDamage += applied;
     state.lastDamageElapsed = state.elapsed;
+    // Keep ordinary ball/brick impacts visible in canonical-only runs. The
+    // legacy loop used to materialize these as spark/particle feedback; emit
+    // the same declarative visual at the simulation boundary instead.
+    state.visualEvents.push({
+      kind: "impact",
+      skillId: "original" as UpgradeId,
+      x: brick.x + brick.w / 2,
+      y: brick.y + brick.h / 2,
+      radius: 28,
+      duration: 0.28,
+    });
   }
   brick.hp -= applied;
   if (brick.hp > 0) return applied;
@@ -307,6 +318,8 @@ function triggerCollisionSkills(state: CanonicalState, ball: CanonicalBall, hit:
     if (remaining > 0) continue;
     const cooldown = Math.max(0.2, Number(config.cooldown[level - 1] ?? 1) * (1 - cooldownReduction));
     ball.cooldowns[config.id] = cooldown;
+    ball.visualSkill = config.id;
+    ball.visualSkillTime = Math.max(ball.visualSkillTime, 0.42);
     let damage = 0;
     let kills = 0;
     const result: SkillResult = {};
@@ -580,6 +593,9 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
   state.items = state.items.filter((item) => item.alive);
   const overdrive = overdriveMultiplier(overdriveLevelAt(state.waveElapsed));
   for (const ball of [...state.balls]) {
+    ball.visualSkillTime = Math.max(0, ball.visualSkillTime - step);
+    if (ball.visualSkillTime <= 0) ball.visualSkill = null;
+    ball.missileTime = Math.max(0, ball.missileTime - step);
     if (ball.temporary && ball.temporaryTime > 0) {
       ball.temporaryTime = Math.max(0, ball.temporaryTime - step);
       if (ball.temporaryTime <= 0) { state.balls.splice(state.balls.indexOf(ball), 1); continue; }
