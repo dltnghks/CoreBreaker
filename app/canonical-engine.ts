@@ -114,6 +114,7 @@ export type CanonicalState = {
   barrierCharges: number;
   bossAttackTimer: number;
   bossPattern: number;
+  lastShotTimer: number;
   nextBrickId: number;
   complete: boolean;
   gameOver: boolean;
@@ -569,7 +570,7 @@ function completeWave(state: CanonicalState) {
 export function createCanonicalState(options: { seed: number; targetWave?: number; balance?: BalanceConfig; skills?: SkillConfig[]; waves?: WaveDefinition[]; legacyEnchantments?: Partial<Record<LegacyUpgradeId, number>> }): CanonicalState {
   const state: CanonicalState = {
     seed: options.seed, random: seededRandom(options.seed), balance: { ...DEFAULT_BALANCE_CONFIG, ...options.balance }, skills: options.skills?.length ? options.skills : DEFAULT_SKILLS, waves: options.waves?.length === WAVE_DEFINITIONS.length ? options.waves : WAVE_DEFINITIONS, targetWave: options.targetWave ?? 20,
-    wave: 1, waveElapsed: 0, elapsed: 0, rowTimer: 0, itemBarrierTime: 0, overdriveLevel: 0, shakeStrength: 0, shakeTime: 0, screenFlashTime: 0, paddleX: GAME_WIDTH / 2, paddleWidth: BASE_PADDLE_WIDTH, balls: [], bricks: [], items: [], gravityWells: [], visualEvents: [], particles: [], flashes: [], effects: [], upgrades: [], bossEnhancements: {}, legacyEnchantments: { ...(options.legacyEnchantments ?? {}) }, echoSplitReflections: 0, safetyBlocks: [], ultimateAuras: {}, paddleChargePulse: 0, paddleChargeColor: "#ffffff", coreBreakTime: 0, coreBreakDuration: 0, coreBreakX: GAME_WIDTH / 2, coreBreakY: PLAYER_PADDLE_Y + 36, ghostPaddles: [], skillHistory: [], skillMetrics: {}, waveMetrics: [], coreHp: 8, maxCoreHp: 8, score: 0, bricksBroken: 0, combo: 0, maxCombo: 0, ballLosses: 0, maxBalls: 1, totalDamage: 0, lastDamageElapsed: 0, reflectorBlockedHits: 0, barrierTime: 0, barrierCharges: 0, bossAttackTimer: 0, bossPattern: 0, nextBrickId: 1, complete: false, gameOver: false,
+    wave: 1, waveElapsed: 0, elapsed: 0, rowTimer: 0, itemBarrierTime: 0, overdriveLevel: 0, shakeStrength: 0, shakeTime: 0, screenFlashTime: 0, paddleX: GAME_WIDTH / 2, paddleWidth: BASE_PADDLE_WIDTH, balls: [], bricks: [], items: [], gravityWells: [], visualEvents: [], particles: [], flashes: [], effects: [], upgrades: [], bossEnhancements: {}, legacyEnchantments: { ...(options.legacyEnchantments ?? {}) }, echoSplitReflections: 0, safetyBlocks: [], ultimateAuras: {}, paddleChargePulse: 0, paddleChargeColor: "#ffffff", coreBreakTime: 0, coreBreakDuration: 0, coreBreakX: GAME_WIDTH / 2, coreBreakY: PLAYER_PADDLE_Y + 36, ghostPaddles: [], skillHistory: [], skillMetrics: {}, waveMetrics: [], coreHp: 8, maxCoreHp: 8, score: 0, bricksBroken: 0, combo: 0, maxCombo: 0, ballLosses: 0, maxBalls: 1, totalDamage: 0, lastDamageElapsed: 0, reflectorBlockedHits: 0, barrierTime: 0, barrierCharges: 0, bossAttackTimer: 0, bossPattern: 0, lastShotTimer: 0, nextBrickId: 1, complete: false, gameOver: false,
   };
   buildWave(state, 1);
   state.balls = [makeBall(state)];
@@ -613,6 +614,7 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
     : Math.max(0, Math.min(FIXED_STEP_SECONDS, dt));
   state.elapsed += step;
   state.waveElapsed += step;
+  state.lastShotTimer = Math.max(0, state.lastShotTimer - step);
   state.rowTimer += step;
   const nextOverdriveLevel = overdriveLevelAt(state.rowTimer);
   if (nextOverdriveLevel > state.overdriveLevel) {
@@ -713,6 +715,17 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
     } else if (item.y > GAME_HEIGHT + 20) item.alive = false;
   }
   state.items = state.items.filter((item) => item.alive);
+  const lastShotLevel = Math.max(0, skillValue(state, "last-shot"));
+  if (lastShotLevel > 0 && state.lastShotTimer <= 0) {
+    const target = state.bricks.filter((brick) => brick.alive && brick.trait !== "indestructible")
+      .sort((a, b) => b.y - a.y || Math.abs(a.x - state.paddleX) - Math.abs(b.x - state.paddleX))[0];
+    if (target) {
+      const source = state.balls[0];
+      if (source) damageBrick(state, target, 1, source, false);
+      state.visualEvents.push({ kind: "impact", skillId: "last-shot" as UpgradeId, x: target.x + target.w / 2, y: target.y + target.h / 2, radius: 48, duration: 0.35, color: "#ff6b87" });
+    }
+    state.lastShotTimer = Math.max(0.25, lastShotLevel);
+  }
   const overdrive = overdriveMultiplier(overdriveLevelAt(state.waveElapsed));
   for (const ball of [...state.balls]) {
     ball.visualSkillTime = Math.max(0, ball.visualSkillTime - step);
