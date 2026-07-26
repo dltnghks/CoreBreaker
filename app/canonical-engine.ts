@@ -833,6 +833,18 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
         brick.frostVulnerability = 0;
         const guardWasReady = brick.guardReady;
         damageBrick(state, brick, baseDamage, ball, true);
+        const linkLevel = Math.max(0, Number(ball.payloads.link ?? 0));
+        if (linkLevel > 0 && brick.alive) {
+          const radius = 100 + (linkLevel - 1) * 30;
+          const count = Math.max(1, Math.floor(skillValue(state, "link")));
+          const linked = state.bricks
+            .filter((target) => target.alive && target !== brick && target.kind !== "boss-core")
+            .map((target) => ({ target, distance: Math.hypot(target.x - brick.x, target.y - brick.y) }))
+            .filter((entry) => entry.distance <= radius)
+            .sort((a, b) => a.distance - b.distance)
+            .slice(0, count);
+          for (const entry of linked) damageBrick(state, entry.target, 1, ball, false);
+        }
         if (ball.pierce > 0) ball.pierce--;
         if (!guardWasReady) triggerCollisionSkills(state, ball, brick);
       } else state.reflectorBlockedHits++;
