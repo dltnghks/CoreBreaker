@@ -14,10 +14,10 @@ test("canonical loop uses the canonical 120Hz fixed step and bounded catch-up", 
 test("fixed-step accumulator preserves residual time and resets on pause/stop", () => {
   assert.match(source, /return \{ accumulator: Math\.max\(0, remaining\), steps, outcome \}/);
   assert.match(source, /canonicalAccumulatorRef\.current = 0;/);
-  assert.match(source, /else if \(canonicalOnlyRef\?\.current\) \{[\s\S]*canonicalAccumulatorRef\.current = 0;/);
+  assert.match(source, /if \(runningRef\.current\) \{[\s\S]*canonicalAccumulatorRef\.current = 0;/);
 });
 
-test("legacy path retains frame dt and bot multi-step behavior", () => {
+test("canonical path clamps frame deltas before fixed-step advancement", () => {
   assert.match(source, /const dt = Math\.max\(0, Math\.min\(0\.025/);
-  assert.match(source, /for \(let step = 0; step < steps && runningRef\.current; step \+= 1\) updateRef\.current\(dt\)/);
+  assert.match(source, /advanceCanonicalAccumulator\(canonicalAccumulatorRef\.current, dt/);
 });

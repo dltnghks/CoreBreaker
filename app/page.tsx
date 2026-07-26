@@ -934,7 +934,7 @@ function chooseBotUpgrade(choices: Upgrade[], existing: UpgradeId[], policy: Bot
     .sort((a, b) => b.score - a.score || a.upgrade.id.localeCompare(b.upgrade.id))[0].upgrade;
 }
 
-export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = false, canonicalOnly = false }: { benchmarkMode?: boolean; canonicalEngineEnabled?: boolean; canonicalOnly?: boolean }) {
+export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = true }: { benchmarkMode?: boolean; canonicalEngineEnabled?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ringExplosionRef = useRef<HTMLImageElement | null>(null);
   const ringExplosionReadyRef = useRef(false);
@@ -967,13 +967,11 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
   const botActiveRef = useRef(false);
   const benchmarkWatchRef = useRef(false);
   const canonicalEngineEnabledRef = useRef(canonicalEngineEnabled);
-  const canonicalOnlyRef = useRef(canonicalOnly);
   // Terminal canonical states can be observed for more than one frame while
   // the canvas is still being rendered. Keep the React lifecycle transition
   // idempotent across those frames (and across the legacy/dual-run paths).
   const canonicalTerminalRef = useRef<"complete" | "game-over" | null>(null);
   useEffect(() => { canonicalEngineEnabledRef.current = canonicalEngineEnabled; }, [canonicalEngineEnabled]);
-  useEffect(() => { canonicalOnlyRef.current = canonicalOnly; }, [canonicalOnly]);
   const botPolicyRef = useRef<BotPolicy>("balanced");
   const botSpeedRef = useRef<BotSpeed>(1);
   const botTargetRunsRef = useRef(5);
@@ -1537,7 +1535,7 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
   }, [benchmarkMode]);
 
   const handleCanonicalOutcome = useCallback((outcome: "complete" | "game-over") => {
-    if (!canonicalOnlyRef.current || canonicalTerminalRef.current !== null) return;
+    if (canonicalTerminalRef.current !== null) return;
     canonicalTerminalRef.current = outcome;
     // `finishRun` is the single UI terminal path for both engines: it records
     // bot results, snapshots the final state, stops simulation, and switches
@@ -3270,7 +3268,6 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
     // an observer/snapshot bridge here; no canonical state is created for
     // ordinary player runs, preserving legacy gameplay parity.
     if (canonicalEngineEnabledRef.current && canonicalBridgeRef.current) {
-      if (canonicalOnlyRef.current) return;
       stepCanonicalBridge(canonicalBridgeRef.current, game, {
         move: botMoveRef.current,
         aimX: pointerXRef.current,
@@ -4109,8 +4106,7 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
     // Canonical simulation is an explicit runtime capability, independent of
     // benchmark/watch mode. This keeps normal runs legacy-compatible by
     // default while allowing controlled canonical playtest runs.
-    canonicalEngineEnabledRef.current = canonicalEngineEnabledForRun({ explicit: canonicalEngineEnabled || canonicalOnly, benchmarkMode });
-    canonicalOnlyRef.current = canonicalOnly;
+    canonicalEngineEnabledRef.current = canonicalEngineEnabledForRun({ explicit: canonicalEngineEnabled, benchmarkMode });
     canonicalTerminalRef.current = null;
     botPolicyRef.current = botPolicy;
     botSpeedRef.current = botSpeed;
@@ -4614,5 +4610,5 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
 }
 
 export default function Home() {
-  return <GameRuntime />;
+  return <GameRuntime canonicalEngineEnabled />;
 }

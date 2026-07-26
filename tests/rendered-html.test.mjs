@@ -159,7 +159,7 @@ test("keeps the game-loop, simulation, and UI boundaries explicit", async () => 
   assert.match(source, /useGameLoop\(/);
   assert.doesNotMatch(source, /requestAnimationFrame\(loop\)/);
   assert.match(loop, /cancelAnimationFrame/);
-  assert.match(loop, /for \(let step = 0; step < steps && runningRef\.current; step \+= 1\)/);
+  assert.match(loop, /advanceCanonicalAccumulator\(canonicalAccumulatorRef\.current, dt/);
   assert.match(prelude, /export function advanceGamePrelude/);
   assert.match(prelude, /export function applyPaddleInput/);
   assert.doesNotMatch(prelude, /setHud|requestAnimationFrame|CanvasRenderingContext2D|AudioContext/);
@@ -255,6 +255,7 @@ test("disables ghost deployment while preserving the playtest bot", async () => 
 
 test("shows level values in separate colors and renders skill icons", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../app/game-renderer.ts", import.meta.url), "utf8");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(source, /className="upgrade-level-values"/);
   assert.match(source, /SKILL_ICONS\[upgrade\.id\]/);
@@ -262,7 +263,7 @@ test("shows level values in separate colors and renders skill icons", async () =
   assert.match(css, /\.upgrade-card\.class-warrior/);
   assert.match(css, /\.class-archer \.upgrade-icon/);
   assert.match(css, /\.class-mage \.upgrade-icon/);
-  assert.match(source, /ctx\.roundRect\(/);
+  assert.match(renderer, /ctx\.roundRect\(/);
   assert.match(css, /\.upgrade-level-values span:nth-child\(1\)\{color:#65dcff\}/);
   assert.match(css, /\.upgrade-level-values span:nth-child\(2\)\{color:#a78bfa\}/);
   assert.match(css, /\.upgrade-level-values span:nth-child\(3\)\{color:#ffcf4a\}/);
@@ -306,16 +307,17 @@ test("adds synthesized game audio and a persistent mute control", async () => {
 
 test("uses stationary 4x3 bosses with reinforcement bricks", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../app/game-renderer.ts", import.meta.url), "utf8");
   assert.match(source, /const cols = 4;/);
   assert.match(source, /const rows = 3;/);
   assert.match(source, /const width = cols \* cellWidth;/);
   assert.match(source, /return \[\{/);
-  assert.match(source, /CORE FORTRESS.*HP/);
-  assert.match(source, /const fortressGlow = ctx\.createRadialGradient/);
-  assert.match(source, /brick\.kind === "boss-core"/);
-  assert.match(source, /FORTRESS ATTACK CHARGING/);
+  assert.match(renderer, /CORE FORTRESS.*HP/);
+  assert.match(renderer, /const fortressGlow = ctx\.createRadialGradient/);
+  assert.match(renderer, /brick\.kind === "boss-core"/);
+  assert.match(renderer, /FORTRESS ATTACK CHARGING/);
   assert.match(source, /brick\.kind === "boss-minion"/);
-  assert.match(source, /BOSS SKILL \/\/ \$\{attack\.name\}/);
+  assert.match(renderer, /BOSS SKILL \/\/ \$\{attack\.name\}/);
   ["SCATTER BOMB", "GUARD WINGS", "REFLECTOR GATE", "REPAIR CROSS", "BLAST MAZE"].forEach((name) => assert.match(source, new RegExp(name)));
   assert.match(source, /game\.bossAttackPattern\+\+/);
 });

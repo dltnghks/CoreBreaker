@@ -13,7 +13,7 @@ const benchmark = await load("/app/benchmark-headless.ts");
 const waves = await load("/app/wave-config.ts");
 const skills = await load("/app/skill-config.ts");
 
-test("canonical bridge is explicitly opt-in for normal runs and always enabled for benchmark runs", async () => {
+test("canonical bridge is enabled for Home runs and benchmark runs", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const bridge = await readFile(new URL("../app/canonical-bridge.ts", import.meta.url), "utf8");
   assert.match(source, /canonicalEngineEnabledRef\.current\s*=\s*canonicalEngineEnabledForRun/);
@@ -27,16 +27,14 @@ test("canonical bridge is explicitly opt-in for normal runs and always enabled f
   assert.match(bridge, /syncCanonicalBallsIntoGame\(game, state\)/);
 });
 
-test("canonical-only mode bypasses legacy updates and requires an explicit canonical step", async () => {
+test("the game loop uses the canonical step as its sole simulation update", async () => {
   const loop = await readFile(new URL("../app/useGameLoop.ts", import.meta.url), "utf8");
-  assert.match(loop, /canonicalOnlyRef\?\.current/);
-  assert.match(loop, /canonicalStepRef\.current\(dt\)/);
-  assert.match(loop, /canonical-only game loop requires canonicalStep/);
+  assert.match(loop, /canonicalStepRef\.current\(fixedDt\)/);
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /canonicalOnly\s*=\s*false/);
+  assert.match(page, /canonicalEngineEnabled\s*=\s*true/);
+  assert.match(page, /return <GameRuntime canonicalEngineEnabled \/>/);
   assert.match(page, /if \(canonicalEngineEnabledRef\.current && canonicalBridgeRef\.current\)/);
-  assert.match(page, /if \(canonicalOnlyRef\.current\) return/);
-  assert.match(page, /canonicalOnlyRef,?\s*\n?\s*canonicalStep/);
+  assert.doesNotMatch(page, /canonicalOnlyRef/);
 });
 
 test("canonical snapshots retain combat and payload fields at the bridge boundary", () => {
