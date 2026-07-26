@@ -934,7 +934,7 @@ function chooseBotUpgrade(choices: Upgrade[], existing: UpgradeId[], policy: Bot
     .sort((a, b) => b.score - a.score || a.upgrade.id.localeCompare(b.upgrade.id))[0].upgrade;
 }
 
-export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = true }: { benchmarkMode?: boolean; canonicalEngineEnabled?: boolean }) {
+export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = false }: { benchmarkMode?: boolean; canonicalEngineEnabled?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ringExplosionRef = useRef<HTMLImageElement | null>(null);
   const ringExplosionReadyRef = useRef(false);
@@ -3264,16 +3264,6 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = tr
       }
     }
 
-    // Canonical stepping is explicitly gated to benchmark watch mode. It is
-    // an observer/snapshot bridge here; no canonical state is created for
-    // ordinary player runs, preserving legacy gameplay parity.
-    if (canonicalEngineEnabledRef.current && canonicalBridgeRef.current) {
-      stepCanonicalBridge(canonicalBridgeRef.current, game, {
-        move: botMoveRef.current,
-        aimX: pointerXRef.current,
-        aimY: pointerYRef.current,
-      }, dt, gameEventsRef.current);
-    }
     setHud(hudFromGame(game));
   }, [applyBossReward, benchmarkMode, enterPendingWave, finishRun, levelUp]);
 
@@ -3957,6 +3947,8 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = tr
     runningRef,
     drawGame,
     canonicalStep,
+    legacyStep: updateGame,
+    simulationMode: canonicalEngineEnabled || benchmarkMode ? "canonical" : "legacy",
     onCanonicalOutcome: handleCanonicalOutcome,
   });
 
@@ -4670,5 +4662,5 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = tr
 }
 
 export default function Home() {
-  return <GameRuntime canonicalEngineEnabled />;
+  return <GameRuntime />;
 }

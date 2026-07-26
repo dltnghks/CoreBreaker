@@ -116,9 +116,9 @@ export function syncCanonicalWorldIntoGame(target: GameState, source: CanonicalS
   // collection membership are simulation state too, so carry them across in
   // one deterministic pass while retaining renderer-only presentation fields.
   target.bricks = source.bricks.map((canonicalBrick, index) => {
-    const brick = brickByPosition.get(`${Math.round(canonicalBrick.x)}:${Math.round(canonicalBrick.y)}`)
+    const existing = brickByPosition.get(`${Math.round(canonicalBrick.x)}:${Math.round(canonicalBrick.y)}`)
       ?? target.bricks[canonicalBrick.id - 1];
-    const fallback = brick ?? {
+    const brick = existing ?? {
       x: canonicalBrick.x, y: canonicalBrick.y, w: canonicalBrick.w, h: canonicalBrick.h,
       hp: canonicalBrick.hp, maxHp: canonicalBrick.maxHp, hue: 178 + source.wave * 9 + index * 2,
       alive: canonicalBrick.alive, kind: "normal" as const, drop: canonicalBrick.drop,

@@ -7,6 +7,8 @@ type UseGameLoopOptions = {
   runningRef: MutableRef<boolean>;
   drawGame: () => void;
   canonicalStep: (dt: number) => "complete" | "game-over" | null;
+  legacyStep?: (dt: number) => void;
+  simulationMode?: "legacy" | "canonical";
   onCanonicalOutcome?: (outcome: "complete" | "game-over") => void;
 };
 
@@ -47,17 +49,21 @@ export function advanceCanonicalAccumulator(
 }
 
 /** Owns the animation-frame clock and lifecycle for the canonical game runtime. */
-export function useGameLoop({ enabledRef, runningRef, drawGame, canonicalStep, onCanonicalOutcome }: UseGameLoopOptions) {
+export function useGameLoop({ enabledRef, runningRef, drawGame, canonicalStep, legacyStep, simulationMode = "canonical", onCanonicalOutcome }: UseGameLoopOptions) {
   const frameRef = useRef<number | null>(null);
   const lastRef = useRef(0);
   const drawRef = useRef(drawGame);
   const canonicalStepRef = useRef(canonicalStep);
   const canonicalOutcomeRef = useRef(onCanonicalOutcome);
+  const legacyStepRef = useRef(legacyStep);
+  const simulationModeRef = useRef(simulationMode);
   const canonicalAccumulatorRef = useRef(0);
   const loopRef = useRef<(time: number) => void>(() => undefined);
   useEffect(() => { drawRef.current = drawGame; }, [drawGame]);
   useEffect(() => { canonicalStepRef.current = canonicalStep; }, [canonicalStep]);
   useEffect(() => { canonicalOutcomeRef.current = onCanonicalOutcome; }, [onCanonicalOutcome]);
+  useEffect(() => { legacyStepRef.current = legacyStep; }, [legacyStep]);
+  useEffect(() => { simulationModeRef.current = simulationMode; }, [simulationMode]);
 
   const resetClock = useCallback(() => {
     lastRef.current = performance.now();
@@ -89,9 +95,14 @@ export function useGameLoop({ enabledRef, runningRef, drawGame, canonicalStep, o
       const dt = Math.max(0, Math.min(0.025, (time - lastRef.current) / 1000 || 0));
       lastRef.current = time;
       if (runningRef.current) {
-        const result = advanceCanonicalAccumulator(canonicalAccumulatorRef.current, dt, (fixedDt) => canonicalStepRef.current(fixedDt));
-        canonicalAccumulatorRef.current = result.accumulator;
-        if (result.outcome) canonicalOutcomeRef.current?.(result.outcome);
+        if (simulationModeRef.current === "legacy") {
+          canonicalAccumulatorRef.current = 0;
+          legacyStepRef.current?.(dt);
+        } else {
+          const result = advanceCanonicalAccumulator(canonicalAccumulatorRef.current, dt, (fixedDt) => canonicalStepRef.current(fixedDt));
+          canonicalAccumulatorRef.current = result.accumulator;
+          if (result.outcome) canonicalOutcomeRef.current?.(result.outcome);
+        }
       } else {
         // Pausing must not carry simulation debt into the next run.
         canonicalAccumulatorRef.current = 0;
