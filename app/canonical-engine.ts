@@ -581,6 +581,12 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
   state.elapsed += step;
   state.waveElapsed += step;
   state.rowTimer += step;
+  const nextOverdriveLevel = overdriveLevelAt(state.rowTimer);
+  if (nextOverdriveLevel > state.overdriveLevel) {
+    const ratio = overdriveMultiplier(nextOverdriveLevel) / Math.max(1, overdriveMultiplier(state.overdriveLevel));
+    for (const ball of state.balls) { ball.vx *= ratio; ball.vy *= ratio; }
+    state.overdriveLevel = nextOverdriveLevel;
+  }
   state.itemBarrierTime = Math.max(0, state.itemBarrierTime - step);
   state.shakeTime = Math.max(0, state.shakeTime - step);
   state.screenFlashTime = Math.max(0, state.screenFlashTime - step);
