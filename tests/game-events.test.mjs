@@ -25,3 +25,13 @@ test("canonical-only runtime decays transient camera feedback", () => {
   assert.match(source, /if \(game\.shakeTime <= 0\) game\.shakeStrength = 0/);
   assert.match(source, /game\.screenFlashTime = Math\.max\(0, \(game\.screenFlashTime \?\? 0\) - dt\)/);
 });
+
+test("debug replay recorder is wired to both simulation modes", () => {
+  const source = fs.readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /createReplayRecorder\(canonicalBridgeRef\.current \? "canonical" : "legacy"/);
+  assert.match(source, /replayRecorderRef\.current\?\.record/);
+  assert.match(source, /__echoReplay/);
+  const replaySource = fs.readFileSync(new URL("../app/debug-replay.ts", import.meta.url), "utf8");
+  assert.match(replaySource, /compareReplayLogs/);
+  assert.match(replaySource, /differences\.push/);
+});
