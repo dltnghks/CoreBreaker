@@ -272,7 +272,12 @@ function cloneEchoSplitBall(state: CanonicalState, source: CanonicalBall) {
 function damageBrick(state: CanonicalState, brick: CanonicalBrick, damage: number, sourceBall: CanonicalBall, directBallHit = false) {
   if (!brick.alive || brick.trait === "indestructible") return 0;
   if (directBallHit && brick.guardReady) { brick.guardReady = false; brick.trait = "standard"; return 0; }
-  const applied = Math.min(brick.hp, Math.max(0, damage));
+  // Payload parity: GLASS fractures a percentage of the remaining HP on a
+  // direct hit before the normal damage is applied. Keep the level capped so
+  // payload upgrades cannot produce an unbounded one-shot.
+  const glassLevel = directBallHit ? Math.max(0, Number(sourceBall.payloads.glass ?? 0)) : 0;
+  const fracture = glassLevel > 0 ? Math.max(0, Math.ceil(brick.hp * Math.min(0.25, glassLevel * 0.05))) : 0;
+  const applied = Math.min(brick.hp, Math.max(0, damage) + fracture);
   if (applied > 0) {
     state.totalDamage += applied;
     state.lastDamageElapsed = state.elapsed;
