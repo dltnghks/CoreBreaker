@@ -40,7 +40,7 @@ test("the game loop selects legacy or canonical simulation explicitly", async ()
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(loop, /legacyStepRef\.current\?\.\(dt\)/);
   assert.match(page, /canonicalEngineEnabled\s*=\s*false/);
-  assert.match(page, /return <GameRuntime \/>/);
+  assert.match(page, /canonicalReplay/);
   assert.match(page, /legacyStep: updateGame/);
   assert.doesNotMatch(page, /canonicalOnlyRef/);
 });
