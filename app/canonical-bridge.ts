@@ -99,6 +99,10 @@ export function createCanonicalBridge(options: {
   state.effects = (options.game?.effects ?? []).map((effect) => ({ ...effect }));
   state.particles = (options.game?.particles ?? []).map((particle) => ({ ...particle }));
   state.flashes = (options.game?.flashes ?? []).map((flash) => ({ ...flash }));
+  const launch = state.balls[0];
+  if (launch && options.game) {
+    options.game.flashes.push({ text: "LAUNCH", x: launch.x, y: launch.y - 18, life: 0.4, color: "#ffffff" });
+  }
   return state;
 }
 
