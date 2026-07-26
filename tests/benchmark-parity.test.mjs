@@ -263,6 +263,16 @@ test("skill level stops at three and evolution is recorded on the fourth pick", 
   assert.equal(engine.grantCanonicalSkill(state, "mage-fireball", "wave"), false);
 });
 
+test("canonical parity mode accepts the legacy variable frame delta", () => {
+  const state = engine.createCanonicalState({ seed: 17 });
+  const before = state.elapsed;
+  engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 200 }, 0.02, { clampToFixedStep: false });
+  assert.equal(Number((state.elapsed - before).toFixed(6)), 0.02);
+  const fixed = engine.createCanonicalState({ seed: 17 });
+  engine.stepCanonicalEngine(fixed, { move: 0, aimX: 450, aimY: 200 }, 0.02);
+  assert.equal(Number(fixed.elapsed.toFixed(6)), Number((1 / 120).toFixed(6)));
+});
+
 test("every configured ultimate is dispatched by the canonical collision path", () => {
   const ultimateIds = skills.ULTIMATE_SKILLS.map((entry) => entry.id);
   assert.equal(ultimateIds.length, 6, "the contract currently defines six ultimate skills");

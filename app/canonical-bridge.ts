@@ -4,6 +4,7 @@ import {
   stepCanonicalEngine,
   type CanonicalControls,
   type CanonicalState,
+  type CanonicalStepOptions,
 } from "./canonical-engine";
 import { syncCanonicalBallsIntoGame, syncCanonicalWorldIntoGame } from "./canonical-state-mapping";
 import type { BalanceConfig } from "./balance-config";
@@ -74,8 +75,8 @@ export function createCanonicalBridge(options: {
   return state;
 }
 
-export function stepCanonicalBridge(state: CanonicalState, game: GameState, controls: CanonicalControls, dt: number, events?: GameEventBuffer) {
-  stepCanonicalEngine(state, controls, dt);
+export function stepCanonicalBridge(state: CanonicalState, game: GameState, controls: CanonicalControls, dt: number, events?: GameEventBuffer, stepOptions?: CanonicalStepOptions) {
+  stepCanonicalEngine(state, controls, dt, stepOptions);
   if (events && state.visualEvents.length) emitCanonicalVisualEvents(events, state.visualEvents);
   // Keep the explicit projectile boundary visible for migration tooling and
   // older consumers; the world sync below applies the remaining fields.

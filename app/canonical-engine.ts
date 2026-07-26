@@ -26,6 +26,9 @@ export type CanonicalTrait = "standard" | "guard" | "explosive" | "indestructibl
 export type CanonicalItemKind = "multiball" | "auto-barrier" | "core-repair" | "cooldown-reset";
 export type CanonicalPayloadId = "pierce" | "blast" | "glass" | "link";
 export type CanonicalControls = { move: -1 | 0 | 1; aimX: number; aimY: number };
+/** Step policy is explicit so parity runs can use the legacy variable frame
+ * delta while production fixed-step runs retain their bounded 120Hz tick. */
+export type CanonicalStepOptions = { clampToFixedStep?: boolean };
 export type CanonicalBall = { x: number; y: number; vx: number; vy: number; radius: number; temporary: boolean; temporaryTime: number; missileTime: number; waveBonus: boolean; visualSkill: UpgradeId | null; visualSkillTime: number; cooldowns: Record<string, number>; skillCharges: Partial<Record<UpgradeId, number>>; attackPower: number; pierce: number; maxPierce: number; payload: CanonicalPayloadId | null; payloadLevel: number; payloads: Partial<Record<CanonicalPayloadId, number>>; respawnRecoveryTime: number; respawnRecoveryDuration: number; respawnRecoveryBaseSpeed: number };
 export type CanonicalBrick = { id: number; x: number; y: number; w: number; h: number; hp: number; maxHp: number; alive: boolean; trait: CanonicalTrait; guardReady: boolean; healTimer: number; healBlockTime: number; burnTime: number; burnTick: number; traitLockTime: number; frostVulnerability: number; drop: CanonicalItemKind | null; kind: "normal" | "boss-core" | "boss-minion" };
 export type CanonicalItem = { x: number; y: number; vy: number; kind: CanonicalItemKind; alive: boolean };
@@ -552,14 +555,16 @@ export function grantCanonicalEnhancement(state: CanonicalState, skillId: Upgrad
   return true;
 }
 
-export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalControls, dt = FIXED_STEP_SECONDS) {
+export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalControls, dt = FIXED_STEP_SECONDS, options: CanonicalStepOptions = {}) {
   if (state.complete || state.gameOver) return;
   // Keep externally visible metrics safe even if a malformed optional skill
   // result/config reaches the simulation. A NaN score would poison HUD,
   // benchmark records, and subsequent comparisons.
   if (!Number.isFinite(state.score)) state.score = 0;
   state.visualEvents = [];
-  const step = Math.max(0, Math.min(FIXED_STEP_SECONDS, dt));
+  const step = options.clampToFixedStep === false
+    ? Math.max(0, Math.min(0.025, dt))
+    : Math.max(0, Math.min(FIXED_STEP_SECONDS, dt));
   state.elapsed += step;
   state.waveElapsed += step;
   state.barrierTime = Math.max(0, state.barrierTime - step);
