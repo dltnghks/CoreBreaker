@@ -3294,6 +3294,21 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = tr
     game.screenFlashTime = Math.max(0, (game.screenFlashTime ?? 0) - dt);
     if (state.complete) return "complete";
     if (state.gameOver) return "game-over";
+    // The legacy update loop used to own transient presentation lifetimes.
+    // Canonical-only runs bypass that loop, so age and compact the projected
+    // effect buffers here as part of the runtime tick. Without this, every
+    // event materialized by drawGame remained on screen indefinitely.
+    game.particles.forEach((particle) => {
+      particle.x += particle.vx * dt;
+      particle.y += particle.vy * dt;
+      particle.vy += 150 * dt;
+      particle.life -= dt;
+    });
+    game.particles = game.particles.filter((particle) => particle.life > 0);
+    game.flashes.forEach((flash) => { flash.y -= 28 * dt; flash.life -= dt; });
+    game.flashes = game.flashes.filter((flash) => flash.life > 0).slice(-MAX_ACTIVE_FLASHES);
+    game.effects.forEach((effect) => { effect.life -= dt; });
+    game.effects = game.effects.filter((effect) => effect.life > 0);
     const move = botActiveRef.current
       ? botMoveRef.current
       : (Number(keyboardRef.current.right) - Number(keyboardRef.current.left)) as -1 | 0 | 1;
@@ -3317,16 +3332,24 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = tr
     // UI/audio adapter: simulation emits declarative events; only this
     // consumer touches GameAudio and the legacy pooled feedback state.
     const events = drainGameEvents(gameEventsRef.current);
+    const playAudio = (cue: Parameters<GameAudio["play"]>[0], volume = 1) => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      // A render frame can race the click-triggered AudioContext unlock. Make
+      // event delivery resilient to that race instead of silently dropping
+      // the cue while the context is still suspended.
+      void audio.unlock().then(() => audio.play(cue, volume));
+    };
     events.forEach((event: GameEvent) => {
       if (event.type === "skill-activated") {
         const skill = activeSkillMap[event.skillId];
-        audioRef.current?.play("skill", event.level);
+        playAudio("skill", event.level);
         setImpactFeedback(game, 4 + event.level * 0.5, skill?.color, 0.2, 0.1);
       }
-      if (event.type === "audio") audioRef.current?.play(event.cue as Parameters<GameAudio["play"]>[0], event.volume);
+      if (event.type === "audio") playAudio(event.cue as Parameters<GameAudio["play"]>[0], event.volume);
       if (event.type === "shake") setImpactFeedback(game, event.strength, undefined, event.duration);
-      if (event.type === "brick-damaged") audioRef.current?.play("brick-hit", event.damage);
-      if (event.type === "item-dropped") audioRef.current?.play("item", 0.5);
+      if (event.type === "brick-damaged") playAudio("brick-hit", event.damage);
+      if (event.type === "item-dropped") playAudio("item", 0.5);
       // Canonical visuals cross the simulation/UI boundary as declarative
       // events. Materialize them into the legacy pooled presentation state
       // consumed by the extracted canvas renderer; otherwise canonical-only
