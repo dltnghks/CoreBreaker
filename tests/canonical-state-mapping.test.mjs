@@ -9,6 +9,7 @@ const mapping = await load("/app/canonical-state-mapping.ts");
 const engine = await load("/app/canonical-engine.ts");
 const waves = await load("/app/wave-config.ts");
 const hud = await load("/app/hud-snapshot.ts");
+const snapshot = await load("/app/legacy-state-snapshot.ts");
 after(async () => { await vite.close(); });
 
 function legacyState() {
@@ -50,4 +51,14 @@ test("canonical score crossing the HUD boundary is always finite", () => {
   const snapshot = hud.hudSnapshotFromGame(game, { waveName: "TEST", overdriveMultiplier: 1, upgradeLevel: () => 0 });
   assert.equal(snapshot.score, 0);
   assert.ok(Number.isFinite(snapshot.score));
+});
+
+test("canonical baseline snapshot is deterministic for a repeated seed and input sequence", () => {
+  const make = () => engine.createCanonicalState({ seed: 2026, targetWave: 1, waves: waves.WAVE_DEFINITIONS });
+  const a = make(); const b = make();
+  for (let i = 0; i < 120; i += 1) {
+    engine.stepCanonicalEngine(a, { move: i % 20 < 10 ? 1 : -1, aimX: 450, aimY: 250 }, 1 / 120);
+    engine.stepCanonicalEngine(b, { move: i % 20 < 10 ? 1 : -1, aimX: 450, aimY: 250 }, 1 / 120);
+  }
+  assert.deepEqual(snapshot.legacyStateSnapshot(a), snapshot.legacyStateSnapshot(b));
 });
