@@ -157,3 +157,8 @@ test("canonical SkillResult normalization matches legacy effect contract", () =>
   const result = { damage: 2, control: { duration: 1, kind: "freeze" }, barrier: { charges: 1 }, pierce: 2, burn: { duration: 2, damage: 1 }, disableHealing: 3, summon: { count: 2, temporary: true } };
   assert.deepEqual(engine.normalizeCanonicalSkillResult(result), legacyPure.normalizeLegacySkillResult(result));
 });
+
+test("canonical item effect normalization matches legacy drop contract", () => {
+  const kinds = ["multiball", "auto-barrier", "core-repair", "cooldown-reset"];
+  assert.deepEqual(kinds.map((kind) => engine.normalizeCanonicalItemEffect(kind)), kinds.map((kind) => legacyPure.normalizeLegacyItemEffect(kind)));
+});
