@@ -28,10 +28,10 @@ test("legacy Home runs and canonical benchmark runs use explicit simulation gate
   assert.match(bridge, /syncCanonicalBallsIntoGame\(game, state\)/);
 });
 
-test("Home exposes an isolated canonical replay query without changing benchmark mode", async () => {
+test("Home always enables canonical simulation without changing benchmark mode", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /simulation.*canonical/);
-  assert.match(page, /canonicalEngineEnabled=\{canonicalReplay\}/);
+  assert.match(page, /return <GameRuntime canonicalEngineEnabled \/>/);
+  assert.doesNotMatch(page, /canonicalReplay/);
 });
 
 test("the game loop selects legacy or canonical simulation explicitly", async () => {
@@ -40,7 +40,7 @@ test("the game loop selects legacy or canonical simulation explicitly", async ()
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(loop, /legacyStepRef\.current\?\.\(dt\)/);
   assert.match(page, /canonicalEngineEnabled\s*=\s*false/);
-  assert.match(page, /canonicalReplay/);
+  assert.match(page, /canonicalEngineEnabled/);
   assert.match(page, /legacyStep: updateGame/);
   assert.doesNotMatch(page, /canonicalOnlyRef/);
 });

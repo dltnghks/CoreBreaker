@@ -4692,9 +4692,7 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
 }
 
 export default function Home() {
-  // Dev replay flag: keep the default Home route on legacy while allowing
-  // deterministic side-by-side legacy/canonical browser captures.
-  const canonicalReplay = typeof window !== "undefined"
-    && new URLSearchParams(window.location.search).get("simulation") === "canonical";
-  return <GameRuntime canonicalEngineEnabled={canonicalReplay} />;
+  // Canonical engine is now the sole Home simulation owner. Benchmark routes
+  // retain their independent bot/headless ruleset and are unaffected.
+  return <GameRuntime canonicalEngineEnabled />;
 }
