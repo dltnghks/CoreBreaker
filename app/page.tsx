@@ -951,9 +951,14 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
   const gameEventsRef = useRef<GameEventBuffer>({ events: [] });
   const replayRecorderRef = useRef<ReturnType<typeof createReplayRecorder> | null>(null);
   const replayFrameRef = useRef(0);
+  const [replayJson, setReplayJson] = useState("");
+  const replayPublishAtRef = useRef(0);
   const publishReplay = useCallback(() => {
     if (typeof window === "undefined" || !replayRecorderRef.current) return;
-    (window as Window & { __echoReplayJson?: string }).__echoReplayJson = replayRecorderRef.current.exportJson();
+    const now = performance.now();
+    if (now - replayPublishAtRef.current < 250) return;
+    replayPublishAtRef.current = now;
+    setReplayJson(replayRecorderRef.current.exportJson());
   }, []);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -4438,7 +4443,7 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
   };
 
   return (
-    <main className={`app-shell mode-${mode} ${benchmarkMode ? "benchmark-shell" : "gameplay-shell"}`}>
+    <main data-replay-mode={replayRecorderRef.current?.log.mode ?? "idle"} data-replay-json={replayJson} className={`app-shell mode-${mode} ${benchmarkMode ? "benchmark-shell" : "gameplay-shell"}`}>
       <header className="topbar">
         <div className="brand-block">
           <span className="brand-mark">CB</span>
