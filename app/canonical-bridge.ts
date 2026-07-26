@@ -84,11 +84,21 @@ export function createCanonicalBridge(options: {
   if (options.game?.balls[0]) {
     const source = options.game.balls[0];
     const target = state.balls[0];
-    target.x = source.x;
-    target.y = source.y;
-    target.vx = source.vx;
-    target.vy = source.vy;
+    Object.assign(target, {
+      x: source.x, y: source.y, vx: source.vx, vy: source.vy,
+      radius: source.radius, temporary: source.temporaryTime > 0 || source.waveBonus,
+      temporaryTime: source.temporaryTime, missileTime: source.missileTime,
+      waveBonus: source.waveBonus, visualSkill: source.visualSkill as any,
+      attackPower: source.attackPower, pierce: source.pierce, maxPierce: source.maxPierce,
+      payload: source.payload, payloadLevel: source.payloadLevel, payloads: { ...source.payloads },
+      cooldowns: { ...source.skillCooldowns }, skillCharges: { ...source.skillCharges },
+      respawnRecoveryTime: source.respawnRecoveryTime, respawnRecoveryDuration: source.respawnRecoveryDuration,
+      respawnRecoveryBaseSpeed: source.respawnRecoveryBaseSpeed,
+    });
   }
+  state.effects = (options.game?.effects ?? []).map((effect) => ({ ...effect }));
+  state.particles = (options.game?.particles ?? []).map((particle) => ({ ...particle }));
+  state.flashes = (options.game?.flashes ?? []).map((flash) => ({ ...flash }));
   return state;
 }
 

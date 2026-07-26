@@ -106,6 +106,22 @@ test("canonical bridge preserves active ghost paddle layout", () => {
   assert.equal(canonical.ghostPaddleUpgrades[0].length, 2);
 });
 
+test("canonical bridge preserves legacy launch ball and transient visuals exactly", () => {
+  const source = engine.createCanonicalState({ seed: 77 });
+  const game = {
+    ...source,
+    balls: [{ ...source.balls[0], x: 450, y: 516.96, vx: 0, vy: -400, missileTime: 0, visualSkill: null, waveBonus: false, temporaryTime: 0, payloads: {}, skillCooldowns: {}, skillCharges: {} }],
+    effects: [{ kind: "ring", x: 450, y: 530, x2: 450, y2: 530, size: 42, life: 0.5, maxLife: 0.5, color: "#fff", variant: 0, skillId: null }],
+    particles: [{ x: 450, y: 530, vx: 1, vy: -2, life: 0.4, color: "#fff" }],
+    flashes: [{ text: "LAUNCH", x: 450, y: 500, life: 1, color: "#fff" }],
+  };
+  const canonical = bridge.createCanonicalBridge({ seed: 77, balance: source.balance, skills: source.skills, waves: source.waves, game });
+  assert.deepEqual({ x: canonical.balls[0].x, y: canonical.balls[0].y, vx: canonical.balls[0].vx, vy: canonical.balls[0].vy }, { x: 450, y: 516.96, vx: 0, vy: -400 });
+  assert.equal(canonical.effects.length, 1);
+  assert.equal(canonical.particles.length, 1);
+  assert.equal(canonical.flashes[0].text, "LAUNCH");
+});
+
 test("legacy echo-split enchantment summons a payload-preserving canonical ball", () => {
   const state = engine.createCanonicalState({ seed: 713, targetWave: 1, legacyEnchantments: { "echo-split": 1 } });
   assert.equal(engine.grantCanonicalSkill(state, "echo-split", "start"), true);
