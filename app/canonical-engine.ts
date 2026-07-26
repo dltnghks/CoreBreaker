@@ -660,6 +660,21 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
     ball.visualSkillTime = Math.max(0, ball.visualSkillTime - step);
     if (ball.visualSkillTime <= 0) ball.visualSkill = null;
     ball.missileTime = Math.max(0, ball.missileTime - step);
+    if (ball.missileTime > 0) {
+      const target = state.bricks
+        .filter((brick) => brick.alive && brick.trait !== "indestructible")
+        .map((brick) => ({ brick, distance: Math.hypot(brick.x + brick.w / 2 - ball.x, brick.y + brick.h / 2 - ball.y) }))
+        .sort((a, b) => a.distance - b.distance)[0]?.brick;
+      if (target) {
+        const speed = Math.max(380, Math.hypot(ball.vx, ball.vy));
+        const currentAngle = Math.atan2(ball.vy, ball.vx);
+        const targetAngle = Math.atan2(target.y + target.h / 2 - ball.y, target.x + target.w / 2 - ball.x);
+        const delta = Math.atan2(Math.sin(targetAngle - currentAngle), Math.cos(targetAngle - currentAngle));
+        const turn = Math.max(-5.4 * step, Math.min(5.4 * step, delta));
+        ball.vx = Math.cos(currentAngle + turn) * speed;
+        ball.vy = Math.sin(currentAngle + turn) * speed;
+      }
+    }
     if (ball.temporary && ball.temporaryTime > 0) {
       ball.temporaryTime = Math.max(0, ball.temporaryTime - step);
       if (ball.temporaryTime <= 0) { state.balls.splice(state.balls.indexOf(ball), 1); continue; }
