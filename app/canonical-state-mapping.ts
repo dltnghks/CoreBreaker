@@ -143,6 +143,8 @@ export function syncCanonicalWorldIntoGame(target: GameState, source: CanonicalS
     brick.healBlockTime = canonicalBrick.healBlockTime;
     brick.burnTime = canonicalBrick.burnTime;
     brick.burnTick = canonicalBrick.burnTick;
+    brick.poisonTime = canonicalBrick.poisonTime;
+    brick.poisonTick = canonicalBrick.poisonTick;
     brick.frostVulnerability = canonicalBrick.frostVulnerability;
     brick.traitLockTime = canonicalBrick.traitLockTime;
     brick.drop = canonicalBrick.drop;

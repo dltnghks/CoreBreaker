@@ -31,7 +31,7 @@ export type CanonicalControls = { move: -1 | 0 | 1; aimX: number; aimY: number }
  * delta while production fixed-step runs retain their bounded 120Hz tick. */
 export type CanonicalStepOptions = { clampToFixedStep?: boolean };
 export type CanonicalBall = { x: number; y: number; vx: number; vy: number; radius: number; temporary: boolean; temporaryTime: number; missileTime: number; waveBonus: boolean; visualSkill: UpgradeId | null; visualSkillTime: number; cooldowns: Record<string, number>; skillCharges: Partial<Record<UpgradeId, number>>; attackPower: number; pierce: number; maxPierce: number; payload: CanonicalPayloadId | null; payloadLevel: number; payloads: Partial<Record<CanonicalPayloadId, number>>; respawnRecoveryTime: number; respawnRecoveryDuration: number; respawnRecoveryBaseSpeed: number };
-export type CanonicalBrick = { id: number; x: number; y: number; w: number; h: number; hp: number; maxHp: number; alive: boolean; trait: CanonicalTrait; guardReady: boolean; healTimer: number; healBlockTime: number; burnTime: number; burnTick: number; traitLockTime: number; frostVulnerability: number; drop: CanonicalItemKind | null; kind: "normal" | "boss-core" | "boss-minion" };
+export type CanonicalBrick = { id: number; x: number; y: number; w: number; h: number; hp: number; maxHp: number; alive: boolean; trait: CanonicalTrait; guardReady: boolean; healTimer: number; healBlockTime: number; burnTime: number; burnTick: number; poisonTime: number; poisonTick: number; traitLockTime: number; frostVulnerability: number; drop: CanonicalItemKind | null; kind: "normal" | "boss-core" | "boss-minion" };
 export type CanonicalItem = { x: number; y: number; vy: number; kind: CanonicalItemKind; alive: boolean };
 export type CanonicalGravityWell = { x: number; y: number; radius: number; life: number; damagePerSecond: number; damageTick: number };
 export type CanonicalParticle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
@@ -186,7 +186,7 @@ function traitFor(cell: string): CanonicalTrait {
 }
 
 function makeBrick(state: CanonicalState, x: number, y: number, w: number, h: number, hp: number, trait: CanonicalTrait, kind: CanonicalBrick["kind"], drop: CanonicalItemKind | null = null): CanonicalBrick {
-  return { id: state.nextBrickId++, x, y, w, h, hp, maxHp: hp, alive: true, trait, guardReady: trait === "guard", healTimer: 3, healBlockTime: 0, burnTime: 0, burnTick: 0, traitLockTime: 0, frostVulnerability: 0, drop: trait === "indestructible" ? null : drop, kind };
+  return { id: state.nextBrickId++, x, y, w, h, hp, maxHp: hp, alive: true, trait, guardReady: trait === "guard", healTimer: 3, healBlockTime: 0, burnTime: 0, burnTick: 0, poisonTime: 0, poisonTick: 0, traitLockTime: 0, frostVulnerability: 0, drop: trait === "indestructible" ? null : drop, kind };
 }
 
 function scheduledMultiball(wave: number) { return [2, 4, 6, 8, 11, 13, 16, 18].includes(wave); }
@@ -278,6 +278,13 @@ function damageBrick(state: CanonicalState, brick: CanonicalBrick, damage: numbe
   const glassLevel = directBallHit ? Math.max(0, Number(sourceBall.payloads.glass ?? 0)) : 0;
   const fracture = glassLevel > 0 ? Math.max(0, Math.ceil(brick.hp * Math.min(0.25, glassLevel * 0.05))) : 0;
   const applied = Math.min(brick.hp, Math.max(0, damage) + fracture);
+  if (directBallHit) {
+    const poisonLevel = Math.max(0, skillValue(state, "poison"));
+    if (poisonLevel > 0) {
+      brick.poisonTime = Math.max(brick.poisonTime, 5);
+      brick.poisonTick = Math.min(brick.poisonTick || 1, Math.max(0.25, poisonLevel));
+    }
+  }
   if (applied > 0) {
     state.totalDamage += applied;
     state.lastDamageElapsed = state.elapsed;
@@ -649,6 +656,14 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
       brick.burnTime -= step;
       brick.burnTick -= step;
       if (brick.burnTick <= 0) { brick.burnTick += 1; damageBrick(state, brick, 1, state.balls[0], false); }
+    }
+    if (brick.poisonTime > 0) {
+      brick.poisonTime = Math.max(0, brick.poisonTime - step);
+      brick.poisonTick -= step;
+      if (brick.poisonTick <= 0) {
+        brick.poisonTick += 1;
+        damageBrick(state, brick, Math.max(1, Math.round(skillValue(state, "poison"))), state.balls[0], false);
+      }
     }
   }
   for (const well of state.gravityWells) {
