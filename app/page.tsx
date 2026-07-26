@@ -951,11 +951,15 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
   const gameEventsRef = useRef<GameEventBuffer>({ events: [] });
   const replayRecorderRef = useRef<ReturnType<typeof createReplayRecorder> | null>(null);
   const replayFrameRef = useRef(0);
+  const publishReplay = useCallback(() => {
+    if (typeof window === "undefined" || !replayRecorderRef.current) return;
+    (window as Window & { __echoReplayJson?: string }).__echoReplayJson = replayRecorderRef.current.exportJson();
+  }, []);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const debugWindow = window as Window & { __echoReplay?: { export: () => ReplayLog | null } };
     debugWindow.__echoReplay = { export: () => replayRecorderRef.current?.log ?? null };
-    return () => { delete debugWindow.__echoReplay; };
+    return () => { delete debugWindow.__echoReplay; delete (debugWindow as Window & { __echoReplayJson?: string }).__echoReplayJson; };
   }, []);
   // Populated when the caller explicitly opts into canonical simulation.
   const canonicalBridgeRef = useRef<CanonicalState | null>(null);
@@ -3278,6 +3282,7 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
       aimX: pointerXRef.current,
       aimY: pointerYRef.current,
     }, game);
+    publishReplay();
     setHud(hudFromGame(game));
   }, [applyBossReward, benchmarkMode, enterPendingWave, finishRun, levelUp]);
 
@@ -3322,6 +3327,7 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
       aimY: pointerYRef.current,
     }, dt, gameEventsRef.current);
     replayRecorderRef.current?.record(replayFrameRef.current++, dt, { move, aimX: pointerXRef.current, aimY: pointerYRef.current }, game);
+    publishReplay();
     setHud(hudFromGame(game));
     if (state.complete || state.gameOver) {
       runningRef.current = false;

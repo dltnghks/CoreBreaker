@@ -10,6 +10,7 @@ export function createReplayRecorder(mode: ReplayLog["mode"], seed: number) {
     log,
     record(frame: number, dt: number, input: ReplayFrame["input"], game: GameState) {
       log.frames.push({ frame, dt, input, snapshot: legacyStateSnapshot(game) });
+      if (log.frames.length > 240) log.frames.splice(0, log.frames.length - 240);
     },
     exportJson() { return JSON.stringify(log); },
   };
