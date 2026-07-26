@@ -177,3 +177,25 @@ test("canonical wave outcomes normalize all legacy terminal phases", () => {
     assert.deepEqual(engine.normalizeCanonicalWaveOutcome(type, 3, ids), legacyPure.normalizeLegacyWaveOutcome(type, 3, ids));
   }
 });
+
+test("integrated pure phase pipeline remains field-by-field deterministic for 120 frames", () => {
+  const canonical = engine.createCanonicalState({ seed: 105, targetWave: 1, waves: waves.WAVE_DEFINITIONS });
+  const legacy = legacyState();
+  const source = canonical.balls[0]; source.x = 450; source.y = 300; source.vx = 27; source.vy = -20;
+  legacy.balls = [{ x: source.x, y: source.y, vx: source.vx, vy: source.vy, radius: source.radius, owner: "player", color: "#fff", sourcePaddleId: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, gravityBaseSpeed: null, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0, canTriggerSkills: true, skillGeneration: 0, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false, respawnRecoveryTime: 0, respawnRecoveryDuration: 0, respawnRecoveryBaseSpeed: 0 }];
+  for (let i = 0; i < 120; i += 1) {
+    const input = { move: i % 20 < 10 ? 1 : -1, aimX: 470, aimY: 250 };
+    legacyPure.stepLegacyPure(legacy, input, 1 / 120, { paddleSpeed: 460, width: 900 });
+    const previous = new Map([[legacy.balls[0], { x: legacy.balls[0].x, y: legacy.balls[0].y }]]);
+    legacyPure.advanceLegacyBallsPure(legacy, 1 / 120);
+    legacyPure.resolveLegacyBrickCollisionsPure(legacy, previous);
+    legacyPure.resolveLegacyPaddleCollisionPure(legacy, previous, input, { paddleY: 530, width: 900 });
+    canonical.elapsed += 1 / 120; canonical.rowTimer += 1 / 120;
+    canonical.paddleX = Math.max(canonical.paddleWidth / 2, Math.min(900 - canonical.paddleWidth / 2, canonical.paddleX + input.move * 460 / 120));
+    const cBall = canonical.balls[0]; const cPrevious = new Map([[cBall, { x: cBall.x, y: cBall.y }]]);
+    engine.advanceCanonicalBallsPure(canonical, 1 / 120);
+    engine.resolveCanonicalBrickCollisionsPure(canonical, cPrevious);
+    engine.resolveCanonicalPaddleCollisionPure(canonical, cPrevious, input, { paddleY: 530, width: 900 });
+  }
+  assert.deepEqual({ elapsed: Number(canonical.elapsed.toFixed(6)), rowTimer: Number(canonical.rowTimer.toFixed(6)), paddleX: Number(canonical.paddleX.toFixed(6)), ball: canonical.balls[0] && [canonical.balls[0].x, canonical.balls[0].y, canonical.balls[0].vx, canonical.balls[0].vy].map((n) => Number(n.toFixed(6))) }, { elapsed: Number(legacy.elapsed.toFixed(6)), rowTimer: Number(legacy.rowTimer.toFixed(6)), paddleX: Number(legacy.paddleX.toFixed(6)), ball: legacy.balls[0] && [legacy.balls[0].x, legacy.balls[0].y, legacy.balls[0].vx, legacy.balls[0].vy].map((n) => Number(n.toFixed(6))) });
+});
