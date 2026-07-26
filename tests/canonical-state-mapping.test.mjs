@@ -73,3 +73,16 @@ test("legacy pure temporal+paddle phase is deterministic over 120 frames", () =>
   }
   assert.deepEqual(snapshot.legacyStateSnapshot(a), snapshot.legacyStateSnapshot(b));
 });
+
+test("canonical and extracted legacy temporal+paddle phases match exactly", () => {
+  const canonical = engine.createCanonicalState({ seed: 99, targetWave: 1, waves: waves.WAVE_DEFINITIONS });
+  const legacy = legacyState();
+  for (let i = 0; i < 120; i += 1) {
+    const input = { move: i % 20 < 10 ? 1 : -1, aimX: 450, aimY: 250 };
+    legacyPure.stepLegacyPure(legacy, input, 1 / 120, { paddleSpeed: 460, width: 900 });
+    engine.stepCanonicalEngine(canonical, { move: input.move, aimX: input.aimX, aimY: input.aimY }, 1 / 120);
+  }
+  assert.equal(Number(canonical.elapsed.toFixed(6)), Number(legacy.elapsed.toFixed(6)));
+  assert.equal(Number(canonical.rowTimer.toFixed(6)), Number(legacy.rowTimer.toFixed(6)));
+  assert.equal(Number(canonical.paddleX.toFixed(6)), Number(legacy.paddleX.toFixed(6)));
+});
