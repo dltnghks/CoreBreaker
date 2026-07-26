@@ -277,7 +277,10 @@ function damageBrick(state: CanonicalState, brick: CanonicalBrick, damage: numbe
   // payload upgrades cannot produce an unbounded one-shot.
   const glassLevel = directBallHit ? Math.max(0, Number(sourceBall.payloads.glass ?? 0)) : 0;
   const fracture = glassLevel > 0 ? Math.max(0, Math.ceil(brick.hp * Math.min(0.25, glassLevel * 0.05))) : 0;
-  const applied = Math.min(brick.hp, Math.max(0, damage) + fracture);
+  // Corrosion adds a flat level-scaled hit bonus when the owning ball lands
+  // a direct collision, matching the legacy same-paddle corrosion rule.
+  const corrosion = directBallHit ? Math.max(0, skillValue(state, "corrosion")) : 0;
+  const applied = Math.min(brick.hp, Math.max(0, damage) + fracture + corrosion);
   if (directBallHit) {
     const poisonLevel = Math.max(0, skillValue(state, "poison"));
     if (poisonLevel > 0) {
@@ -322,6 +325,19 @@ function damageBrick(state: CanonicalState, brick: CanonicalBrick, damage: numbe
     const length = Math.max(1, Math.hypot(dx, dy));
     sourceBall.vx += dx / length * 110;
     sourceBall.vy += dy / length * 110;
+  }
+  const blastLevel = Math.max(0, Number(sourceBall.payloads.blast ?? 0));
+  if (blastLevel > 0) {
+    const blastX = brick.x + brick.w / 2;
+    const blastY = brick.y + brick.h / 2;
+    const range = 60 + blastLevel * 20;
+    state.visualEvents.push({ kind: "impact", skillId: "original" as UpgradeId, x: blastX, y: blastY, radius: range, duration: 0.55, color: "#ff6b87" });
+    for (const near of state.bricks) {
+      if (!near.alive || near === brick || near.trait === "indestructible") continue;
+      if (Math.hypot(near.x + near.w / 2 - blastX, near.y + near.h / 2 - blastY) <= range) {
+        damageBrick(state, near, blastLevel >= 3 ? 2 : 1, sourceBall, false);
+      }
+    }
   }
   return applied;
 }
