@@ -732,8 +732,11 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
       } else {
       ball.x = paddleContact.contactX;
       ball.y = PLAYER_PADDLE_Y - ball.radius - 0.1;
-      const speed = ball.respawnRecoveryTime > 0 ? Math.max(300, Math.hypot(ball.vx, ball.vy)) : Math.max(300, Math.hypot(BASE_BALL_VX, BASE_BALL_VY) * overdrive);
-      const aim = paddleAimDirection(state.paddleX, PLAYER_PADDLE_Y, controls.aimX, controls.aimY);
+      // Preserve legacy paddle-collision parity: a rebound keeps the incoming
+      // ball speed (subject only to the same minimum), and player aim is
+      // evaluated from the swept contact point rather than paddle center.
+      const speed = Math.max(300, Math.hypot(ball.vx, ball.vy));
+      const aim = paddleAimDirection(paddleContact.contactX, PLAYER_PADDLE_Y, controls.aimX, controls.aimY);
       ball.vx = aim.horizontalRatio * speed;
       ball.vy = aim.verticalRatio * speed;
       state.combo = 0;
