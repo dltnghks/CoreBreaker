@@ -891,3 +891,16 @@ export function canonicalSnapshot(state: CanonicalState) {
     safetyBlocks: state.safetyBlocks.map((block) => ({ ...block })), effects: state.effects.map((effect) => ({ ...effect })), particles: state.particles.map((particle) => ({ ...particle })), flashes: state.flashes.map((flash) => ({ ...flash })), ultimateAuras: { ...state.ultimateAuras }, paddleChargePulse: state.paddleChargePulse, paddleChargeColor: state.paddleChargeColor, coreBreakTime: state.coreBreakTime, coreBreakDuration: state.coreBreakDuration, coreBreakX: state.coreBreakX, coreBreakY: state.coreBreakY, ghostPaddles: [...state.ghostPaddles],
   };
 }
+
+/** Ball-only parity phase; deliberately excludes brick/paddle/game rules. */
+export function advanceCanonicalBallsPure(state: CanonicalState, dt: number, width = GAME_WIDTH, top = 0) {
+  const step = Math.max(0, Math.min(0.025, dt));
+  for (const ball of state.balls) {
+    ball.x += ball.vx * step;
+    ball.y += ball.vy * step;
+    if (ball.x - ball.radius < 0) { ball.x = ball.radius; ball.vx = Math.abs(ball.vx); normalizeBallAngle(ball); }
+    if (ball.x + ball.radius > width) { ball.x = width - ball.radius; ball.vx = -Math.abs(ball.vx); normalizeBallAngle(ball); }
+    if (ball.y - ball.radius < top) { ball.y = top + ball.radius; ball.vy = Math.abs(ball.vy); normalizeBallAngle(ball); }
+  }
+  return state;
+}

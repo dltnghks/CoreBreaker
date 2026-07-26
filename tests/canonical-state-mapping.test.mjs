@@ -94,3 +94,17 @@ test("canonical and extracted legacy temporal+paddle phases match exactly", () =
   assert.equal(Number(canonical.rowTimer.toFixed(6)), Number(legacy.rowTimer.toFixed(6)));
   assert.equal(Number(canonical.paddleX.toFixed(6)), Number(legacy.paddleX.toFixed(6)));
 });
+
+test("canonical and legacy ball wall phases match exactly for 120 frames", () => {
+  const canonical = engine.createCanonicalState({ seed: 101, targetWave: 1, waves: waves.WAVE_DEFINITIONS });
+  const legacy = legacyState();
+  const source = canonical.balls[0];
+  source.x = 450; source.y = 300; source.vx = 271; source.vy = -333;
+  legacy.balls = [{ x: source.x, y: source.y, vx: source.vx, vy: source.vy, radius: source.radius, owner: "player", color: "#fff", sourcePaddleId: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, gravityBaseSpeed: null, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0, canTriggerSkills: true, skillGeneration: 0, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false, respawnRecoveryTime: 0, respawnRecoveryDuration: 0, respawnRecoveryBaseSpeed: 0 }];
+  for (let i = 0; i < 120; i += 1) {
+    legacyPure.advanceLegacyBallsPure(legacy, 1 / 120);
+    engine.advanceCanonicalBallsPure(canonical, 1 / 120);
+  }
+  const actual = canonical.balls[0]; const expected = legacy.balls[0];
+  for (const key of ["x", "y", "vx", "vy"]) assert.equal(Number(actual[key].toFixed(6)), Number(expected[key].toFixed(6)), key);
+});
