@@ -93,6 +93,14 @@ test("canonical item effects normalize all four legacy item kinds", () => {
   ]);
 });
 
+test("wave completion and termination outcomes preserve reward ordering", () => {
+  const ids = ["common-damage", "mage-fireball", "warrior-guard"];
+  assert.deepEqual(legacyPure.normalizeLegacyWaveOutcome("wave-clear", 3, ids), { type: "wave-clear", wave: 3, rewardIds: ids });
+  assert.deepEqual(legacyPure.normalizeLegacyWaveOutcome("reward", 3, ids), { type: "reward", wave: 3, rewardIds: ids });
+  assert.deepEqual(legacyPure.normalizeLegacyWaveOutcome("complete", 20), { type: "complete", wave: 20, rewardIds: [] });
+  assert.deepEqual(legacyPure.normalizeLegacyWaveOutcome("game-over", 7), { type: "game-over", wave: 7, rewardIds: [] });
+});
+
 test("canonical and extracted legacy temporal+paddle phases match exactly", () => {
   const canonical = engine.createCanonicalState({ seed: 99, targetWave: 1, waves: waves.WAVE_DEFINITIONS });
   const legacy = legacyState();

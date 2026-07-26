@@ -97,3 +97,8 @@ export type LegacyItemEffect = { type: "multiball" | "auto-barrier" | "core-repa
 export function normalizeLegacyItemEffect(kind: LegacyItemEffect["type"], amount = 1): LegacyItemEffect {
   return { type: kind, value: amount };
 }
+
+export type LegacyWaveOutcome = { type: "wave-clear" | "reward" | "complete" | "game-over"; wave: number; rewardIds: string[] };
+export function normalizeLegacyWaveOutcome(type: LegacyWaveOutcome["type"], wave: number, rewardIds: string[] = []): LegacyWaveOutcome {
+  return { type, wave, rewardIds: [...rewardIds] };
+}
