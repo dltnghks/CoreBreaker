@@ -108,6 +108,12 @@ export function createCanonicalBridge(options: {
 
 export function stepCanonicalBridge(state: CanonicalState, game: GameState, controls: CanonicalControls, dt: number, events?: GameEventBuffer, stepOptions?: CanonicalStepOptions) {
   stepCanonicalEngine(state, controls, dt, stepOptions);
+  for (const visual of state.visualEvents) {
+    const life = Math.max(0.05, visual.duration);
+    state.effects.push({ kind: visual.kind === "ultimate" ? "skill" : "ring", x: visual.x, y: visual.y, x2: visual.x2 ?? visual.x, y2: visual.y2 ?? visual.y, size: visual.radius, life, maxLife: life, color: visual.color ?? "#c18cff", variant: visual.variant ?? 0, skillId: visual.skillId });
+    state.flashes.push({ text: visual.text ?? (visual.kind === "ultimate" ? `ULTIMATE // ${visual.skillId}` : `SKILL // ${visual.skillId}`), x: visual.x, y: visual.y - Math.max(18, visual.radius * 0.15), life, color: visual.color ?? "#c18cff" });
+    if (visual.kind === "impact") for (let index = 0; index < 4; index += 1) state.particles.push({ x: visual.x, y: visual.y, vx: 0, vy: -40 - index * 8, life: 0.25, color: visual.color ?? "#fff3d6" });
+  }
   if (events && state.visualEvents.length) emitCanonicalVisualEvents(events, state.visualEvents);
   // Keep the explicit projectile boundary visible for migration tooling and
   // older consumers; the world sync below applies the remaining fields.

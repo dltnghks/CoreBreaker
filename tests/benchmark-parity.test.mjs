@@ -34,6 +34,13 @@ test("Home always enables canonical simulation without changing benchmark mode",
   assert.doesNotMatch(page, /canonicalReplay/);
 });
 
+test("canonical visual events materialize into transient renderer state", async () => {
+  const bridgeSource = await readFile(new URL("../app/canonical-bridge.ts", import.meta.url), "utf8");
+  assert.match(bridgeSource, /state\.effects\.push/);
+  assert.match(bridgeSource, /state\.flashes\.push/);
+  assert.match(bridgeSource, /state\.particles\.push/);
+});
+
 test("the game loop selects legacy or canonical simulation explicitly", async () => {
   const loop = await readFile(new URL("../app/useGameLoop.ts", import.meta.url), "utf8");
   assert.match(loop, /canonicalStepRef\.current\(fixedDt\)/);
