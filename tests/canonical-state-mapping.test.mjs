@@ -108,3 +108,21 @@ test("canonical and legacy ball wall phases match exactly for 120 frames", () =>
   const actual = canonical.balls[0]; const expected = legacy.balls[0];
   for (const key of ["x", "y", "vx", "vy"]) assert.equal(Number(actual[key].toFixed(6)), Number(expected[key].toFixed(6)), key);
 });
+
+test("canonical and legacy brick collision phases match exact damage/reflection", () => {
+  const canonical = engine.createCanonicalState({ seed: 103, targetWave: 1, waves: waves.WAVE_DEFINITIONS });
+  canonical.bricks = [{ ...canonical.bricks[0], x: 420, y: 200, w: 60, h: 24, hp: 2, maxHp: 2, alive: true, trait: "standard", guardReady: false }];
+  canonical.balls[0].x = 450; canonical.balls[0].y = 190; canonical.balls[0].vx = 0; canonical.balls[0].vy = 100; canonical.balls[0].attackPower = 1;
+  const legacy = legacyState();
+  legacy.bricks = [{ x: 420, y: 200, w: 60, h: 24, hp: 2, maxHp: 2, hue: 180, alive: true, drop: null, kind: "normal", trait: "standard", guardReady: false, healTimer: 3, poisonTime: 0, poisonTick: 0, poisonSourcePaddleId: null, burnTime: 0, burnTick: 0, burnLevel: 0, burnSourcePaddleId: null, healBlockTime: 0, blastVulnerability: 0, blastVulnerabilitySourcePaddleId: null, frostVulnerability: 0, traitLockTime: 0, lastHitPaddleId: null }];
+  legacy.balls = [{ x: 450, y: 190, vx: 0, vy: 100, radius: canonical.balls[0].radius, owner: "player", color: "#fff", sourcePaddleId: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, gravityBaseSpeed: null, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0, canTriggerSkills: true, skillGeneration: 0, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false, respawnRecoveryTime: 0, respawnRecoveryDuration: 0, respawnRecoveryBaseSpeed: 0 }];
+  const prevC = new Map([[canonical.balls[0], { x: 450, y: 190 }]]);
+  const prevL = new Map([[legacy.balls[0], { x: 450, y: 190 }]]);
+  const legacyEvents = []; const canonicalEvents = [];
+  legacyPure.resolveLegacyBrickCollisionsPure(legacy, prevL, (event) => legacyEvents.push({ type: event.type, damage: event.damage }));
+  engine.resolveCanonicalBrickCollisionsPure(canonical, prevC, (event) => canonicalEvents.push({ type: event.type, damage: event.damage }));
+  assert.equal(canonical.bricks[0].hp, legacy.bricks[0].hp);
+  assert.equal(canonical.bricks[0].alive, legacy.bricks[0].alive);
+  assert.equal(canonical.balls[0].vy, legacy.balls[0].vy);
+  assert.deepEqual(canonicalEvents, legacyEvents);
+});

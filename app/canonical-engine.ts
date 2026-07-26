@@ -1,7 +1,7 @@
 import { DEFAULT_BALANCE_CONFIG, type BalanceConfig, type BotWaveSample } from "./balance-config";
 import { DEFAULT_SKILLS, type LegacyUpgradeId, type SkillConfig, type UpgradeId } from "./skill-config";
 import { WAVE_DEFINITIONS, waveDefinitionFrom, type WaveDefinition } from "./wave-config";
-import { sweptPaddleContact } from "./collision-physics";
+import { circleRectangleCollision, sweptPaddleContact } from "./collision-physics";
 
 export const ENGINE_VERSION = "canonical-fixed-step-v2-boss-tuning" as const;
 export const ENGINE_PARITY = "fixed-step-canonical-rules" as const;
@@ -901,6 +901,25 @@ export function advanceCanonicalBallsPure(state: CanonicalState, dt: number, wid
     if (ball.x - ball.radius < 0) { ball.x = ball.radius; ball.vx = Math.abs(ball.vx); normalizeBallAngle(ball); }
     if (ball.x + ball.radius > width) { ball.x = width - ball.radius; ball.vx = -Math.abs(ball.vx); normalizeBallAngle(ball); }
     if (ball.y - ball.radius < top) { ball.y = top + ball.radius; ball.vy = Math.abs(ball.vy); normalizeBallAngle(ball); }
+  }
+  return state;
+}
+
+/** Brick-only parity phase; excludes skill dispatch and wave progression. */
+export function resolveCanonicalBrickCollisionsPure(state: CanonicalState, previous: Map<CanonicalBall, { x: number; y: number }>, onEvent?: (event: { type: "brick-hit" | "brick-destroyed"; brick: CanonicalBrick; damage: number }) => void) {
+  for (const ball of state.balls) {
+    const prior = previous.get(ball) ?? { x: ball.x, y: ball.y };
+    for (const brick of state.bricks) {
+      if (!brick.alive || brick.trait === "indestructible") continue;
+      const collision = circleRectangleCollision(ball, brick, prior.x, prior.y);
+      if (!collision) continue;
+      const damage = Math.max(1, ball.attackPower);
+      brick.hp -= damage;
+      if (brick.hp <= 0) { brick.hp = 0; brick.alive = false; state.bricksBroken += 1; }
+      onEvent?.({ type: brick.hp <= 0 ? "brick-destroyed" : "brick-hit", brick, damage });
+      if (collision.normalX) ball.vx = collision.normalX * Math.abs(ball.vx); else ball.vy = collision.normalY * Math.abs(ball.vy);
+      break;
+    }
   }
   return state;
 }
