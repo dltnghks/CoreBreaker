@@ -30,7 +30,20 @@ export type CanonicalBall = { x: number; y: number; vx: number; vy: number; radi
 export type CanonicalBrick = { id: number; x: number; y: number; w: number; h: number; hp: number; maxHp: number; alive: boolean; trait: CanonicalTrait; guardReady: boolean; healTimer: number; healBlockTime: number; burnTime: number; burnTick: number; traitLockTime: number; frostVulnerability: number; drop: CanonicalItemKind | null; kind: "normal" | "boss-core" | "boss-minion" };
 export type CanonicalItem = { x: number; y: number; vy: number; kind: CanonicalItemKind; alive: boolean };
 export type CanonicalGravityWell = { x: number; y: number; radius: number; life: number; damagePerSecond: number; damageTick: number };
-export type CanonicalVisualEvent = { kind: "skill" | "ultimate" | "impact"; skillId: UpgradeId; x: number; y: number; radius: number; duration: number };
+export type CanonicalVisualEvent = {
+  kind: "skill" | "ultimate" | "impact";
+  skillId: UpgradeId;
+  x: number;
+  y: number;
+  radius: number;
+  duration: number;
+  /** Optional presentation metadata retained at the simulation boundary. */
+  variant?: number;
+  color?: string;
+  text?: string;
+  x2?: number;
+  y2?: number;
+};
 export type CanonicalSkillEvent = { wave: number; skillId: UpgradeId; level: number; evolved?: boolean; source: "start" | "wave" | "boss"; ballCost?: 0 | 1 | 2 };
 /**
  * Canonical effect envelope used at the legacy/canonical migration boundary.
@@ -90,6 +103,16 @@ export type CanonicalState = {
   /** Legacy enchantment counters retained during the incremental migration. */
   legacyEnchantments: Partial<Record<LegacyUpgradeId, number>>;
   echoSplitReflections: number;
+  /** Presentation state mirrored by the UI adapter in canonical-only runs. */
+  safetyBlocks: Array<{ x: number; y: number; width: number; color: string }>;
+  ultimateAuras: Partial<Record<UpgradeId, boolean>>;
+  paddleChargePulse: number;
+  paddleChargeColor: string;
+  coreBreakTime: number;
+  coreBreakDuration: number;
+  coreBreakX: number;
+  coreBreakY: number;
+  ghostPaddles: number[];
 };
 
 export function seededRandom(seed: number) {
@@ -385,12 +408,12 @@ function triggerCollisionSkills(state: CanonicalState, ball: CanonicalBall, hit:
       const next = { x: hit.x + hit.w / 2, y: hit.y + hit.h / 2, radius, life: 4, damagePerSecond: evolved(state, config.id) ? Math.max(1, 1 + skillValue(state, "common-damage") + (state.bossEnhancements[config.id] ?? 0)) : 0, damageTick: 1 };
       if (state.gravityWells[0]) Object.assign(state.gravityWells[0], next);
       else state.gravityWells.push(next);
-      state.visualEvents.push({ kind: "skill", skillId: config.id, x: next.x, y: next.y, radius, duration: next.life });
+      state.visualEvents.push({ kind: "skill", skillId: config.id, x: next.x, y: next.y, radius, duration: next.life, color: config.color });
     } else if (config.id === "warrior-earthquake") {
       const affected = targets.filter((target) => Math.hypot(target.x - hit.x, target.y - hit.y) <= radius).slice(0, count + level);
       result.damage = Math.max(1, 1 + level + skillValue(state, "common-damage"));
       damage += applySkillResult(state, result, ball, affected);
-      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: hit.x + hit.w / 2, y: hit.y + hit.h / 2, radius, duration: 0.9 });
+      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: hit.x + hit.w / 2, y: hit.y + hit.h / 2, radius, duration: 0.9, color: config.color });
     } else if (config.id === "warrior-berserker") {
       // Berserker is a permanent amplifier; each triggered dispatch also
       // emits an impact and applies its level-scaled burst to nearby bricks.
@@ -398,30 +421,30 @@ function triggerCollisionSkills(state: CanonicalState, ball: CanonicalBall, hit:
       ball.attackPower = Math.max(ball.attackPower, 4 + level + skillValue(state, "common-damage"));
       result.damage = Math.max(1, level + 2);
       damage += applySkillResult(state, result, ball, [hit]);
-      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: ball.x, y: ball.y, radius: 72 + level * 8, duration: 0.8 });
+      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: ball.x, y: ball.y, radius: 72 + level * 8, duration: 0.8, color: config.color });
     } else if (config.id === "archer-arrow-rain") {
       const affected = targets.slice(0, Math.max(1, Math.round(skillValue(state, config.id))));
       result.damage = Math.max(1, 1 + level + skillValue(state, "common-damage"));
       damage += applySkillResult(state, result, ball, affected);
-      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: GAME_WIDTH / 2, y: BRICK_ROW_Y, radius: GAME_WIDTH - 80, duration: 0.85 });
+      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: GAME_WIDTH / 2, y: BRICK_ROW_Y, radius: GAME_WIDTH - 80, duration: 0.85, color: config.color });
     } else if (config.id === "archer-infinite") {
       result.summon = { count: 3, temporary: true };
       applySkillResult(state, result, ball, []);
       for (const spawned of state.balls.slice(-3)) spawned.temporaryTime = Math.max(1, skillValue(state, config.id));
-      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: state.paddleX, y: PLAYER_PADDLE_Y - 24, radius: 88 + level * 8, duration: 0.85 });
+      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: state.paddleX, y: PLAYER_PADDLE_Y - 24, radius: 88 + level * 8, duration: 0.85, color: config.color });
     } else if (config.id === "mage-elemental-storm") {
       const affected = targets.slice(0, Math.max(1, Math.round(skillValue(state, config.id))));
       result.damage = Math.max(1, level);
       result.control = { duration: 2 + level, kind: "freeze" };
       result.burn = { duration: 4, damage: Math.max(1, level) };
       damage += applySkillResult(state, result, ball, affected);
-      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2, radius: 210, duration: 1.1 });
+      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2, radius: 210, duration: 1.1, color: config.color });
     } else if (config.id === "mage-meteor") {
       const afflicted = targets.filter((target) => target.burnTime > 0 || target.frostVulnerability > 0 || target.traitLockTime > 0);
       const affected = (afflicted.length ? afflicted : targets).slice(0, 1 + Math.floor(afflicted.length / 4));
       result.damage = Math.max(1, Math.round(skillValue(state, config.id)));
       damage += applySkillResult(state, result, ball, affected);
-      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: hit.x + hit.w / 2, y: hit.y, radius: 120 + level * 15, duration: 0.95 });
+      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: hit.x + hit.w / 2, y: hit.y, radius: 120 + level * 15, duration: 0.95, color: config.color });
     } else {
       for (const target of targets.filter((target) => Math.hypot(target.x - hit.x, target.y - hit.y) <= radius).slice(0, count)) {
         const wasAlive = target.alive;
@@ -497,7 +520,7 @@ function completeWave(state: CanonicalState) {
 export function createCanonicalState(options: { seed: number; targetWave?: number; balance?: BalanceConfig; skills?: SkillConfig[]; waves?: WaveDefinition[]; legacyEnchantments?: Partial<Record<LegacyUpgradeId, number>> }): CanonicalState {
   const state: CanonicalState = {
     seed: options.seed, random: seededRandom(options.seed), balance: { ...DEFAULT_BALANCE_CONFIG, ...options.balance }, skills: options.skills?.length ? options.skills : DEFAULT_SKILLS, waves: options.waves?.length === WAVE_DEFINITIONS.length ? options.waves : WAVE_DEFINITIONS, targetWave: options.targetWave ?? 20,
-    wave: 1, waveElapsed: 0, elapsed: 0, paddleX: GAME_WIDTH / 2, paddleWidth: BASE_PADDLE_WIDTH, balls: [], bricks: [], items: [], gravityWells: [], visualEvents: [], upgrades: [], bossEnhancements: {}, legacyEnchantments: { ...(options.legacyEnchantments ?? {}) }, echoSplitReflections: 0, skillHistory: [], skillMetrics: {}, waveMetrics: [], coreHp: 8, maxCoreHp: 8, bricksBroken: 0, combo: 0, maxCombo: 0, ballLosses: 0, maxBalls: 1, totalDamage: 0, lastDamageElapsed: 0, reflectorBlockedHits: 0, barrierTime: 0, barrierCharges: 0, bossAttackTimer: 0, bossPattern: 0, nextBrickId: 1, complete: false, gameOver: false,
+    wave: 1, waveElapsed: 0, elapsed: 0, paddleX: GAME_WIDTH / 2, paddleWidth: BASE_PADDLE_WIDTH, balls: [], bricks: [], items: [], gravityWells: [], visualEvents: [], upgrades: [], bossEnhancements: {}, legacyEnchantments: { ...(options.legacyEnchantments ?? {}) }, echoSplitReflections: 0, safetyBlocks: [], ultimateAuras: {}, paddleChargePulse: 0, paddleChargeColor: "#ffffff", coreBreakTime: 0, coreBreakDuration: 0, coreBreakX: GAME_WIDTH / 2, coreBreakY: PLAYER_PADDLE_Y + 36, ghostPaddles: [], skillHistory: [], skillMetrics: {}, waveMetrics: [], coreHp: 8, maxCoreHp: 8, ballLosses: 0, maxBalls: 1, totalDamage: 0, lastDamageElapsed: 0, reflectorBlockedHits: 0, barrierTime: 0, barrierCharges: 0, bossAttackTimer: 0, bossPattern: 0, nextBrickId: 1, complete: false, gameOver: false,
   };
   buildWave(state, 1);
   state.balls = [makeBall(state)];
@@ -645,7 +668,7 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
       if (echoThreshold > 0 && ++state.echoSplitReflections >= echoThreshold) {
         state.echoSplitReflections = 0;
         state.balls.push(cloneEchoSplitBall(state, ball));
-        state.visualEvents.push({ kind: "skill", skillId: "echo-split" as UpgradeId, x: state.paddleX, y: PLAYER_PADDLE_Y, radius: 68, duration: 0.6 });
+        state.visualEvents.push({ kind: "skill", skillId: "echo-split" as UpgradeId, x: state.paddleX, y: PLAYER_PADDLE_Y, radius: 68, duration: 0.6, color: "#fff27a" });
       }
     }
     for (const brick of state.bricks) {
@@ -688,5 +711,6 @@ export function canonicalSnapshot(state: CanonicalState) {
     balls: state.balls.map((ball) => ({ x: Number(ball.x.toFixed(4)), y: Number(ball.y.toFixed(4)), vx: Number(ball.vx.toFixed(4)), vy: Number(ball.vy.toFixed(4)), attackPower: ball.attackPower, pierce: ball.pierce, maxPierce: ball.maxPierce, payload: ball.payload, payloadLevel: ball.payloadLevel, payloads: { ...ball.payloads }, skillCharges: { ...ball.skillCharges }, cooldowns: { ...ball.cooldowns } })),
     bricks: state.bricks.filter((brick) => brick.alive).map((brick) => [brick.id, Number(brick.hp.toFixed(3)), brick.guardReady, Number(brick.traitLockTime.toFixed(3)), Number(brick.frostVulnerability.toFixed(3))]),
     upgrades: [...state.upgrades], skillHistory: state.skillHistory.map((event) => ({ ...event })), complete: state.complete, gameOver: state.gameOver, totalDamage: Number(state.totalDamage.toFixed(3)), lastDamageElapsed: Number(state.lastDamageElapsed.toFixed(3)), reflectorBlockedHits: state.reflectorBlockedHits, barrierTime: Number(state.barrierTime.toFixed(3)), barrierCharges: state.barrierCharges, echoSplitReflections: state.echoSplitReflections,
+    safetyBlocks: state.safetyBlocks.map((block) => ({ ...block })), ultimateAuras: { ...state.ultimateAuras }, paddleChargePulse: state.paddleChargePulse, paddleChargeColor: state.paddleChargeColor, coreBreakTime: state.coreBreakTime, coreBreakDuration: state.coreBreakDuration, coreBreakX: state.coreBreakX, coreBreakY: state.coreBreakY, ghostPaddles: [...state.ghostPaddles],
   };
 }

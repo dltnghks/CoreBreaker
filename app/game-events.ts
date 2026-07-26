@@ -30,9 +30,14 @@ export function emitCanonicalVisualEvents(buffer: GameEventBuffer, events: Canon
     if (event.kind === "impact") {
       emitGameEvent(buffer, {
         type: "effect", kind: "spark", x: event.x, y: event.y,
-        x2: event.x, y2: event.y, color: "#fff3d6",
+        x2: event.x2 ?? event.x, y2: event.y2 ?? event.y, color: event.color ?? "#fff3d6",
       });
-      emitGameEvent(buffer, { type: "particle", x: event.x, y: event.y, color: "#fff3d6", count: 4 });
+      emitGameEvent(buffer, { type: "particle", x: event.x, y: event.y, color: event.color ?? "#fff3d6", count: 4 });
+      // The legacy collision path also surfaced a floating damage cue and a
+      // hit sound.  Keep those presentation side effects at the canonical
+      // boundary so canonical-only runs are visually/audio equivalent.
+      emitGameEvent(buffer, { type: "flash", text: event.text ?? "충격", x: event.x, y: event.y - 8, color: event.color ?? "#fff3d6", emphasis: "damage" });
+      emitGameEvent(buffer, { type: "audio", cue: "brick-hit", volume: 0.7 });
       continue;
     }
     emitGameEvent(buffer, {
@@ -40,12 +45,19 @@ export function emitCanonicalVisualEvents(buffer: GameEventBuffer, events: Canon
       kind: event.kind === "ultimate" ? "skill" : "ring",
       x: event.x,
       y: event.y,
-      x2: event.x,
-      y2: event.y,
-      color: "#c18cff",
+      x2: event.x2 ?? event.x,
+      y2: event.y2 ?? event.y,
+      color: event.color ?? "#c18cff",
       skillId: event.skillId as ClassSkillId,
     });
     emitGameEvent(buffer, { type: "audio", cue: event.kind === "ultimate" ? "ultimate" : "skill", volume: 0.85 });
+    emitGameEvent(buffer, {
+      type: "flash",
+      text: event.text ?? (event.kind === "ultimate" ? `ULTIMATE // ${event.skillId}` : `SKILL // ${event.skillId}`),
+      x: event.x,
+      y: event.y - Math.max(18, event.radius * 0.15),
+      color: event.color ?? "#c18cff",
+    });
     if (event.kind === "ultimate") emitGameEvent(buffer, { type: "shake", strength: Math.min(12, event.radius / 24), duration: event.duration });
   }
 }
