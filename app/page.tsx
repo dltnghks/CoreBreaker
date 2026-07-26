@@ -952,9 +952,10 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
   const replayRecorderRef = useRef<ReturnType<typeof createReplayRecorder> | null>(null);
   const replayFrameRef = useRef(0);
   useEffect(() => {
-    const debug = globalThis as typeof globalThis & { __echoReplay?: { export: () => ReplayLog | null } };
-    debug.__echoReplay = { export: () => replayRecorderRef.current?.log ?? null };
-    return () => { delete debug.__echoReplay; };
+    if (typeof window === "undefined") return;
+    const debugWindow = window as Window & { __echoReplay?: { export: () => ReplayLog | null } };
+    debugWindow.__echoReplay = { export: () => replayRecorderRef.current?.log ?? null };
+    return () => { delete debugWindow.__echoReplay; };
   }, []);
   // Populated when the caller explicitly opts into canonical simulation.
   const canonicalBridgeRef = useRef<CanonicalState | null>(null);
