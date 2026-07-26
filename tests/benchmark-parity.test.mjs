@@ -99,10 +99,11 @@ test("canonical bridge preserves active ghost paddle layout", () => {
     ghostPaddles: [225, 675],
     balls: source.balls.map((ball) => ({ ...ball, owner: "player", color: "#fff", sourcePaddleId: "player" })),
   };
-  const canonical = bridge.createCanonicalBridge({ seed: 42, balance: source.balance, skills: source.skills, waves: source.waves, game });
+  const canonical = bridge.createCanonicalBridge({ seed: 42, balance: source.balance, skills: source.skills, waves: source.waves, game, ghostRecords: [{ upgrades: ["common-wide", "common-move-speed"] }, { upgrades: [] }] });
   assert.deepEqual(canonical.ghostPaddles, [225, 675]);
   assert.deepEqual(canonical.ghostPaddleActive, [true, true]);
-  assert.deepEqual(canonical.ghostPaddleWidths, [92, 92]);
+  assert.ok(canonical.ghostPaddleWidths[0] > 92);
+  assert.equal(canonical.ghostPaddleUpgrades[0].length, 2);
 });
 
 test("legacy echo-split enchantment summons a payload-preserving canonical ball", () => {

@@ -29,6 +29,7 @@ export function createCanonicalBridge(options: {
   waves: WaveDefinition[];
   targetWave?: number;
   game?: GameState;
+  ghostRecords?: Array<{ upgrades: UpgradeId[] }>;
 }) {
   const state = createCanonicalState({ ...options });
   for (const id of options.game?.upgrades ?? []) grantCanonicalSkill(state, id, "start");
@@ -42,10 +43,20 @@ export function createCanonicalBridge(options: {
     state.paddleWidth = options.game.paddleWidth;
     const ghostCount = options.game.ghostPaddles?.length ?? 0;
     state.ghostPaddles = [...(options.game.ghostPaddles ?? [])];
-    state.ghostPaddleWidths = state.ghostPaddles.map(() => 92);
-    state.ghostPaddleSpeeds = state.ghostPaddles.map(() => Math.max(125, 210 - (state.wave - 1) * 6));
+    const ghostRecords = options.ghostRecords ?? [];
+    const valueFor = (id: UpgradeId, level: number) => Number(state.skills.find((skill) => skill.id === id)?.levels[Math.max(0, level - 1)] ?? 0);
+    state.ghostPaddleWidths = state.ghostPaddles.map((_, index) => {
+      const upgrades = ghostRecords[index]?.upgrades ?? [];
+      const level = Math.min(3, upgrades.filter((id) => id === "common-wide" || id === "wide").length);
+      return Math.min(260, 92 + valueFor("common-wide", level));
+    });
+    state.ghostPaddleSpeeds = state.ghostPaddles.map((_, index) => {
+      const upgrades = ghostRecords[index]?.upgrades ?? [];
+      const level = upgrades.filter((id) => id === "common-move-speed" || id === "speed").length;
+      return Math.max(125, 210 + level * 45 - (state.wave - 1) * 6);
+    });
     state.ghostPaddleActive = state.ghostPaddles.map(() => true);
-    state.ghostPaddleUpgrades = Array.from({ length: ghostCount }, () => []);
+    state.ghostPaddleUpgrades = Array.from({ length: ghostCount }, (_, index) => [...(ghostRecords[index]?.upgrades ?? [])]);
     state.coreHp = options.game.coreHp;
     state.maxCoreHp = options.game.maxCoreHp;
     state.bricks = options.game.bricks.map((brick, index) => ({

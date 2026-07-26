@@ -4010,6 +4010,7 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
         waves: getActiveWaveDefinitions(),
         targetWave: benchmarkConfigRef.current.targetWave,
         game,
+        ghostRecords: activeGhostsRef.current.map((ghost) => ({ upgrades: [...ghost.upgrades] })),
       })
       : null;
     const openingAim = asBot ? botAimPoint(game.bricks, game.paddleX, PLAYER_PADDLE_Y) : { x: W / 2, y: H / 3 };
