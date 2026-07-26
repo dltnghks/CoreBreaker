@@ -92,3 +92,8 @@ export function normalizeLegacySkillResult(result: SkillResult): LegacySkillEffe
   if (result.summon) effects.push({ type: "summon", value: result.summon });
   return effects;
 }
+
+export type LegacyItemEffect = { type: "multiball" | "auto-barrier" | "core-repair" | "cooldown-reset"; value?: number };
+export function normalizeLegacyItemEffect(kind: LegacyItemEffect["type"], amount = 1): LegacyItemEffect {
+  return { type: kind, value: amount };
+}

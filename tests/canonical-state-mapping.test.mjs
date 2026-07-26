@@ -87,6 +87,12 @@ test("canonical skill result normalizes representative legacy effects", () => {
   assert.deepEqual(effects.map((effect) => effect.type), ["damage", "control", "barrier", "burn"]);
 });
 
+test("canonical item effects normalize all four legacy item kinds", () => {
+  assert.deepEqual(["multiball", "auto-barrier", "core-repair", "cooldown-reset"].map((kind) => legacyPure.normalizeLegacyItemEffect(kind)), [
+    { type: "multiball", value: 1 }, { type: "auto-barrier", value: 1 }, { type: "core-repair", value: 1 }, { type: "cooldown-reset", value: 1 },
+  ]);
+});
+
 test("canonical and extracted legacy temporal+paddle phases match exactly", () => {
   const canonical = engine.createCanonicalState({ seed: 99, targetWave: 1, waves: waves.WAVE_DEFINITIONS });
   const legacy = legacyState();
