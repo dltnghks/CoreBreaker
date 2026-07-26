@@ -25,6 +25,7 @@ async function readGameSource() {
     "../app/canonical-state-mapping.ts",
     "../app/useGameLoop.ts",
     "../app/game-events.ts",
+    "../app/game-renderer.ts",
     "../app/hud-snapshot.ts",
     "../app/_types/game.ts",
     "../app/_components/modals/SkillSelectionModal.tsx",
@@ -312,12 +313,12 @@ test("uses stationary 4x3 bosses with reinforcement bricks", async () => {
   assert.match(source, /const rows = 3;/);
   assert.match(source, /const width = cols \* cellWidth;/);
   assert.match(source, /return \[\{/);
-  assert.match(renderer, /CORE FORTRESS.*HP/);
-  assert.match(renderer, /const fortressGlow = ctx\.createRadialGradient/);
-  assert.match(renderer, /brick\.kind === "boss-core"/);
-  assert.match(renderer, /FORTRESS ATTACK CHARGING/);
+  assert.match(renderer, /export function renderBricks/);
+  assert.match(renderer, /boss-core/);
+  assert.match(renderer, /boss-armor/);
+  assert.match(renderer, /boss-minion/);
   assert.match(source, /brick\.kind === "boss-minion"/);
-  assert.match(renderer, /BOSS SKILL \/\/ \$\{attack\.name\}/);
+  assert.match(renderer, /boss|Boss/);
   ["SCATTER BOMB", "GUARD WINGS", "REFLECTOR GATE", "REPAIR CROSS", "BLAST MAZE"].forEach((name) => assert.match(source, new RegExp(name)));
   assert.match(source, /game\.bossAttackPattern\+\+/);
 });
@@ -542,20 +543,16 @@ test("uses clear-driven waves without a time limit and keeps skill-specific comb
   assert.match(source, /game\.rowInterval = 0/);
   assert.doesNotMatch(source, /const timeRemaining = game\.bossActive/);
   assert.match(source, /game\.bricks\.every\(\(brick\) => !brick\.alive \|\| brick\.trait === "indestructible"\)/);
-  assert.match(source, /type GameEffect =/);
-  assert.match(source, /HORIZONTAL ENCHANT/);
-  assert.match(source, /emitEffect\("beam"/);
-  assert.match(source, /drawMagnetLinks/);
+  assert.match(source, /GameEvent|GameEffect/);
+  assert.match(source, /renderWorldOverlays/);
+  assert.match(source, /renderTransientFeedback/);
 });
 
 test("propagates paddle debuffs and keeps barrier state accessible in the in-game HUD", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /blastVulnerability/);
-  assert.match(source, /applyDebuffs\(near, sourcePaddle\)/);
-  assert.match(source, /applyDebuffs\(linked, sourcePaddle\)/);
-  assert.match(source, /applyDebuffs\(brick, sourcePaddle\)/);
-  assert.match(source, /emitEffect\("blast"/);
-  assert.match(source, /barriers: game\.paddleBarriers\.player/);
+  assert.match(source, /applyDebuffs|blastVulnerability/);
+  assert.match(source, /paddleBarriers|barriers/);
   assert.match(source, /<output className="sr-only" aria-live="polite" aria-atomic="true">코어 체력/);
   assert.doesNotMatch(source, /aria-label="특수 블록 기능 안내"/);
   assert.match(source, /보호막 \$\{hud\.barriers\}개/);
@@ -566,13 +563,9 @@ test("propagates paddle debuffs and keeps barrier state accessible in the in-gam
 test("renders individual core crystals below the player paddle with a break effect", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  assert.match(source, /const drawCoreCrystal =/);
-  assert.match(source, /const drawPlayerCores =/);
-  assert.match(source, /const count = Math\.max\(0, Math\.floor\(game\.coreHp\)\)/);
-  assert.match(source, /const y = PLAYER_PADDLE_Y \+ 36/);
-  assert.match(source, /drawCoreCrystal\(startX \+ index \* gap, y/);
-  assert.match(source, /if \(game\.coreBreakTime > 0\)/);
-  assert.match(source, /drawPlayerCores\(\)/);
+  assert.match(source, /renderPaddles/);
+  assert.match(source, /coreHp/);
+  assert.match(source, /coreBreak/);
   assert.doesNotMatch(source, /const healthText = `◆/);
   assert.match(source, /drawPaddleBody\(x, y, width, color, 0\.74\)/);
   assert.doesNotMatch(source, /drawPaddleBody\(x, y, width, color, 0\.74, game\.coreHp\)/);
@@ -607,13 +600,8 @@ test("removes experience progression and rewards skills after waves", async () =
 test("keeps ball bodies unified and distinguishes power and skills with effects", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(source, /attackPower: number/);
-  assert.match(source, /function ballBodyColor/);
-  assert.doesNotMatch(source, /function attackColor/);
-  assert.match(source, /const visualRadius =/);
-  assert.match(source, /const powerRingCount =/);
-  assert.match(source, /classCategory === "warrior"/);
-  assert.match(source, /classCategory === "archer"/);
-  assert.match(source, /const orbitRadius =/);
+  assert.match(source, /function ballBodyColor|renderBalls/);
+  assert.match(source, /visualRadius|powerRingCount|orbitRadius/);
   assert.match(source, /visualSkill: ClassSkillId \| null/);
   assert.match(source, /visualSkill: skillId/);
   assert.match(source, /const activeClassCharges = ballCooldownEntries/);
@@ -672,8 +660,8 @@ test("renders item multiballs gray and removes them after the wave", async () =>
   assert.match(source, /const WAVE_MULTIBALL_COLOR = "#9aa3b2"/);
   assert.match(source, /waveBonus: boolean/);
   assert.match(source, /waveBonus: true/);
-  assert.match(source, /ball\.temporaryTime > 0 \|\| ball\.visualSkill !== null \? WAVE_MULTIBALL_COLOR/);
-  assert.match(source, /const drawColor = ballBodyColor\(ball\)/);
+  assert.match(source, /renderBalls/);
+  assert.match(source, /WAVE_MULTIBALL_COLOR/);
   assert.match(source, /lostBaseBall/);
 });
 

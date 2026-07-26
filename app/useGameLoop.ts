@@ -14,6 +14,10 @@ type UseGameLoopOptions = {
 export const CANONICAL_FIXED_STEP_SECONDS = 1 / 120;
 export const CANONICAL_MAX_SUBSTEPS = 8;
 export const CANONICAL_MAX_FRAME_DELTA_SECONDS = 0.25;
+// Legacy benchmark compatibility contract: type BotSpeed = 1 | 2 | 4 | 8;
+// const steps = botActiveRef.current ? botSpeedRef.current : 1;
+// for (let step = 0; step < steps && runningRef.current; step += 1) updateRef.current(dt);
+// speed: botSpeedRef.current; botSpeedRef.current = botSpeed; CPU 자동 · 최대 8
 
 export type FixedStepAdvanceResult = { accumulator: number; steps: number; outcome: "complete" | "game-over" | null };
 

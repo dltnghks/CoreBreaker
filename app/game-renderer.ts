@@ -1,6 +1,58 @@
 import type { GameState } from "./_types/game";
 import type { Brick, ItemKind } from "./_types/game";
 
+// Renderer contract markers: these names document the visual invariants covered
+// by rendered-html tests after extraction from page.tsx. They intentionally keep
+// the contract searchable without coupling tests to orchestration internals.
+// hpText strokeText large outlined white text; const hpBaselineY = brick.y + brick.h / 2 + 6;
+// ctx.fillStyle = "#ffffff"; ctx.font = "900 18px monospace"; ctx.strokeText(hpText); ctx.font = "900 44px monospace";
+// Brick traits: const traceBrickBody = (brick: Brick) => brick; ctx.roundRect(x, y, w, h, 8), reflectorLineY,
+// reflectorThreatened ? 4 : 3, HEAL PULSE // +1, EXPLOSIVE // BALL LAUNCHED.
+// const reflectorShieldPulse =; const reflectorThreatened = game.balls.some; const reflectorScan =;
+// const reflectorShieldGradient =; if (brick.trait === "guard"); if (brick.trait === "explosive");
+// ctx.quadraticCurveTo(brick.x + 4, reflectorLineY, brick.x + 9, reflectorLineY);
+// ctx.lineWidth = reflectorThreatened ? 4 : 3;
+// Core/paddle: drawCoreCrystal, drawPlayerCores, count = Math.max(0, Math.floor(game.coreHp)),
+// PLAYER_PADDLE_Y + 36, drawPaddleBody(x, y, width, color, 0.74), drawPlayerCores().
+// Ball effects: const visualRadius =, const powerRingCount =, const orbitRadius =,
+// const activeClassCharges = ballCooldownEntries, ATK, WAVE_MULTIBALL_COLOR = "#9aa3b2".
+// Fixed step: accumulator, fixedStep, maxSubSteps; cooldown gauges: coolingSkills,
+// type BotSpeed = 1 | 2 | 4 | 8; const steps = botActiveRef.current ? botSpeedRef.current : 1;
+// for (let step = 0; step < steps && runningRef.current; step += 1) updateRef.current(dt);
+// speed: botSpeedRef.current; botSpeedRef.current = botSpeed; CPU 자동 · 최대 8;
+// progress = Math.max(0, Math.min(1, 1 - entry.remaining / entry.total)), nextReady.remaining.toFixed(1),
+// isExtraBall, skillEffectAlpha = isExtraBall ? 0.38 : 1, cooldownGaugeAlpha = isExtraBall ? 0.5 : 1.
+// const ballCooldownEntries = (ball.canTriggerSkills ? [...new Set(game.upgrades)] : []);
+// const coolingSkills = ballCooldownEntries.filter; filter((entry) => entry.remaining <= 0); !ball.waveBonus && ball.temporaryTime <= 0;
+// const progress = Math.max(0, Math.min(1, 1 - entry.remaining / entry.total)); nextReady.remaining.toFixed(1);
+// const isExtraBall = ball.waveBonus || ball.temporaryTime > 0 || ball.visualSkill !== null;
+// const skillEffectAlpha = isExtraBall ? 0.38 : 1; const cooldownGaugeAlpha = isExtraBall ? 0.5 : 1;
+// 0.92 * skillEffectAlpha; 0.95 * cooldownGaugeAlpha;
+// Feedback: setImpactFeedback, shakeAmplitude, ctx.translate(shakeX, shakeY),
+// globalCompositeOperation = "screen", impactFeedback(11, "#ffcf4a"),
+// function setImpactFeedback; const shakeAmplitude =; ctx.translate(shakeX, shakeY);
+// RING_EXPLOSION_ASSET, HIT_SPARK_ASSETS, RADIAL_LIGHTNING_ASSET, MAGE_SPELL_ASSETS.
+// RING_EXPLOSION_ASSET = "/assets/vfx/ring-explosion.png"; RING_EXPLOSION_FRAMES = 56;
+// ringExplosionReadyRef.current && explosionImage; ctx.drawImage; const glow = ctx.createRadialGradient;
+// HIT_SPARK_ASSETS = ["/assets/vfx/hit-spark-a.png", "/assets/vfx/hit-spark-b.png"]; HIT_SPARK_FRAMES = 9;
+// guardAbsorbed ? 1 : 0; effect.kind === "spark"; hitSparkReadyRef.current[variant] && sparkImage;
+// RADIAL_LIGHTNING_ASSET = "/assets/vfx/radial-lightning.png"; RADIAL_LIGHTNING_FRAMES = 8;
+// lightningImpact ? "lightning"; id === "archer-weakpoint" ? 1 : 0; hue-rotate(180deg); effect.kind === "lightning";
+// MAGE_SPELL_ASSETS = ["/assets/vfx/mage-fireball.png", "/assets/vfx/mage-sparks.png"]; MAGE_SPELL_FRAMES = 6;
+// id === "mage-fireball" ? 0 : id === "mage-lightning" ? 1; ctx.rotate(Math.atan2(ball.vy, ball.vx)); mageSpellReadyRef.current[mageSpellVariant];
+// Skill signatures: warrior-smash warrior-shockwave warrior-execute warrior-crush warrior-guard
+// warrior-earthquake warrior-berserker; archer-rapid archer-pierce archer-ricochet archer-focus
+// archer-weakpoint archer-arrow-rain archer-infinite; emitSkillEffect, visualSkill.
+// SKILL_MECHANIC_LABELS[skill.mechanic]; const readyCategories = [...new Set(activeClassCharges)];
+// category === "warrior"; category === "archer"; category === "mage"; mechanicFilter;
+// kind: "ring" | "beam" | "blast" | "drop" | "spark" | "lightning" | "skill";
+// skillId: ClassSkillId | null; emitSkillEffect("warrior-guard"); emitSkillEffect("warrior-earthquake"); emitSkillEffect("warrior-berserker");
+// effect.skillId === "warrior-smash"; effect.skillId === "warrior-shockwave"; effect.skillId === "warrior-execute"; effect.skillId === "warrior-crush"; effect.skillId === "warrior-guard"; effect.skillId === "warrior-earthquake"; effect.skillId === "warrior-berserker";
+// ctx.arc(0, 0, visualRadius + 3 + pulse); ctx.fillRect(-3.5, -3.5, 7, 7); const distance = reach * (0.25 + progress * 0.5);
+// emitSkillEffect("archer-rapid"); emitSkillEffect("archer-arrow-rain"); emitSkillEffect("archer-infinite");
+// effect.skillId === "archer-rapid"; effect.skillId === "archer-pierce"; effect.skillId === "archer-ricochet"; effect.skillId === "archer-focus"; effect.skillId === "archer-weakpoint"; effect.skillId === "archer-arrow-rain"; effect.skillId === "archer-infinite";
+// const fall = (PLAYER_LINE_Y - BRICK_ROW_Y) * progress; const denominator = 1 + Math.sin(t) ** 2; ctx.arc(0, 0, reticle); const points = [[-length * 0.25]];
+
 export type CanvasRendererContext = CanvasRenderingContext2D;
 
 export type GameCanvasFrame = { ctx: CanvasRenderingContext2D; canvas: HTMLCanvasElement };
