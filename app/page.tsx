@@ -20,6 +20,7 @@ import { canonicalEngineEnabledForRun, createCanonicalBridge, grantCanonicalBrid
 import type { CanonicalState } from "./canonical-engine";
 import { drainGameEvents, emitGameEvent, type GameEvent, type GameEventBuffer } from "./game-events";
 import { beginGameCanvasFrame, endGameCanvasFrame, renderBalls, renderBricks, renderHud, renderPaddles, renderTransientFeedback, renderWorldOverlays } from "./game-renderer";
+import { createReplayRecorder, type ReplayLog } from "./debug-replay";
 
 import type {
   Ball,
@@ -948,6 +949,13 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
   // Frame-scoped side effects are emitted by update code and consumed by the
   // canvas/audio boundary immediately before rendering the next frame.
   const gameEventsRef = useRef<GameEventBuffer>({ events: [] });
+  const replayRecorderRef = useRef<ReturnType<typeof createReplayRecorder> | null>(null);
+  const replayFrameRef = useRef(0);
+  useEffect(() => {
+    const debug = globalThis as typeof globalThis & { __echoReplay?: { export: () => ReplayLog | null } };
+    debug.__echoReplay = { export: () => replayRecorderRef.current?.log ?? null };
+    return () => { delete debug.__echoReplay; };
+  }, []);
   // Populated when the caller explicitly opts into canonical simulation.
   const canonicalBridgeRef = useRef<CanonicalState | null>(null);
   const activeGhostsRef = useRef<GhostRecord[]>([]);
@@ -3264,6 +3272,11 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
       }
     }
 
+    replayRecorderRef.current?.record(replayFrameRef.current++, dt, {
+      move: botMoveRef.current,
+      aimX: pointerXRef.current,
+      aimY: pointerYRef.current,
+    }, game);
     setHud(hudFromGame(game));
   }, [applyBossReward, benchmarkMode, enterPendingWave, finishRun, levelUp]);
 
@@ -3307,6 +3320,7 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
       aimX: pointerXRef.current,
       aimY: pointerYRef.current,
     }, dt, gameEventsRef.current);
+    replayRecorderRef.current?.record(replayFrameRef.current++, dt, { move, aimX: pointerXRef.current, aimY: pointerYRef.current }, game);
     setHud(hudFromGame(game));
     if (state.complete || state.gameOver) {
       runningRef.current = false;
@@ -4013,6 +4027,8 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
         ghostRecords: activeGhostsRef.current.map((ghost) => ({ upgrades: [...ghost.upgrades] })),
       })
       : null;
+    replayRecorderRef.current = createReplayRecorder(canonicalBridgeRef.current ? "canonical" : "legacy", benchSeed ?? 1);
+    replayFrameRef.current = 0;
     const openingAim = asBot ? botAimPoint(game.bricks, game.paddleX, PLAYER_PADDLE_Y) : { x: W / 2, y: H / 3 };
     pointerXRef.current = openingAim.x;
     pointerYRef.current = openingAim.y;
