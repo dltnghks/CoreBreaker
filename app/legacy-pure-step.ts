@@ -1,4 +1,5 @@
 import type { GameState } from "./_types/game";
+import { advanceTemporalState, applyPaddleInput } from "./game-update-prelude";
 
 export type LegacyStepInput = { move: -1 | 0 | 1; aimX: number; aimY: number };
 export type LegacyStepAdapters = {
@@ -16,4 +17,11 @@ export type LegacyPureStep = (game: GameState, input: LegacyStepInput, dt: numbe
 
 export function createLegacyPureStep(step: (dt: number) => void): LegacyPureStep {
   return (_game, _input, dt) => step(dt);
+}
+
+/** Pure temporal + paddle phase used by parity harnesses before full rule extraction. */
+export function stepLegacyPure(game: GameState, input: LegacyStepInput, dt: number, options: { paddleSpeed: number; width: number } = { paddleSpeed: 420, width: 900 }) {
+  advanceTemporalState(game, dt);
+  applyPaddleInput(game, input.move, options.paddleSpeed, dt, options.width);
+  return game;
 }

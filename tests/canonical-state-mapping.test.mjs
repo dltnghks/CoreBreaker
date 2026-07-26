@@ -10,6 +10,7 @@ const engine = await load("/app/canonical-engine.ts");
 const waves = await load("/app/wave-config.ts");
 const hud = await load("/app/hud-snapshot.ts");
 const snapshot = await load("/app/legacy-state-snapshot.ts");
+const legacyPure = await load("/app/legacy-pure-step.ts");
 after(async () => { await vite.close(); });
 
 function legacyState() {
@@ -59,6 +60,16 @@ test("canonical baseline snapshot is deterministic for a repeated seed and input
   for (let i = 0; i < 120; i += 1) {
     engine.stepCanonicalEngine(a, { move: i % 20 < 10 ? 1 : -1, aimX: 450, aimY: 250 }, 1 / 120);
     engine.stepCanonicalEngine(b, { move: i % 20 < 10 ? 1 : -1, aimX: 450, aimY: 250 }, 1 / 120);
+  }
+  assert.deepEqual(snapshot.legacyStateSnapshot(a), snapshot.legacyStateSnapshot(b));
+});
+
+test("legacy pure temporal+paddle phase is deterministic over 120 frames", () => {
+  const a = legacyState(); const b = legacyState();
+  for (let i = 0; i < 120; i += 1) {
+    const input = { move: i % 20 < 10 ? 1 : -1, aimX: 450, aimY: 250 };
+    legacyPure.stepLegacyPure(a, input, 1 / 120);
+    legacyPure.stepLegacyPure(b, input, 1 / 120);
   }
   assert.deepEqual(snapshot.legacyStateSnapshot(a), snapshot.legacyStateSnapshot(b));
 });
