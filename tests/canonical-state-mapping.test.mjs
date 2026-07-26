@@ -74,6 +74,14 @@ test("legacy pure temporal+paddle phase is deterministic over 120 frames", () =>
   assert.deepEqual(snapshot.legacyStateSnapshot(a), snapshot.legacyStateSnapshot(b));
 });
 
+test("legacy pure ball movement is deterministic over 120 frames", () => {
+  const a = legacyState(); const b = legacyState();
+  a.balls = [{ x: 450, y: 300, vx: 240, vy: -320, radius: 8, owner: "player", payloads: {}, payload: null, payloadLevel: 0, pierce: 0, maxPierce: 0, attackPower: 1 }];
+  b.balls = JSON.parse(JSON.stringify(a.balls));
+  for (let i = 0; i < 120; i += 1) { legacyPure.advanceLegacyBallsPure(a, 1 / 120); legacyPure.advanceLegacyBallsPure(b, 1 / 120); }
+  assert.deepEqual(a.balls.map((ball) => [ball.x, ball.y, ball.vx, ball.vy]), b.balls.map((ball) => [ball.x, ball.y, ball.vx, ball.vy]));
+});
+
 test("canonical and extracted legacy temporal+paddle phases match exactly", () => {
   const canonical = engine.createCanonicalState({ seed: 99, targetWave: 1, waves: waves.WAVE_DEFINITIONS });
   const legacy = legacyState();
