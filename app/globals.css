@@ -155,3 +155,13 @@ body{background:radial-gradient(circle at 18% -15%,rgba(115,184,195,.11),transpa
 @media(max-width:700px){.benchmark-timeout-heading{align-items:flex-start;flex-direction:column}.benchmark-timeout-summary{grid-template-columns:repeat(2,1fr)}.benchmark-timeout-summary>div:nth-child(2){border-right:0}}
 .skill-loadout-tooltip{position:absolute;z-index:30;left:45px;top:-8px;width:230px;padding:12px;border:1px solid color-mix(in srgb,var(--skill-color),transparent 28%);border-radius:6px;background:rgba(5,8,18,.98);box-shadow:0 14px 32px rgba(0,0,0,.55);opacity:0;transform:translateX(-5px);pointer-events:none;transition:.16s;text-align:left}.skill-loadout-entry:hover .skill-loadout-tooltip,.skill-loadout-entry:focus .skill-loadout-tooltip{opacity:1;transform:translateX(0)}.skill-loadout-tooltip b{display:block;color:#fff;font:900 13px sans-serif}.skill-loadout-tooltip span{display:block;margin-top:5px;color:var(--skill-color);font:900 10px monospace}.skill-loadout-tooltip p{margin:8px 0 0;color:#aebbd0;font:500 11px/1.5 sans-serif;white-space:normal}.skill-enhancement-badge{position:absolute;right:-12px;top:-10px;color:#ffd166;font:900 11px monospace;text-shadow:0 0 9px #ffd166}.boss-enhancement-card{border-color:#ffd166!important;box-shadow:0 0 22px rgba(255,209,102,.16)}.boss-enhancement-value{display:inline-block;margin-top:8px;color:#ffd166;font:900 24px monospace;text-shadow:0 0 12px rgba(255,209,102,.65)}
 .skill-loadout-hud{pointer-events:auto}
+
+/* Forged Core skill art */
+.upgrade-icon{position:relative;width:72px;height:72px;margin-top:10px;overflow:visible;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;clip-path:none!important}
+.class-warrior .upgrade-icon,.class-archer .upgrade-icon,.class-mage .upgrade-icon,.class-common .upgrade-icon{border-radius:0;clip-path:none;background:transparent;box-shadow:none}
+.skill-icon-art{position:relative;z-index:1;display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 6px 8px rgba(0,0,0,.38));user-select:none}
+.skill-icon-fallback{position:absolute;inset:0;display:grid;place-items:center;color:var(--accent,var(--skill-color,#aebbd0));font:900 21px/1 "Arial Unicode MS",sans-serif}
+.skill-loadout-entry i{position:relative;overflow:visible;text-shadow:none}
+.skill-loadout-entry .skill-icon-art{filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
+.skill-loadout-entry .skill-icon-fallback{font-size:14px}
+@media(max-width:700px){.upgrade-icon{width:58px;height:58px;margin-top:6px}}

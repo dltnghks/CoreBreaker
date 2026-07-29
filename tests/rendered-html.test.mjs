@@ -256,11 +256,15 @@ test("disables ghost deployment while preserving the playtest bot", async () => 
 
 test("shows level values in separate colors and renders skill icons", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const modal = await readFile(new URL("../app/_components/modals/SkillSelectionModal.tsx", import.meta.url), "utf8");
+  const icon = await readFile(new URL("../app/_components/SkillIconArt.tsx", import.meta.url), "utf8");
   const renderer = await readFile(new URL("../app/game-renderer.ts", import.meta.url), "utf8");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(source, /className="upgrade-level-values"/);
-  assert.match(source, /SKILL_ICONS\[upgrade\.id\]/);
-  assert.match(source, /class-\$\{upgrade\.category\}/);
+  assert.match(modal, /<SkillIconArt id=\{upgrade\.id\} \/>/);
+  assert.match(icon, /assets\/ui\/skills\/forged-core/);
+  assert.match(icon, /className="skill-icon-fallback"/);
+  assert.match(modal, /class-\$\{upgrade\.category\}/);
   assert.match(css, /\.upgrade-card\.class-warrior/);
   assert.match(css, /\.class-archer \.upgrade-icon/);
   assert.match(css, /\.class-mage \.upgrade-icon/);
@@ -268,7 +272,7 @@ test("shows level values in separate colors and renders skill icons", async () =
   assert.match(css, /\.upgrade-level-values span:nth-child\(1\)\{color:#65dcff\}/);
   assert.match(css, /\.upgrade-level-values span:nth-child\(2\)\{color:#a78bfa\}/);
   assert.match(css, /\.upgrade-level-values span:nth-child\(3\)\{color:#ffcf4a\}/);
-  assert.match(source, /className="upgrade-tooltip" role="tooltip"/);
+  assert.match(modal, /className="upgrade-tooltip" role="tooltip"/);
   assert.match(css, /\.upgrade-card:hover \.upgrade-tooltip/);
 });
 
@@ -605,7 +609,7 @@ test("keeps ball bodies unified and distinguishes power and skills with effects"
   assert.match(source, /visualSkill: ClassSkillId \| null/);
   assert.match(source, /visualSkill: skillId/);
   assert.match(source, /const activeClassCharges = ballCooldownEntries/);
-  assert.match(source, /const SKILL_ICONS/);
+  assert.match(source, /<SkillIconArt id=\{id\} \/>/);
   assert.match(source, /className="skill-loadout-hud"/);
   assert.doesNotMatch(source, /drawSkillPanel\(game\.paddleX/);
   assert.doesNotMatch(source, /drawSkillPanel\(x, y, width/);

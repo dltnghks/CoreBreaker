@@ -1,14 +1,7 @@
 import type { CSSProperties } from "react";
 import type { Upgrade, UpgradeChoice } from "../../_types/game";
 import type { SkillConfig, UpgradeId } from "../../skill-config";
-
-export const SKILL_ICONS: Partial<Record<UpgradeId, string>> = {
-  "warrior-smash": "⚒", "warrior-shockwave": "◉", "warrior-execute": "✦", "warrior-crush": "◆", "warrior-guard": "⬡", "warrior-earthquake": "▰", "warrior-berserker": "♨",
-  "archer-rapid": "➶", "archer-pierce": "➵", "archer-ricochet": "⌁", "archer-focus": "◎", "archer-weakpoint": "⌾", "archer-arrow-rain": "⇊", "archer-infinite": "∞",
-  "mage-fireball": "●", "mage-lightning": "ϟ", "mage-freeze": "❄", "mage-black-hole": "◌", "mage-mana-blast": "✧", "mage-elemental-storm": "✺", "mage-meteor": "☄",
-  "common-magnet": "⌁", "common-luck": "✤", "common-wide": "↔", "common-move-speed": "»", "common-xp": "◇", "common-combo": "∞",
-  "common-ball-size": "●", "common-skill-range": "◎", "common-chain": "⌘", "common-damage": "▲", "common-cooldown": "◷",
-};
+import { SkillIconArt } from "../SkillIconArt";
 
 const SKILL_VALUE_PARTS = /([+-]?\d+(?:\.\d+)?(?:\/[+-]?\d+(?:\.\d+)?)*(?:~[+-]?\d+(?:\.\d+)?)?(?:%|px|초|개|배|DMG|HP|회|발)?)/g;
 const SKILL_VALUE_EXACT = /^[+-]?\d+(?:\.\d+)?(?:\/[+-]?\d+(?:\.\d+)?)*(?:~[+-]?\d+(?:\.\d+)?)?(?:%|px|초|개|배|DMG|HP|회|발)?$/;
@@ -70,7 +63,7 @@ export function SkillSelectionModal({
               >
                 <span className="upgrade-index">0{index + 1}</span>
                 <span className="upgrade-tag">STARTING SKILL · {upgrade.tag}</span>
-                <span className="upgrade-icon" aria-hidden="true">{SKILL_ICONS[upgrade.id]}</span>
+                <span className="upgrade-icon" aria-hidden="true"><SkillIconArt id={upgrade.id} /></span>
                 <strong>{upgrade.name}</strong>
                 <div className="upgrade-level-values">
                   <span className="next">
@@ -114,7 +107,7 @@ export function SkillSelectionModal({
             >
               <span className="upgrade-index">0{index + 1}</span>
               <span className="upgrade-tag">{upgrade.tag}</span>
-              <span className="upgrade-icon" aria-hidden="true">{SKILL_ICONS[upgrade.id]}</span>
+              <span className="upgrade-icon" aria-hidden="true"><SkillIconArt id={upgrade.id} /></span>
               <strong>{upgrade.name}</strong>
               <div className="upgrade-level-values" aria-label={`${upgrade.name} 레벨별 수치`}>
                 {config!.levels.map((value, levelIndex) => (

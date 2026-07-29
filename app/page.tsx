@@ -12,6 +12,7 @@ import { createBotPolicyState, decideBotControls, POLICY_VERSION, reflectorBankA
 import { advanceTemporalState, applyPaddleInput } from "./game-update-prelude";
 import { appHref } from "./site-path";
 import { SkillSelectionModal } from "./_components/modals/SkillSelectionModal";
+import { SkillIconArt } from "./_components/SkillIconArt";
 import { BenchmarkDashboard } from "./_components/benchmark/BenchmarkDashboard";
 import { useGameLoop } from "./useGameLoop";
 import { hudSnapshotFromGame, hudSnapshotsEqual, type HudSnapshot } from "./hud-snapshot";
@@ -256,13 +257,6 @@ const GHOST_COLORS = ["#9b8cff", "#58d5ff", "#ff78b7"];
 const PAYLOAD_COLORS: Record<PayloadId, string> = { pierce: "#9a8cff", blast: "#ff6b87", glass: "#60d7ff", link: "#72f1b8" };
 const PAYLOAD_LABELS: Record<PayloadId, string> = { pierce: "PIERCE", blast: "BOMB", glass: "GLASS", link: "LINK" };
 const PAYLOAD_IDS: PayloadId[] = ["pierce", "blast", "glass", "link"];
-const SKILL_ICONS: Partial<Record<UpgradeId, string>> = {
-  "warrior-smash": "⚒", "warrior-shockwave": "◉", "warrior-execute": "✦", "warrior-crush": "◆", "warrior-guard": "⬡", "warrior-earthquake": "▰", "warrior-berserker": "♨",
-  "archer-rapid": "➶", "archer-pierce": "➵", "archer-ricochet": "⌁", "archer-focus": "◎", "archer-weakpoint": "⌾", "archer-arrow-rain": "⇊", "archer-infinite": "∞",
-  "mage-fireball": "●", "mage-lightning": "ϟ", "mage-freeze": "❄", "mage-black-hole": "◌", "mage-mana-blast": "✧", "mage-elemental-storm": "✺", "mage-meteor": "☄",
-  "common-magnet": "⌁", "common-luck": "✤", "common-wide": "↔", "common-move-speed": "»", "common-xp": "◇", "common-combo": "∞",
-  "common-ball-size": "●", "common-skill-range": "◎", "common-chain": "⌘", "common-damage": "▲", "common-cooldown": "◷",
-};
 // Class skills no longer expose paddle-reflection progress; the rail stays empty.
 const COUNTED_SKILL_IDS: UpgradeId[] = [];
 const PADDLE_UPGRADES = new Set<UpgradeId>(DEFAULT_SKILLS.map((entry) => entry.id));
@@ -4481,7 +4475,7 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
                 const evolved = isSkillEvolved(gameRef.current?.upgrades ?? [], id);
                 const category = skill?.category ?? "common";
                 const levelState = evolved ? "진화" : level >= 3 ? "최대 강화" : level === 2 ? "강화" : "습득";
-                return <div key={id} className={`skill-loadout-entry class-${category} level-${Math.min(3, level)}${evolved ? " evolved" : ""}`} style={{ "--skill-color": category === "common" ? "#8f98a7" : skill?.color ?? "#8f98a7" } as React.CSSProperties} aria-label={`${skill?.name ?? id}, ${levelState}`} title={`${skill?.name ?? id} · LEVEL ${level}${enhancement > 0 ? ` · +${enhancement}` : ""}`}><i aria-hidden="true">{SKILL_ICONS[id] ?? "•"}</i>{evolved && <b aria-hidden="true">✦</b>}{enhancement > 0 && <strong className="skill-enhancement-badge">+{enhancement}</strong>}{mode !== "playing" && <div className="skill-loadout-tooltip" role="tooltip"><b>{skill?.name ?? id}</b><span>LEVEL {level}{enhancement > 0 ? ` · +${enhancement}` : ""}</span><p><SkillDescriptionText text={skill?.description ?? ""} /></p></div>}</div>;
+                return <div key={id} className={`skill-loadout-entry class-${category} level-${Math.min(3, level)}${evolved ? " evolved" : ""}`} style={{ "--skill-color": category === "common" ? "#8f98a7" : skill?.color ?? "#8f98a7" } as React.CSSProperties} aria-label={`${skill?.name ?? id}, ${levelState}`} title={`${skill?.name ?? id} · LEVEL ${level}${enhancement > 0 ? ` · +${enhancement}` : ""}`}><i aria-hidden="true"><SkillIconArt id={id} /></i>{evolved && <b aria-hidden="true">✦</b>}{enhancement > 0 && <strong className="skill-enhancement-badge">+{enhancement}</strong>}{mode !== "playing" && <div className="skill-loadout-tooltip" role="tooltip"><b>{skill?.name ?? id}</b><span>LEVEL {level}{enhancement > 0 ? ` · +${enhancement}` : ""}</span><p><SkillDescriptionText text={skill?.description ?? ""} /></p></div>}</div>;
               })}
             </div>
             <div className="drop-legend" aria-label="아이템 블록 표시 안내">
@@ -4524,7 +4518,7 @@ export function GameRuntime({ benchmarkMode = false, canonicalEngineEnabled = fa
                     <button key={reward.id} className={`upgrade-card class-${reward.category} boss-enhancement-card`} onClick={() => applyBossReward(reward.id)} style={{ "--accent": reward.color } as React.CSSProperties}>
                       <span className="upgrade-index">0{index + 1}</span>
                       <span className="upgrade-tag">{reward.tag}</span>
-                      <span className="upgrade-icon" aria-hidden="true">{SKILL_ICONS[reward.id]}</span>
+                      <span className="upgrade-icon" aria-hidden="true"><SkillIconArt id={reward.id} /></span>
                       <strong>{reward.name}</strong>
                       <div className="upgrade-level-values">
                         <span className="owned"><small>현재 LV{reward.currentLevel}</small><b>{formatSkillNumber(reward.currentValue)}{reward.unit}</b></span>
