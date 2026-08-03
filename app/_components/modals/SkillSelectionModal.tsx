@@ -26,7 +26,7 @@ function skillPickCount(upgrades: UpgradeId[], id: UpgradeId) {
 export type SkillSelectionModalProps = {
   mode: "initialskills" | "levelup";
   choices: UpgradeChoice[];
-  activeSkillMap: Record<UpgradeId, SkillConfig>;
+  activeSkillMap: Partial<Record<UpgradeId, SkillConfig>>;
   userUpgrades: UpgradeId[];
   rerollsLeft: number;
   onSelectInitialSkill: (upgrade: Upgrade) => void;

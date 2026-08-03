@@ -1,4 +1,4 @@
-import type { ClassSkillId, SkillCategory, SkillConfig, SkillMechanic, UpgradeId } from "../skill-config";
+import type { ClassSkillId, SkillCategory, SkillMechanic, UpgradeId } from "../skill-config";
 import type { BalanceConfig, BotWaveSample, SkillBenchConfig } from "../balance-config";
 import type { BenchmarkConfig } from "../benchmark-config";
 import type { PARALLEL_BENCHMARK_RULESET, HeadlessTerminationReason, HeadlessTimeoutDiagnostic } from "../benchmark-headless";
@@ -36,7 +36,6 @@ export type BotRunResult = BotMetrics & {
   upgrades: UpgradeId[];
   startingSkills: UpgradeId[];
   skillHistory: SkillSelectionEvent[];
-  ultimates: UpgradeId[];
   bossEnhancements?: Partial<Record<UpgradeId, number>>;
   skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>;
   createdAt: number;
@@ -185,7 +184,6 @@ export type GameState = {
   gravityWells: GravityWell[];
   paddleBarriers: Record<string, number>;
   itemBarrierTime: number;
-  ultimateAuras: Partial<Record<ClassSkillId, boolean>>;
   paddleCounters: Record<string, PaddleCounter>;
   coreHp: number;
   maxCoreHp: number;

@@ -1,5 +1,5 @@
-import type { Ball, GameState, PayloadId, Brick, DropItem, GravityWell, SkillRunMetric } from "./_types/game";
-import type { CanonicalBall, CanonicalState, CanonicalPayloadId } from "./canonical-engine";
+import type { Ball, GameState, PayloadId, DropItem, GravityWell, SkillRunMetric } from "./_types/game";
+import { PLAYER_LINE_Y, type CanonicalBall, type CanonicalState } from "./canonical-engine";
 
 /** Numeric values cross the canonical/React boundary at runtime, where a
  * malformed skill/config payload must never turn the HUD into `NaN`. */
@@ -12,7 +12,7 @@ export function finiteNumber(value: unknown, fallback = 0): number {
  * renderer. Simulation-only fields are preserved rather than reconstructed
  * from position/velocity, so attack and payload upgrades survive sync.
  */
-export function canonicalBallToLegacy(ball: CanonicalBall, overrides: Partial<Pick<Ball, "owner" | "color" | "sourcePaddleId">> = {}): Ball {
+export function projectCanonicalBall(ball: CanonicalBall, overrides: Partial<Pick<Ball, "owner" | "color" | "sourcePaddleId">> = {}): Ball {
   const payloads = { ...ball.payloads } as Partial<Record<PayloadId, number>>;
   return {
     x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy, radius: ball.radius,
@@ -20,8 +20,8 @@ export function canonicalBallToLegacy(ball: CanonicalBall, overrides: Partial<Pi
     pierce: ball.pierce, maxPierce: ball.maxPierce, blast: payloads.blast ?? 0,
     payload: (ball.payload as PayloadId | null) ?? null, payloadLevel: ball.payloadLevel, payloads,
     attackPower: ball.attackPower, missileTime: finiteNumber(ball.missileTime), missileHitCooldown: 0, gravityRescueCooldown: 0,
-    gravityBaseSpeed: null, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0,
-    canTriggerSkills: true, skillGeneration: 0, skillCharges: { ...ball.skillCharges }, skillCooldowns: { ...ball.cooldowns },
+    gravityBaseSpeed: ball.gravityBaseSpeed, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0,
+    canTriggerSkills: ball.canTriggerSkills, skillGeneration: ball.skillGeneration, skillCharges: { ...ball.skillCharges }, skillCooldowns: { ...ball.cooldowns },
     visualSkill: ball.visualSkill as Ball["visualSkill"], temporaryTime: finiteNumber(ball.temporaryTime), waveBonus: Boolean(ball.waveBonus),
     respawnRecoveryTime: ball.respawnRecoveryTime, respawnRecoveryDuration: ball.respawnRecoveryDuration,
     respawnRecoveryBaseSpeed: ball.respawnRecoveryBaseSpeed,
@@ -29,13 +29,13 @@ export function canonicalBallToLegacy(ball: CanonicalBall, overrides: Partial<Pi
 }
 
 /** Apply canonical ball fields in-place without clobbering legacy-only metadata. */
-export function syncCanonicalBallIntoLegacy(target: Ball, source: CanonicalBall) {
-  Object.assign(target, canonicalBallToLegacy(source, { owner: target.owner, color: target.color, sourcePaddleId: target.sourcePaddleId }));
+export function projectCanonicalBallIntoView(target: Ball, source: CanonicalBall) {
+  Object.assign(target, projectCanonicalBall(source, { owner: target.owner, color: target.color, sourcePaddleId: target.sourcePaddleId }));
 }
 
-/** Copy the canonical simulation into an existing legacy game state boundary. */
-export function syncCanonicalBallsIntoGame(target: GameState, source: CanonicalState) {
-  target.balls = source.balls.map((ball, index) => canonicalBallToLegacy(ball, { owner: "player", sourcePaddleId: "player", color: index === 0 ? "#ffffff" : "#9a8cff" }));
+/** Project canonical simulation fields into the mutable presentation model. */
+export function projectCanonicalBallsIntoGameView(target: GameState, source: CanonicalState) {
+  target.balls = source.balls.map((ball, index) => projectCanonicalBall(ball, { owner: "player", sourcePaddleId: "player", color: index === 0 ? "#ffffff" : "#9a8cff" }));
   target.paddleX = source.paddleX;
   target.paddleWidth = source.paddleWidth;
   target.elapsed = source.elapsed;
@@ -47,29 +47,31 @@ export function syncCanonicalBallsIntoGame(target: GameState, source: CanonicalS
 }
 
 /**
- * Synchronise the non-projectile portion of the canonical simulation into the
- * legacy renderer/state boundary.  This is deliberately an in-place update:
- * callers keep their existing GameState identity and legacy-only presentation
- * fields (hue, particles, effects, etc.) remain untouched.  The bridge is
- * opt-in, so the normal legacy run never traverses this function.
+ * Project the non-projectile portion of the canonical simulation into the
+ * presentation model. The renderer-only buffers (particles, effects, flashes)
+ * remain owned by the presentation layer and are never copied back to the
+ * canonical state.
  */
-export function syncCanonicalWorldIntoGame(target: GameState, source: CanonicalState) {
-  syncCanonicalBallsIntoGame(target, source);
+function applyCanonicalStateProjection(target: GameState, source: CanonicalState) {
+  projectCanonicalBallsIntoGameView(target, source);
+  target.upgrades = [...source.upgrades];
+  target.bossRewards = source.skillHistory.filter((event) => event.source === "boss").map((event) => event.skillId);
   target.level = source.wave;
-  target.rowTimer = source.waveElapsed;
+  target.rowTimer = source.rowTimer;
+  target.overdriveLevel = source.overdriveLevel;
   target.combo = source.combo;
   target.maxCombo = source.maxCombo;
   target.pendingWave = source.complete ? null : target.pendingWave;
   target.bossEnhancements = { ...source.bossEnhancements };
   target.paddleBarriers = { canonical: source.barrierCharges };
-  target.itemBarrierTime = source.barrierTime;
+  target.itemBarrierTime = source.itemBarrierTime;
   // Re-materialize paddle-owned presentation state that used to be updated by
   // the legacy collision loop.  Canonical simulation owns the barrier and
   // ball cooldowns, so the renderer must not be left with stale empty arrays.
-  if (source.barrierCharges > 0 || source.barrierTime > 0) {
+  if (source.barrierCharges > 0 || source.barrierTime > 0 || source.itemBarrierTime > 0) {
     target.safetyBlocks = source.safetyBlocks.length
       ? source.safetyBlocks.map((block) => ({ ownerPaddleId: "player", ...block }))
-      : [{ ownerPaddleId: "player", x: source.paddleX, y: 707, width: Math.min(150, source.paddleWidth * 0.9), color: "#55d6ff" }];
+      : [{ ownerPaddleId: "player", x: source.paddleX, y: PLAYER_LINE_Y, width: Math.min(150, source.paddleWidth * 0.9), color: "#55d6ff" }];
   } else {
     target.safetyBlocks = [];
   }
@@ -87,16 +89,6 @@ export function syncCanonicalWorldIntoGame(target: GameState, source: CanonicalS
   playerCounter.chargePulse = Math.max(0, finiteNumber(baseBall?.visualSkillTime));
   playerCounter.chargeColor = baseBall?.visualSkill ? "#c18cff" : "#ffffff";
   target.paddleCounters.player = playerCounter;
-  target.ultimateAuras = { ...(source.ultimateAuras as GameState["ultimateAuras"]) };
-  for (const ball of source.balls) {
-    if (ball.visualSkill && ["warrior-earthquake", "warrior-berserker", "archer-arrow-rain", "archer-infinite", "mage-elemental-storm", "mage-meteor"].includes(ball.visualSkill)) {
-      target.ultimateAuras[ball.visualSkill as keyof typeof target.ultimateAuras] = true;
-    }
-  }
-  target.coreBreakTime = finiteNumber(source.coreBreakTime);
-  target.coreBreakDuration = finiteNumber(source.coreBreakDuration);
-  target.coreBreakX = finiteNumber(source.coreBreakX, source.paddleX);
-  target.coreBreakY = finiteNumber(source.coreBreakY, 742);
   target.ghostPaddles = source.ghostPaddles.length ? [...source.ghostPaddles] : target.ghostPaddles;
   target.bossSkillTimer = source.bossAttackTimer;
   target.bossAttackPattern = source.bossPattern;
@@ -174,5 +166,29 @@ export function syncCanonicalWorldIntoGame(target: GameState, source: CanonicalS
   target.score = finiteNumber(source.score, finiteNumber(target.score));
 }
 
+/**
+ * Pure runtime projection. It returns a fresh view object and never writes
+ * presentation data back into CanonicalState or mutates the previous view.
+ */
+export function projectCanonicalStateIntoGameView(previous: GameState, source: CanonicalState): GameState {
+  const target: GameState = {
+    ...previous,
+    balls: previous.balls.map((ball) => ({ ...ball, payloads: { ...ball.payloads }, skillCharges: { ...ball.skillCharges }, skillCooldowns: { ...ball.skillCooldowns } })),
+    bricks: previous.bricks.map((brick) => ({ ...brick })),
+    items: previous.items.map((item) => ({ ...item })),
+    gravityWells: previous.gravityWells.map((well) => ({ ...well })),
+    safetyBlocks: previous.safetyBlocks.map((block) => ({ ...block })),
+    paddleCounters: Object.fromEntries(Object.entries(previous.paddleCounters).map(([id, counter]) => [id, { ...counter, skillCooldowns: { ...counter.skillCooldowns } }])),
+    upgrades: [...previous.upgrades],
+    bossRewards: [...previous.bossRewards],
+    bossEnhancements: { ...previous.bossEnhancements },
+    skillHistory: previous.skillHistory.map((event) => ({ ...event })),
+    skillMetrics: Object.fromEntries(Object.entries(previous.skillMetrics).map(([id, metric]) => [id, { ...metric }])) as GameState["skillMetrics"],
+  };
+  applyCanonicalStateProjection(target, source);
+  return target;
+}
+
 export type CanonicalBallField = keyof Pick<CanonicalBall, "attackPower" | "pierce" | "maxPierce" | "payload" | "payloadLevel" | "payloads" | "skillCharges" | "cooldowns">;
 export const CANONICAL_PRESERVED_BALL_FIELDS: readonly CanonicalBallField[] = ["attackPower", "pierce", "maxPierce", "payload", "payloadLevel", "payloads", "skillCharges", "cooldowns"];
+

@@ -1,4 +1,5 @@
-import type { BotRunResult, BenchmarkConfig } from "../../_types/game";
+import type { BotRunResult } from "../../_types/game";
+import type { BenchmarkConfig } from "../../benchmark-config";
 import type { SkillConfig, UpgradeId } from "../../skill-config";
 import type { HeadlessTimeoutDiagnostic } from "../../benchmark-headless";
 
@@ -22,7 +23,7 @@ export type BenchmarkDashboardProps = {
   diagnosedTimeoutResults: BotRunResult[];
   benchmarkSkillStats: Array<{ id: UpgradeId; name: string; color: string; picks: number; averageLevel: number; clearRate: number; averageWave: number; activations: number; damage: number; kills: number }>;
   benchmarkTableResults: BotRunResult[];
-  activeSkillMap: Record<UpgradeId, SkillConfig>;
+  activeSkillMap: Partial<Record<UpgradeId, SkillConfig>>;
   maxCoreHp: number;
   benchmarkRuleset: string;
 };

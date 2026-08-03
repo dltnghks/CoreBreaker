@@ -1,4 +1,4 @@
-export type GameSound = "start" | "paddle" | "brick-hit" | "brick-break" | "explosion" | "item" | "level-up" | "skill" | "skill-impact" | "critical" | "ultimate" | "boss" | "boss-clear" | "barrier" | "core-damage" | "game-over";
+export type GameSound = "start" | "paddle" | "brick-hit" | "brick-break" | "explosion" | "item" | "level-up" | "skill" | "skill-impact" | "critical" | "boss" | "boss-clear" | "barrier" | "core-damage" | "game-over";
 
 export class GameAudio {
   private context: AudioContext | null = null;
@@ -85,12 +85,6 @@ export class GameAudio {
         this.noise(0.11, 0.07 * power, 2100, "highpass");
         this.tone(72, 0.2, "sine", 0.11, 0.48);
         this.tone(920, 0.12, "square", 0.055, 1.65, 0.015);
-        break;
-      case "ultimate":
-        this.noise(0.34, 0.12 * power, 820);
-        this.tone(58, 0.48, "sine", 0.13, 0.55);
-        this.tone(220, 0.28, "sawtooth", 0.075, 1.8, 0.04);
-        this.tone(660, 0.34, "triangle", 0.07, 1.35, 0.12);
         break;
       case "boss":
         this.tone(130, 0.55, "sawtooth", 0.07, 0.62);

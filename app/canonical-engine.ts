@@ -1,15 +1,18 @@
 import { DEFAULT_BALANCE_CONFIG, type BalanceConfig, type BotWaveSample } from "./balance-config";
-import { DEFAULT_SKILLS, type LegacyUpgradeId, type SkillConfig, type UpgradeId } from "./skill-config";
+import { DEFAULT_SKILLS, SKILL_MECHANIC_LABELS, type LegacyUpgradeId, type SkillConfig, type UpgradeId } from "./skill-config";
 import { WAVE_DEFINITIONS, waveDefinitionFrom, type WaveDefinition } from "./wave-config";
 import { circleRectangleCollision, sweptPaddleContact } from "./collision-physics";
+import type { GameEvent } from "./game-events";
+import type { Upgrade, UpgradeChoice } from "./_types/game";
 
-export const ENGINE_VERSION = "canonical-fixed-step-v2-boss-tuning" as const;
-export const ENGINE_PARITY = "fixed-step-canonical-rules" as const;
-export const POLICY_VERSION = "predictive-controls-v4-primary-ball-priority" as const;
+export const ENGINE_VERSION = "canonical-command-contract-v10-complete-skill-evolutions" as const;
+export const ENGINE_PARITY = "canonical-semantic-events-projection" as const;
+export const POLICY_VERSION = "predictive-controls-v12-focused-builds" as const;
 export const FIXED_STEP_SECONDS = 1 / 120;
 export const GAME_WIDTH = 900;
 export const GAME_HEIGHT = 600;
 export const PLAYER_PADDLE_Y = GAME_HEIGHT - 70;
+export const PLAYER_LINE_Y = GAME_HEIGHT - 84;
 export const BRICK_ROW_Y = 74;
 export const BRICK_ROW_STEP = 34;
 export const BASE_BALL_VX = 240;
@@ -27,18 +30,51 @@ export type CanonicalTrait = "standard" | "guard" | "explosive" | "indestructibl
 export type CanonicalItemKind = "multiball" | "auto-barrier" | "core-repair" | "cooldown-reset";
 export type CanonicalPayloadId = "pierce" | "blast" | "glass" | "link";
 export type CanonicalControls = { move: -1 | 0 | 1; aimX: number; aimY: number };
+export type CanonicalInput = CanonicalControls;
+export type CanonicalPhase =
+  | "awaiting-start-skill"
+  | "running"
+  | "wave-cleared"
+  | "awaiting-wave-skill"
+  | "awaiting-boss-reward"
+  | "ready-for-next-wave"
+  | "complete"
+  | "game-over";
+export type CanonicalOutcome =
+  | { type: "running" }
+  | { type: "start-skill"; choices: UpgradeChoice[]; rerollsLeft: number }
+  | { type: "wave-clear"; wave: number; boss: boolean }
+  | { type: "wave-skill"; choices: UpgradeChoice[]; rerollsLeft: number }
+  | { type: "boss-reward"; choices: UpgradeId[] }
+  | { type: "ready-for-next-wave"; wave: number }
+  | { type: "complete" }
+  | { type: "game-over"; reason: "ball" | "core" };
+export type CanonicalCommand =
+  | { type: "choose-start-skill"; skillId: UpgradeId; ballCost: 0 | 1 | 2 }
+  | { type: "choose-wave-skill"; skillId: UpgradeId; ballCost: 0 | 1 | 2 }
+  | { type: "reroll-skills" }
+  | { type: "skip-wave-skill" }
+  | { type: "acknowledge-wave-clear" }
+  | { type: "choose-boss-reward"; skillId: UpgradeId }
+  | { type: "start-next-wave" };
+export type CanonicalStepResult = { outcome: CanonicalOutcome; events: GameEvent[] };
+export type CanonicalRunConfig = {
+  balance: BalanceConfig;
+  skills: SkillConfig[];
+  waves: WaveDefinition[];
+  targetWave: number;
+  startingSkills: UpgradeId[];
+};
+export type CanonicalRngState = { world: number; reward: number };
 /** Step policy is explicit so parity runs can use the legacy variable frame
  * delta while production fixed-step runs retain their bounded 120Hz tick. */
 export type CanonicalStepOptions = { clampToFixedStep?: boolean };
-export type CanonicalBall = { x: number; y: number; vx: number; vy: number; radius: number; temporary: boolean; temporaryTime: number; missileTime: number; waveBonus: boolean; visualSkill: UpgradeId | null; visualSkillTime: number; cooldowns: Record<string, number>; skillCharges: Partial<Record<UpgradeId, number>>; attackPower: number; pierce: number; maxPierce: number; payload: CanonicalPayloadId | null; payloadLevel: number; payloads: Partial<Record<CanonicalPayloadId, number>>; respawnRecoveryTime: number; respawnRecoveryDuration: number; respawnRecoveryBaseSpeed: number };
+export type CanonicalBall = { x: number; y: number; vx: number; vy: number; radius: number; temporary: boolean; temporaryTime: number; missileTime: number; waveBonus: boolean; visualSkill: UpgradeId | null; visualSkillTime: number; cooldowns: Record<string, number>; skillCharges: Partial<Record<UpgradeId, number>>; attackPower: number; pierce: number; maxPierce: number; payload: CanonicalPayloadId | null; payloadLevel: number; payloads: Partial<Record<CanonicalPayloadId, number>>; canTriggerSkills: boolean; skillGeneration: number; lastHitBrickId: number | null; gravityBaseSpeed: number | null; respawnRecoveryTime: number; respawnRecoveryDuration: number; respawnRecoveryBaseSpeed: number };
 export type CanonicalBrick = { id: number; x: number; y: number; w: number; h: number; hp: number; maxHp: number; alive: boolean; trait: CanonicalTrait; guardReady: boolean; healTimer: number; healBlockTime: number; burnTime: number; burnTick: number; poisonTime: number; poisonTick: number; traitLockTime: number; frostVulnerability: number; drop: CanonicalItemKind | null; kind: "normal" | "boss-core" | "boss-minion" };
 export type CanonicalItem = { x: number; y: number; vy: number; kind: CanonicalItemKind; alive: boolean };
 export type CanonicalGravityWell = { x: number; y: number; radius: number; life: number; damagePerSecond: number; damageTick: number };
-export type CanonicalParticle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
-export type CanonicalFlash = { text: string; x: number; y: number; life: number; color: string };
-export type CanonicalEffect = { kind: string; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string; variant: number; skillId: UpgradeId | null };
 export type CanonicalVisualEvent = {
-  kind: "skill" | "ultimate" | "impact";
+  kind: "skill" | "impact";
   skillId: UpgradeId;
   x: number;
   y: number;
@@ -85,7 +121,21 @@ export function normalizeCanonicalWaveOutcome(type: CanonicalWaveOutcome["type"]
 export type CanonicalWaveMetric = BotWaveSample & { clearTime: number; skillChoices: UpgradeId[] };
 export type CanonicalState = {
   seed: number;
-  random: () => number;
+  rng: CanonicalRngState;
+  runConfig: CanonicalRunConfig;
+  tick: number;
+  eventSequence: number;
+  phase: CanonicalPhase;
+  interactive: boolean;
+  pendingChoices: UpgradeChoice[];
+  pendingBossChoices: UpgradeId[];
+  rerollsLeft: number;
+  pendingWave: number | null;
+  clearedWave: number | null;
+  clearedBoss: boolean;
+  gameOverReason: "ball" | "core" | null;
+  /** Cleared after every step/command; excluded from snapshots and persistence. */
+  stepEvents: GameEvent[];
   balance: BalanceConfig;
   skills: SkillConfig[];
   waves: WaveDefinition[];
@@ -96,20 +146,15 @@ export type CanonicalState = {
   rowTimer: number;
   itemBarrierTime: number;
   overdriveLevel: number;
-  shakeStrength: number;
-  shakeTime: number;
-  screenFlashTime: number;
   elapsed: number;
   paddleX: number;
   paddleWidth: number;
+  lastMove: -1 | 0 | 1;
+  moveBoostTime: number;
   balls: CanonicalBall[];
   bricks: CanonicalBrick[];
   items: CanonicalItem[];
   gravityWells: CanonicalGravityWell[];
-  visualEvents: CanonicalVisualEvent[];
-  particles: CanonicalParticle[];
-  flashes: CanonicalFlash[];
-  effects: CanonicalEffect[];
   upgrades: UpgradeId[];
   bossEnhancements: Partial<Record<UpgradeId, number>>;
   skillHistory: CanonicalSkillEvent[];
@@ -137,15 +182,8 @@ export type CanonicalState = {
   /** Legacy enchantment counters retained during the incremental migration. */
   legacyEnchantments: Partial<Record<LegacyUpgradeId, number>>;
   echoSplitReflections: number;
-  /** Presentation state mirrored by the UI adapter in canonical-only runs. */
+  /** Gameplay barrier geometry used for collision and projected for rendering. */
   safetyBlocks: Array<{ x: number; y: number; width: number; color: string }>;
-  ultimateAuras: Partial<Record<UpgradeId, boolean>>;
-  paddleChargePulse: number;
-  paddleChargeColor: string;
-  coreBreakTime: number;
-  coreBreakDuration: number;
-  coreBreakX: number;
-  coreBreakY: number;
   ghostPaddles: number[];
   ghostPaddleWidths?: number[];
   ghostPaddleSpeeds?: number[];
@@ -156,11 +194,126 @@ export type CanonicalState = {
 export function seededRandom(seed: number) {
   let state = seed >>> 0 || 1;
   return () => {
-    state = (state + 0x6d2b79f5) | 0;
+    state = nextRandomState(state);
+    return randomValue(state);
+  };
+}
+
+function nextRandomState(state: number) {
+  return (state + 0x6d2b79f5) | 0;
+}
+
+function randomValue(state: number) {
     let value = Math.imul(state ^ state >>> 15, 1 | state);
     value = value + Math.imul(value ^ value >>> 7, 61 | value) ^ value;
     return ((value ^ value >>> 14) >>> 0) / 4294967296;
+}
+
+function canonicalRandom(state: CanonicalState, stream: keyof CanonicalRngState) {
+  const next = nextRandomState(state.rng[stream]);
+  state.rng[stream] = next;
+  return randomValue(next);
+}
+
+function emitCanonicalEvent(state: CanonicalState, event: GameEvent) {
+  state.stepEvents.push({ ...event, tick: state.tick, sequence: state.eventSequence++ } as GameEvent);
+}
+
+function emitCanonicalVisual(state: CanonicalState, visual: CanonicalVisualEvent) {
+  if (visual.kind === "impact") {
+    emitCanonicalEvent(state, {
+      type: "combat-impact",
+      source: visual.skillId,
+      x: visual.x,
+      y: visual.y,
+      radius: visual.radius,
+      duration: visual.duration,
+      variant: visual.variant,
+      color: visual.color,
+      text: visual.text,
+    });
+    return;
+  }
+  emitCanonicalEvent(state, {
+    type: "skill-activated",
+    skillId: visual.skillId,
+    level: levelOf(state, visual.skillId),
+    activation: visual.kind,
+    x: visual.x,
+    y: visual.y,
+    radius: visual.radius,
+    duration: visual.duration,
+    variant: visual.variant,
+    x2: visual.x2,
+    y2: visual.y2,
+    color: visual.color,
+    text: visual.text,
+  });
+}
+
+function canonicalBrickPresentationColor(state: CanonicalState, brick: CanonicalBrick) {
+  if (brick.kind === "boss-core") return "#ff6b87";
+  if (brick.kind === "boss-minion") return "#ff8a3d";
+  if (brick.trait === "guard") return "#fff27a";
+  if (brick.trait === "explosive") return "#ff8a3d";
+  if (brick.trait === "indestructible") return "#aeb8ca";
+  if (brick.trait === "healer") return "#72f1b8";
+  if (brick.trait === "reflector") return "#65dcff";
+  const column = Math.max(0, state.bricks.indexOf(brick)) % 12;
+  return `hsl(${185 + state.wave * 9 + column * 2} 95% 68%)`;
+}
+
+function upgradeFromSkill(config: SkillConfig): Upgrade {
+  const classTag = config.category.toUpperCase();
+  return {
+    id: config.id,
+    name: config.name,
+    category: config.category,
+    mechanic: config.mechanic,
+    tag: `${classTag} · ${SKILL_MECHANIC_LABELS[config.mechanic]}`,
+    description: config.description,
+    color: config.color,
   };
+}
+
+function availableSkillConfigs(state: CanonicalState) {
+  return state.skills.filter((config) => {
+    const maximum = config.evolution ? 4 : 3;
+    return state.upgrades.filter((id) => id === config.id).length < maximum;
+  });
+}
+
+function createCanonicalChoices(state: CanonicalState, excluded: UpgradeId[] = []): UpgradeChoice[] {
+  const candidates = availableSkillConfigs(state).filter((config) => !excluded.includes(config.id));
+  for (let index = candidates.length - 1; index > 0; index -= 1) {
+    const target = Math.floor(canonicalRandom(state, "reward") * (index + 1));
+    [candidates[index], candidates[target]] = [candidates[target], candidates[index]];
+  }
+  return candidates.slice(0, 3).map((config) => ({ upgrade: upgradeFromSkill(config), ballCost: 0 }));
+}
+
+function createBossChoices(state: CanonicalState) {
+  const candidates = [...new Set(state.upgrades)].filter((id) => state.skills.some((config) => config.id === id));
+  for (let index = candidates.length - 1; index > 0; index -= 1) {
+    const target = Math.floor(canonicalRandom(state, "reward") * (index + 1));
+    [candidates[index], candidates[target]] = [candidates[target], candidates[index]];
+  }
+  return candidates.slice(0, 3);
+}
+
+function outcomeFromState(state: CanonicalState): CanonicalOutcome {
+  if (state.phase === "awaiting-start-skill") return { type: "start-skill", choices: state.pendingChoices, rerollsLeft: state.rerollsLeft };
+  if (state.phase === "wave-cleared") return { type: "wave-clear", wave: state.clearedWave ?? state.wave, boss: state.clearedBoss };
+  if (state.phase === "awaiting-wave-skill") return { type: "wave-skill", choices: state.pendingChoices, rerollsLeft: state.rerollsLeft };
+  if (state.phase === "awaiting-boss-reward") return { type: "boss-reward", choices: state.pendingBossChoices };
+  if (state.phase === "ready-for-next-wave") return { type: "ready-for-next-wave", wave: state.pendingWave ?? Math.min(state.targetWave, state.wave + 1) };
+  if (state.phase === "complete") return { type: "complete" };
+  if (state.phase === "game-over") return { type: "game-over", reason: state.gameOverReason ?? "core" };
+  return { type: "running" };
+}
+
+function stepResult(state: CanonicalState): CanonicalStepResult {
+  return { outcome: outcomeFromState(state), events: state.stepEvents.splice(0) };
 }
 
 export function paddleAimDirection(fromX: number, fromY: number, targetX: number, targetY: number) {
@@ -227,20 +380,22 @@ function buildWave(state: CanonicalState, wave: number) {
   const baseHp = 1 + Math.floor((wave - 1) / Math.max(1, Math.round(state.balance.baseHpWaveStep)));
   const occupied = definition.pattern.flatMap((row, rowIndex) => [...row].map((cell, col) => ({ cell, rowIndex, col }))).filter((cell) => cell.cell !== ".");
   const dropCandidates = occupied.filter(({ cell }) => cell !== "x");
-  const dropCell = scheduledMultiball(wave) && dropCandidates.length ? dropCandidates[Math.floor(state.random() * dropCandidates.length)] : null;
+  const dropCell = scheduledMultiball(wave) && dropCandidates.length ? dropCandidates[Math.floor(canonicalRandom(state, "world") * dropCandidates.length)] : null;
   state.bricks = occupied.map(({ cell, rowIndex, col }) => {
     const bonus = cell === "h" ? 1 + Math.floor((wave - 1) / 8) : cell === "c" ? 2 : 0;
     const hp = Math.ceil((baseHp + bonus) * lateWaveHpMultiplier(wave) * definition.hpMultiplier);
-    const drop = dropCell?.rowIndex === rowIndex && dropCell.col === col ? "multiball" : state.random() < 0.055 ? (["auto-barrier", "core-repair", "cooldown-reset"] as CanonicalItemKind[])[Math.floor(state.random() * 3)] : null;
+    const drop = dropCell?.rowIndex === rowIndex && dropCell.col === col ? "multiball" : canonicalRandom(state, "world") < 0.055 ? (["auto-barrier", "core-repair", "cooldown-reset"] as CanonicalItemKind[])[Math.floor(canonicalRandom(state, "world") * 3)] : null;
     return makeBrick(state, margin + col * (width + gap), BRICK_ROW_Y + rowIndex * BRICK_ROW_STEP, width, 24, hp, traitFor(cell), "normal", drop);
   });
 }
 
 function makeBall(state: CanonicalState, x = GAME_WIDTH / 2, temporary = false, recovering = false, temporaryTime = 0): CanonicalBall {
   const baseSpeed = Math.hypot(BASE_BALL_VX, BASE_BALL_VY);
-  const speed = baseSpeed * (recovering ? 1 : overdriveMultiplier(overdriveLevelAt(state.waveElapsed)));
+  // Overdrive is run-global, just like the legacy row timer. New balls must
+  // inherit speed earned in earlier waves instead of using wave-local time.
+  const speed = baseSpeed * (recovering ? 1 : overdriveMultiplier(state.overdriveLevel));
   const aim = paddleAimDirection(x, PLAYER_PADDLE_Y, GAME_WIDTH / 2, GAME_HEIGHT / 3);
-  return { x, y: PLAYER_PADDLE_Y - 11, vx: aim.horizontalRatio * speed, vy: aim.verticalRatio * speed, radius: 8 + skillValue(state, "common-ball-size"), temporary, temporaryTime, missileTime: 0, waveBonus: temporary, visualSkill: null, visualSkillTime: 0, cooldowns: {}, skillCharges: {}, attackPower: Math.max(1, 1 + skillValue(state, "common-damage")), pierce: 0, maxPierce: 0, payload: null, payloadLevel: 0, payloads: {}, respawnRecoveryTime: recovering ? RESPAWN_SPEED_RECOVERY_SECONDS : 0, respawnRecoveryDuration: recovering ? RESPAWN_SPEED_RECOVERY_SECONDS : 0, respawnRecoveryBaseSpeed: recovering ? baseSpeed : 0 };
+  return { x, y: PLAYER_PADDLE_Y - 11, vx: aim.horizontalRatio * speed, vy: aim.verticalRatio * speed, radius: 8 + skillValue(state, "common-ball-size"), temporary, temporaryTime, missileTime: 0, waveBonus: temporary, visualSkill: null, visualSkillTime: 0, cooldowns: {}, skillCharges: {}, attackPower: Math.max(1, 1 + skillValue(state, "common-damage")), pierce: 0, maxPierce: 0, payload: null, payloadLevel: 0, payloads: {}, canTriggerSkills: !temporary, skillGeneration: 0, lastHitBrickId: null, gravityBaseSpeed: null, respawnRecoveryTime: recovering ? RESPAWN_SPEED_RECOVERY_SECONDS : 0, respawnRecoveryDuration: recovering ? RESPAWN_SPEED_RECOVERY_SECONDS : 0, respawnRecoveryBaseSpeed: recovering ? baseSpeed : 0 };
 }
 /** Common passive values are resolved by the canonical simulation so the
  * benchmark/watch bridge observes the same modifiers as normal gameplay. */
@@ -286,56 +441,73 @@ function cloneEchoSplitBall(state: CanonicalState, source: CanonicalBall) {
   return split;
 }
 
-function damageBrick(state: CanonicalState, brick: CanonicalBrick, damage: number, sourceBall: CanonicalBall, directBallHit = false) {
-  if (!brick.alive || brick.trait === "indestructible") return 0;
-  if (directBallHit && brick.guardReady) { brick.guardReady = false; brick.trait = "standard"; return 0; }
-  // Payload parity: GLASS fractures a percentage of the remaining HP on a
-  // direct hit before the normal damage is applied. Keep the level capped so
-  // payload upgrades cannot produce an unbounded one-shot.
-  const glassLevel = directBallHit ? Math.max(0, Number(sourceBall.payloads.glass ?? 0)) : 0;
-  const fracture = glassLevel > 0 ? Math.max(0, Math.ceil(brick.hp * Math.min(0.25, glassLevel * 0.05))) : 0;
-  // Corrosion adds a flat level-scaled hit bonus when the owning ball lands
-  // a direct collision, matching the legacy same-paddle corrosion rule.
-  const corrosion = directBallHit ? Math.max(0, skillValue(state, "corrosion")) : 0;
-  const applied = Math.min(brick.hp, Math.max(0, damage) + fracture + corrosion);
-  if (directBallHit) {
-    const poisonLevel = Math.max(0, skillValue(state, "poison"));
-    if (poisonLevel > 0) {
-      brick.poisonTime = Math.max(brick.poisonTime, 5);
-      brick.poisonTick = Math.min(brick.poisonTick || 1, Math.max(0.25, poisonLevel));
+function spawnRapidArrow(state: CanonicalState, source: CanonicalBall, offset: number, lifetime: number) {
+  const inheritsSkills = evolved(state, "archer-rapid");
+  const generation = source.skillGeneration + 1;
+  const arrow = makeBall(state, source.x + offset, true, false, lifetime);
+  arrow.x = source.x + offset;
+  arrow.y = source.y;
+  arrow.vx = source.vx * (offset === 0 ? -0.88 : offset < 0 ? -0.82 : 0.82);
+  arrow.vy = -Math.abs(source.vy);
+  arrow.visualSkill = "archer-rapid";
+  arrow.visualSkillTime = Math.min(0.5, lifetime);
+  arrow.canTriggerSkills = inheritsSkills;
+  arrow.skillGeneration = generation;
+  arrow.attackPower = source.attackPower;
+  if (inheritsSkills) {
+    arrow.pierce = source.pierce;
+    arrow.maxPierce = source.maxPierce;
+    arrow.payload = source.payload;
+    arrow.payloadLevel = source.payloadLevel;
+    arrow.payloads = { ...source.payloads };
+    arrow.skillCharges = { ...source.skillCharges };
+    arrow.cooldowns = { ...source.cooldowns };
+    for (const id of ["archer-rapid"] as UpgradeId[]) {
+      const level = levelOf(state, id);
+      const config = skill(state, id);
+      if (!level || !config) continue;
+      const cooldownReduction = Math.min(0.75, skillValue(state, "common-cooldown") / 100);
+      arrow.cooldowns[id] = Math.max(0.2, Number(config.cooldown[level - 1] ?? 1) * (1 - cooldownReduction)) * (1 + generation * 0.5);
     }
   }
-  if (applied > 0) {
-    state.totalDamage += applied;
-    state.lastDamageElapsed = state.elapsed;
-    // Keep ordinary ball/brick impacts visible in canonical-only runs. The
-    // legacy loop used to materialize these as spark/particle feedback; emit
-    // the same declarative visual at the simulation boundary instead.
-    state.visualEvents.push({
-      kind: "impact",
-      skillId: "original" as UpgradeId,
-      x: brick.x + brick.w / 2,
-      y: brick.y + brick.h / 2,
-      radius: 28,
-      duration: 0.28,
-    });
-  }
-  brick.hp -= applied;
-  if (brick.hp > 0) return applied;
+  state.balls.push(arrow);
+  return arrow;
+}
+
+function resolveBrickDestruction(state: CanonicalState, brick: CanonicalBrick, applied: number, sourceBall: CanonicalBall) {
   brick.alive = false;
   state.bricksBroken++;
   state.combo++;
   state.maxCombo = Math.max(state.maxCombo, state.combo);
-  state.score += 100 + Math.round(applied * 12 + state.combo * 4 * (1 + skillValue(state, "common-combo") / 100));
-  // Legacy parity: luck grants an extra multiball only when the brick had no
-  // scheduled drop; the configured level is already expressed as a percent.
-  const drop = brick.drop ?? (state.random() < skillValue(state, "common-luck") / 100 ? "multiball" : null);
-  if (drop) state.items.push({ x: brick.x + brick.w / 2, y: brick.y + brick.h / 2, vy: 120, kind: drop, alive: true });
+  const points = 100 + Math.round(applied * 12 + state.combo * 4 * (1 + skillValue(state, "common-combo") / 100));
+  emitCanonicalEvent(state, {
+    type: "brick-destroyed",
+    brickIndex: brick.id,
+    x: brick.x + brick.w / 2,
+    y: brick.y + brick.h / 2,
+    color: canonicalBrickPresentationColor(state, brick),
+    combo: state.combo,
+    points,
+  });
+  state.score += points;
+  const drop = brick.drop ?? (canonicalRandom(state, "world") < skillValue(state, "common-luck") / 100 ? "multiball" : null);
+  if (drop) {
+    state.items.push({ x: brick.x + brick.w / 2, y: brick.y + brick.h / 2, vy: 120, kind: drop, alive: true });
+    emitCanonicalEvent(state, { type: "item-dropped", itemId: brick.id, kind: drop, x: brick.x + brick.w / 2, y: brick.y + brick.h / 2 });
+    if (drop === "multiball" && evolved(state, "common-luck")) {
+      const utilityKinds: CanonicalItemKind[] = ["auto-barrier", "core-repair", "cooldown-reset"];
+      const bonusKind = utilityKinds[Math.floor(canonicalRandom(state, "world") * utilityKinds.length)];
+      const bonusX = Math.max(16, Math.min(GAME_WIDTH - 16, brick.x + brick.w / 2 + (canonicalRandom(state, "world") < 0.5 ? -18 : 18)));
+      state.items.push({ x: bonusX, y: brick.y + brick.h / 2, vy: 120, kind: bonusKind, alive: true });
+      emitCanonicalEvent(state, { type: "item-dropped", itemId: -brick.id, kind: bonusKind, x: bonusX, y: brick.y + brick.h / 2 });
+    }
+  }
   if (brick.trait === "explosive") {
+    emitCanonicalVisual(state, { kind: "impact", skillId: "original" as UpgradeId, x: brick.x + brick.w / 2, y: brick.y + brick.h / 2, radius: 105, duration: 0.6, color: "#ff8a3d" });
     for (const near of state.bricks) {
       if (!near.alive || near === brick || near.trait === "indestructible") continue;
       const distance = Math.hypot(near.x + near.w / 2 - (brick.x + brick.w / 2), near.y + near.h / 2 - (brick.y + brick.h / 2));
-      if (distance <= 105) damageBrick(state, near, 2, sourceBall, false);
+      if (distance <= 105) applyBrickDamage(state, near, 2, sourceBall, { respectGuard: true });
     }
     const dx = sourceBall.x - (brick.x + brick.w / 2);
     const dy = sourceBall.y - (brick.y + brick.h / 2);
@@ -348,14 +520,54 @@ function damageBrick(state: CanonicalState, brick: CanonicalBrick, damage: numbe
     const blastX = brick.x + brick.w / 2;
     const blastY = brick.y + brick.h / 2;
     const range = 60 + blastLevel * 20;
-    state.visualEvents.push({ kind: "impact", skillId: "original" as UpgradeId, x: blastX, y: blastY, radius: range, duration: 0.55, color: "#ff6b87" });
+    emitCanonicalVisual(state, { kind: "impact", skillId: "original" as UpgradeId, x: blastX, y: blastY, radius: range, duration: 0.55, color: "#ff6b87" });
     for (const near of state.bricks) {
       if (!near.alive || near === brick || near.trait === "indestructible") continue;
       if (Math.hypot(near.x + near.w / 2 - blastX, near.y + near.h / 2 - blastY) <= range) {
-        damageBrick(state, near, blastLevel >= 3 ? 2 : 1, sourceBall, false);
+        applyBrickDamage(state, near, blastLevel >= 3 ? 2 : 1, sourceBall, { respectGuard: true });
       }
     }
   }
+}
+
+function breakBrickGuard(state: CanonicalState, brick: CanonicalBrick) {
+  if (!brick.guardReady) return false;
+  brick.guardReady = false;
+  brick.trait = "standard";
+  emitCanonicalVisual(state, { kind: "impact", skillId: "original" as UpgradeId, x: brick.x + brick.w / 2, y: brick.y + brick.h / 2, radius: 42, duration: 0.45, color: "#fff27a", text: "GUARD BREAK" });
+  return true;
+}
+
+function applyBrickDamage(state: CanonicalState, brick: CanonicalBrick, damage: number, sourceBall: CanonicalBall, options: { respectGuard?: boolean } = {}) {
+  if (!brick.alive || brick.trait === "indestructible") return 0;
+  if (options.respectGuard && breakBrickGuard(state, brick)) return 0;
+  const applied = Math.min(brick.hp, Math.max(0, damage));
+  if (applied > 0) {
+    state.totalDamage += applied;
+    state.lastDamageElapsed = state.elapsed;
+    emitCanonicalEvent(state, {
+      type: "brick-damaged",
+      brickIndex: brick.id,
+      damage: applied,
+      x: brick.x + brick.w / 2,
+      y: brick.y + brick.h / 2,
+      color: canonicalBrickPresentationColor(state, brick),
+    });
+    // Keep ordinary ball/brick impacts visible in canonical-only runs. The
+    // legacy loop used to materialize these as spark/particle feedback; emit
+    // the same declarative visual at the simulation boundary instead.
+    emitCanonicalVisual(state, {
+      kind: "impact",
+      skillId: "original" as UpgradeId,
+      x: brick.x + brick.w / 2,
+      y: brick.y + brick.h / 2,
+      radius: 28,
+      duration: 0.28,
+    });
+  }
+  brick.hp -= applied;
+  if (brick.hp > 0) return applied;
+  resolveBrickDestruction(state, brick, applied, sourceBall);
   return applied;
 }
 
@@ -364,14 +576,21 @@ function recordSkill(state: CanonicalState, id: UpgradeId, damage: number, kills
   state.skillMetrics[id] = { activations: previous.activations + 1, damage: previous.damage + damage, kills: previous.kills + kills };
 }
 
-function applySkillResult(state: CanonicalState, result: SkillResult, sourceBall: CanonicalBall, targets: CanonicalBrick[]) {
+function eligibleSkillTargets(targets: CanonicalBrick[]) {
+  return targets.filter((target) => target.alive && target.trait !== "indestructible");
+}
+
+function applySkillDamage(state: CanonicalState, result: SkillResult, sourceBall: CanonicalBall, targets: CanonicalBrick[]) {
   let damage = 0;
   if (result.damage) {
     for (const target of targets) {
-      if (!target.alive || target.trait === "indestructible") continue;
-      damage += damageBrick(state, target, result.damage, sourceBall, false);
+      damage += applyBrickDamage(state, target, result.damage, sourceBall, { respectGuard: true });
     }
   }
+  return damage;
+}
+
+function applySkillStatuses(result: SkillResult, targets: CanonicalBrick[]) {
   if (result.disableHealing) {
     for (const target of targets) target.healBlockTime = Math.max(target.healBlockTime, result.disableHealing);
   }
@@ -384,149 +603,433 @@ function applySkillResult(state: CanonicalState, result: SkillResult, sourceBall
       target.burnTick = Math.min(target.burnTick || 1, 1);
     }
   }
+}
+
+function applySkillGlobalEffects(state: CanonicalState, result: SkillResult) {
   if (result.barrier) {
-    state.barrierTime = Math.max(state.barrierTime, result.barrier.duration ?? 0);
-    state.barrierCharges = Math.max(state.barrierCharges, result.barrier.charges ?? 0);
+    // Iron Wall is a stored CORE guard, not a timed auto-barrier. Activations
+    // accumulate like the legacy paddle barrier and remain capped at four.
+    state.barrierCharges = Math.min(4, state.barrierCharges + Math.max(0, result.barrier.charges ?? 0));
+    state.barrierTime = 0;
   }
   if (result.summon) {
     for (let i = 0; i < result.summon.count; i++) state.balls.push(makeBall(state, state.paddleX, result.summon.temporary ?? true));
   }
+}
+
+function applySkillResult(state: CanonicalState, result: SkillResult, sourceBall: CanonicalBall, targets: CanonicalBrick[]) {
+  const eligibleTargets = eligibleSkillTargets(targets);
+  const damage = applySkillDamage(state, result, sourceBall, eligibleTargets);
+  applySkillStatuses(result, eligibleTargets);
+  applySkillGlobalEffects(state, result);
   return damage;
 }
 
+function brickDistance(a: CanonicalBrick, b: CanonicalBrick) {
+  return Math.hypot(a.x + a.w / 2 - (b.x + b.w / 2), a.y + a.h / 2 - (b.y + b.h / 2));
+}
+
+function chainPriority(id: UpgradeId, brick: CanonicalBrick) {
+  if (id !== "archer-ricochet") return 0;
+  return brick.trait === "healer" ? 0 : brick.trait === "explosive" ? 1 : brick.guardReady ? 2 : brick.trait === "reflector" ? 3 : 4;
+}
+
+function applyChainedSkill(state: CanonicalState, ball: CanonicalBall, origin: CanonicalBrick, id: UpgradeId, initialCount: number, radius: number) {
+  const evolvedChain = evolved(state, id);
+  const allowRepeat = evolved(state, "common-chain");
+  const queue: Array<{ source: CanonicalBrick; count: number }> = [{ source: origin, count: initialCount }];
+  const seen = new Set<number>([origin.id]);
+  let damage = 0;
+  let kills = 0;
+  let processed = 0;
+  const safetyLimit = Math.max(1, state.bricks.length * 2);
+  while (queue.length && processed++ < safetyLimit) {
+    const current = queue.shift()!;
+    const targets = state.bricks
+      .filter((target) => target.alive && target !== current.source && target.trait !== "indestructible" && (allowRepeat || !seen.has(target.id)))
+      .filter((target) => brickDistance(target, current.source) <= radius)
+      .sort((a, b) => chainPriority(id, a) - chainPriority(id, b) || brickDistance(a, current.source) - brickDistance(b, current.source))
+      .slice(0, current.count);
+    for (const target of targets) {
+      seen.add(target.id);
+      const wasAlive = target.alive;
+      const dealt = applyBrickDamage(state, target, 1, ball, { respectGuard: true });
+      damage += dealt;
+      if (wasAlive && !target.alive) {
+        kills++;
+        if (evolvedChain) queue.push({ source: target, count: 1 });
+      }
+    }
+    if (!evolvedChain) break;
+  }
+  return { damage, kills };
+}
+
+function applyShockwave(state: CanonicalState, ball: CanonicalBall, origin: CanonicalBrick, radius: number, damagePerHit: number) {
+  const chaining = evolved(state, "warrior-shockwave");
+  const queue = [origin];
+  const reacted = new Set<number>([origin.id]);
+  let damage = 0;
+  let kills = 0;
+  while (queue.length) {
+    const source = queue.shift()!;
+    const targets = state.bricks.filter((target) => target.alive && target.trait !== "indestructible" && !reacted.has(target.id) && brickDistance(target, source) <= radius);
+    for (const target of targets) {
+      reacted.add(target.id);
+      const wasAlive = target.alive;
+      damage += applyBrickDamage(state, target, damagePerHit, ball, { respectGuard: true });
+      if (wasAlive && !target.alive) {
+        kills++;
+        if (chaining) queue.push(target);
+      }
+    }
+    if (!chaining) break;
+  }
+  return { damage, kills };
+}
+
 function triggerCollisionSkills(state: CanonicalState, ball: CanonicalBall, hit: CanonicalBrick) {
+  if (!ball.canTriggerSkills || hit.trait === "indestructible") return;
   const cooldownReduction = Math.min(0.75, skillValue(state, "common-cooldown") / 100);
   const rangeMultiplier = 1 + skillValue(state, "common-skill-range") / 100;
   for (const config of state.skills) {
     const level = levelOf(state, config.id);
-    // Ultimates are dispatched through the same collision registry. Their
-    // specialized visuals/effects can be layered on later without silently
-    // skipping activation in the canonical simulation.
-    if (!level || config.category === "common") continue;
+    if (!level || config.category === "common" || DIRECT_DAMAGE_SKILLS.has(config.id)) continue;
+    if (config.id === "mage-mana-blast" && !(hit.guardReady || hit.trait === "healer" || hit.trait === "reflector")) continue;
+    if (config.id === "archer-ricochet" && levelOf(state, "mage-lightning") > 0 && (ball.cooldowns["mage-lightning"] ?? 0) <= 0) continue;
     const remaining = ball.cooldowns[config.id] ?? 0;
     if (remaining > 0) continue;
-    const cooldown = Math.max(0.2, Number(config.cooldown[level - 1] ?? 1) * (1 - cooldownReduction));
+    // Iron Wall's displayed 6/5/4 second value is its activation interval.
+    // Boss enhancement improves that interval instead of shortening a guard
+    // lifetime (stored charges deliberately have no lifetime).
+    const baseCooldown = config.id === "warrior-guard"
+      ? skillValue(state, config.id)
+      : Number(config.cooldown[level - 1] ?? 1);
+    const evolvedCooldownMultiplier = evolved(state, "common-cooldown") ? 0.8 : 1;
+    const cooldown = Math.max(0.2, baseCooldown * (1 - cooldownReduction) * evolvedCooldownMultiplier);
     ball.cooldowns[config.id] = cooldown;
     ball.visualSkill = config.id;
     ball.visualSkillTime = Math.max(ball.visualSkillTime, 0.42);
     let damage = 0;
     let kills = 0;
+    let visualEmitted = false;
+    let resultApplied = false;
     const result: SkillResult = {};
-    const radius = (config.category === "warrior" ? 105 : config.category === "mage" ? 125 : 85) * rangeMultiplier;
+    const rangePadding = evolved(state, "common-skill-range") ? 32 : 0;
+    const radius = (config.category === "warrior" ? 105 : config.category === "mage" ? 125 : 85) * rangeMultiplier + rangePadding;
     const targets = state.bricks.filter((brick) => brick.alive && brick.trait !== "indestructible").sort((a, b) => Math.hypot(a.x - hit.x, a.y - hit.y) - Math.hypot(b.x - hit.x, b.y - hit.y));
-    const count = Math.max(1, 1 + Math.floor(skillValue(state, "common-chain")) + (evolved(state, config.id) ? 1 : 0));
+    const chainBonus = Math.floor(skillValue(state, "common-chain")) + (evolved(state, "common-chain") ? 1 : 0);
+    const count = Math.max(1, 1 + chainBonus);
     if (config.id === "mage-fireball") {
-      const duration = Number(config.levels[level - 1] ?? 0);
+      const duration = Math.max(0, skillValue(state, config.id));
       result.disableHealing = duration;
       if (evolved(state, config.id)) result.burn = { duration, damage: 1 };
-      const affected = targets.filter((target) => Math.hypot(target.x - hit.x, target.y - hit.y) <= radius).slice(0, count + 2);
+      const fireballRadius = (60 + level * 20) * rangeMultiplier + rangePadding;
+      const affected = targets.filter((target) => brickDistance(target, hit) <= fireballRadius);
       damage += applySkillResult(state, result, ball, affected);
+      resultApplied = true;
     } else if (config.id === "warrior-guard") {
-      // Guard is a timed, single-use CORE barrier.  Refreshing the skill
-      // extends its window but never silently grants more than one charge.
-      result.barrier = { duration: Number(config.levels[level - 1] ?? 4), charges: 1 };
+      result.barrier = { charges: evolved(state, config.id) ? 2 : 1 };
       applySkillResult(state, result, ball, []);
+      resultApplied = true;
     } else if (config.id === "archer-rapid") {
-      result.summon = { count: 2, temporary: true };
-      applySkillResult(state, result, ball, []);
-      for (const spawned of state.balls.slice(-2)) spawned.temporaryTime = Number(config.levels[level - 1] ?? 4.75);
+      const lifetime = Math.max(0.2, skillValue(state, config.id));
+      spawnRapidArrow(state, ball, ball.vx >= 0 ? -14 : 14, lifetime);
+      if (evolved(state, config.id)) spawnRapidArrow(state, ball, ball.vx >= 0 ? 18 : -18, lifetime);
     } else if (config.id === "archer-pierce") {
       // A prepared ball receives the configured consecutive penetration count.
-      const pierceCount = Math.max(1, Math.round(Number(config.levels[level - 1] ?? 1)));
+      const pierceCount = Math.max(1, Math.round(skillValue(state, config.id)));
       ball.maxPierce = Math.max(ball.maxPierce, pierceCount);
       ball.pierce = Math.max(ball.pierce, pierceCount);
     } else if (config.id === "archer-ricochet") {
-      const ricochetCount = Math.max(1, Math.round(Number(config.levels[level - 1] ?? 1)));
-      const affected = targets.filter((target) => target !== hit && Math.hypot(target.x - hit.x, target.y - hit.y) <= radius).slice(0, ricochetCount);
-      result.damage = Math.max(1, ball.attackPower);
-      applySkillResult(state, result, ball, affected);
+      const ricochetCount = Math.max(1, Math.round(skillValue(state, config.id) + chainBonus));
+      const chained = applyChainedSkill(state, ball, hit, config.id, ricochetCount, radius);
+      damage += chained.damage;
+      kills += chained.kills;
+      resultApplied = true;
     } else if (config.id === "mage-lightning") {
-      // Legacy parity: lightning always chains to 2/3/4 nearby targets.
-      const chainCount = Math.max(1, Math.round(Number(config.levels[level - 1] ?? 1)));
-      const affected = targets.filter((target) => Math.hypot(target.x - hit.x, target.y - hit.y) <= radius).slice(0, chainCount);
-      for (const target of affected) {
-        const wasAlive = target.alive;
-        const dealt = damageBrick(state, target, Math.max(1, 1 + level), ball);
-        damage += dealt;
-        if (wasAlive && !target.alive) kills++;
-      }
+      const chainCount = Math.max(1, Math.round(skillValue(state, config.id) + chainBonus));
+      const chained = applyChainedSkill(state, ball, hit, config.id, chainCount, radius);
+      damage += chained.damage;
+      kills += chained.kills;
     } else if (config.id === "mage-freeze") {
       // The mark is consumed by the next direct hit for bonus damage and
       // seals healer/reflector behavior for the configured duration.
-      const frostDamage = Math.max(1, Math.round(Number(config.levels[level - 1] ?? level)));
+      const frostDamage = Math.max(1, Math.round(skillValue(state, config.id)));
       result.control = { duration: 2 + level, kind: "freeze" };
-      const affected = targets.filter((target) => Math.hypot(target.x - hit.x, target.y - hit.y) <= radius).slice(0, count);
-      for (const target of affected) {
-        target.frostVulnerability = Math.max(target.frostVulnerability, frostDamage);
-        target.traitLockTime = Math.max(target.traitLockTime, 2 + level);
-      }
+      hit.frostVulnerability = Math.max(hit.frostVulnerability, frostDamage);
+      hit.traitLockTime = Math.max(hit.traitLockTime, 2 + level);
     } else if (config.id === "mage-mana-blast") {
-      const duration = Math.max(1, Math.round(Number(config.levels[level - 1] ?? 1)));
+      const duration = Math.max(1, Math.round(skillValue(state, config.id)));
       result.control = { duration, kind: "mana-seal" };
-      const affected = targets.filter((target) => Math.hypot(target.x - hit.x, target.y - hit.y) <= radius).slice(0, count);
-      for (const target of affected) target.traitLockTime = Math.max(target.traitLockTime, duration);
-      if (evolved(state, config.id)) result.damage = 1;
-      applySkillResult(state, result, ball, affected);
+      hit.traitLockTime = Math.max(hit.traitLockTime, duration);
+      resultApplied = true;
     } else if (config.id === "mage-black-hole") {
       // Radius is a skill value (and therefore includes boss enhancements),
       // while the evolved DPS scales with the player's passive damage.
       const radius = Math.max(40, skillValue(state, config.id) * rangeMultiplier);
-      const next = { x: hit.x + hit.w / 2, y: hit.y + hit.h / 2, radius, life: 4, damagePerSecond: evolved(state, config.id) ? Math.max(1, 1 + skillValue(state, "common-damage") + (state.bossEnhancements[config.id] ?? 0)) : 0, damageTick: 1 };
-      if (state.gravityWells[0]) Object.assign(state.gravityWells[0], next);
-      else state.gravityWells.push(next);
-      state.visualEvents.push({ kind: "skill", skillId: config.id, x: next.x, y: next.y, radius, duration: next.life, color: config.color });
-    } else if (config.id === "warrior-earthquake") {
-      const affected = targets.filter((target) => Math.hypot(target.x - hit.x, target.y - hit.y) <= radius).slice(0, count + level);
-      result.damage = Math.max(1, 1 + level + skillValue(state, "common-damage"));
-      damage += applySkillResult(state, result, ball, affected);
-      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: hit.x + hit.w / 2, y: hit.y + hit.h / 2, radius, duration: 0.9, color: config.color });
-    } else if (config.id === "warrior-berserker") {
-      // Berserker is a permanent amplifier; each triggered dispatch also
-      // emits an impact and applies its level-scaled burst to nearby bricks.
-      ball.skillCharges[config.id] = level;
-      ball.attackPower = Math.max(ball.attackPower, 4 + level + skillValue(state, "common-damage"));
-      result.damage = Math.max(1, level + 2);
-      damage += applySkillResult(state, result, ball, [hit]);
-      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: ball.x, y: ball.y, radius: 72 + level * 8, duration: 0.8, color: config.color });
-    } else if (config.id === "archer-arrow-rain") {
-      const affected = targets.slice(0, Math.max(1, Math.round(skillValue(state, config.id))));
-      result.damage = Math.max(1, 1 + level + skillValue(state, "common-damage"));
-      damage += applySkillResult(state, result, ball, affected);
-      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: GAME_WIDTH / 2, y: BRICK_ROW_Y, radius: GAME_WIDTH - 80, duration: 0.85, color: config.color });
-    } else if (config.id === "archer-infinite") {
-      result.summon = { count: 3, temporary: true };
-      applySkillResult(state, result, ball, []);
-      for (const spawned of state.balls.slice(-3)) spawned.temporaryTime = Math.max(1, skillValue(state, config.id));
-      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: state.paddleX, y: PLAYER_PADDLE_Y - 24, radius: 88 + level * 8, duration: 0.85, color: config.color });
-    } else if (config.id === "mage-elemental-storm") {
-      const affected = targets.slice(0, Math.max(1, Math.round(skillValue(state, config.id))));
-      result.damage = Math.max(1, level);
-      result.control = { duration: 2 + level, kind: "freeze" };
-      result.burn = { duration: 4, damage: Math.max(1, level) };
-      damage += applySkillResult(state, result, ball, affected);
-      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2, radius: 210, duration: 1.1, color: config.color });
-    } else if (config.id === "mage-meteor") {
-      const afflicted = targets.filter((target) => target.burnTime > 0 || target.frostVulnerability > 0 || target.traitLockTime > 0);
-      const affected = (afflicted.length ? afflicted : targets).slice(0, 1 + Math.floor(afflicted.length / 4));
-      result.damage = Math.max(1, Math.round(skillValue(state, config.id)));
-      damage += applySkillResult(state, result, ball, affected);
-      state.visualEvents.push({ kind: "ultimate", skillId: config.id, x: hit.x + hit.w / 2, y: hit.y, radius: 120 + level * 15, duration: 0.95, color: config.color });
-    } else {
-      for (const target of targets.filter((target) => Math.hypot(target.x - hit.x, target.y - hit.y) <= radius).slice(0, count)) {
-        const wasAlive = target.alive;
-        damage += damageBrick(state, target, Math.max(1, Math.round(Number(config.levels[level - 1] ?? level))), ball);
-        if (wasAlive && !target.alive) kills++;
-      }
+      const next = { x: Math.max(150, Math.min(GAME_WIDTH - 150, ball.x)), y: 145 + canonicalRandom(state, "world") * 80, radius, life: 4, damagePerSecond: evolved(state, config.id) ? Math.max(1, ball.attackPower) : 0, damageTick: 1 };
+      state.gravityWells.push(next);
+      emitCanonicalVisual(state, { kind: "skill", skillId: config.id, x: next.x, y: next.y, radius: radius * 0.7, duration: 0.7, color: config.color });
+      visualEmitted = true;
+      resultApplied = true;
+    } else if (config.id === "warrior-shockwave") {
+      const shockwave = applyShockwave(state, ball, hit, radius, Math.max(1, Math.round(skillValue(state, config.id))));
+      damage += shockwave.damage;
+      kills += shockwave.kills;
     }
     // Keep all contract fields on a single post-processing path. Existing
     // specialized branches still mutate their richer state directly, while
     // generic and future runtimes can return effects without losing them.
     const effectTargets = targets.filter((target) => Math.hypot(target.x - hit.x, target.y - hit.y) <= radius).slice(0, count);
-    // Specialized branches may have consumed the result already; applying it
-    // again is harmless for idempotent timers but would duplicate damage.
-    if (config.id !== "mage-fireball" && config.id !== "mage-mana-blast" && config.id !== "mage-black-hole" && config.id !== "warrior-earthquake" && config.id !== "warrior-berserker" && config.id !== "archer-arrow-rain" && config.id !== "archer-infinite" && config.id !== "mage-elemental-storm" && config.id !== "mage-meteor") damage += applySkillResult(state, result, ball, effectTargets);
+    if (!resultApplied) damage += applySkillResult(state, result, ball, effectTargets);
+    if (!visualEmitted) {
+      const centerX = hit.x + hit.w / 2;
+      const centerY = hit.y + hit.h / 2;
+      const isArcher = config.category === "archer";
+      const isMage = config.category === "mage";
+      const visualRadius = config.id === "warrior-shockwave"
+        ? radius
+        : config.id === "mage-fireball"
+          ? (60 + level * 20) * rangeMultiplier + rangePadding
+          : config.id === "warrior-guard"
+            ? 120
+            : config.id === "archer-rapid"
+              ? 58 + level * 6
+              : config.id === "mage-freeze"
+                ? Math.min(hit.w, hit.h) + 24
+                : config.id === "mage-mana-blast"
+                  ? 58
+                  : isArcher
+                    ? 58
+                    : isMage
+                      ? 64
+                      : 66;
+      const visualDuration = config.id === "warrior-shockwave"
+        ? 0.62
+        : config.id === "mage-fireball"
+          ? 0.72
+          : config.id === "warrior-guard"
+            ? 0.75
+            : config.id === "archer-rapid"
+              ? 0.5
+              : config.id === "mage-freeze"
+                ? 0.5
+                : config.id === "mage-mana-blast"
+                  ? 0.48
+                  : isArcher
+                    ? 0.45
+                    : isMage
+                      ? 0.55
+                      : 0.5;
+      const visualX = config.id === "warrior-guard" ? GAME_WIDTH / 2 : centerX;
+      const visualY = config.id === "warrior-guard" ? PLAYER_LINE_Y : centerY;
+      emitCanonicalVisual(state, {
+        kind: "skill",
+        skillId: config.id,
+        x: visualX,
+        y: visualY,
+        x2: config.id === "warrior-guard" ? GAME_WIDTH - 24 : isArcher ? centerX + ball.vx * 0.08 : visualX,
+        y2: config.id === "warrior-guard" ? PLAYER_LINE_Y : isArcher ? centerY + ball.vy * 0.08 : visualY,
+        radius: visualRadius,
+        duration: visualDuration,
+        color: config.color,
+        text: config.name,
+      });
+    }
     recordSkill(state, config.id, damage, kills);
   }
+}
+
+type DirectHitContext = {
+  brick: CanonicalBrick;
+  ball: CanonicalBall;
+  originalTrait: CanonicalTrait;
+  frostBonus: number;
+  requestedDamage: number;
+  guardWasReady: boolean;
+  bypassGuard: boolean;
+  poisonLevel: number;
+  appliedDamage: number;
+  passesThrough: boolean;
+  skillActivations: Array<{ id: UpgradeId; level: number; bonusDamage: number }>;
+};
+
+const DIRECT_DAMAGE_SKILLS = new Set<UpgradeId>([
+  "warrior-smash", "warrior-execute", "warrior-crush", "archer-focus", "archer-weakpoint",
+]);
+
+function consumeDirectSkill(state: CanonicalState, ball: CanonicalBall, id: UpgradeId) {
+  const config = skill(state, id);
+  const level = levelOf(state, id);
+  if (!config || !level || (ball.cooldowns[id] ?? 0) > 0) return null;
+  const cooldownReduction = Math.min(0.75, skillValue(state, "common-cooldown") / 100);
+  const evolvedCooldownMultiplier = evolved(state, "common-cooldown") ? 0.8 : 1;
+  ball.cooldowns[id] = Math.max(0.2, Number(config.cooldown[level - 1] ?? 1) * (1 - cooldownReduction) * evolvedCooldownMultiplier);
+  ball.visualSkill = id;
+  ball.visualSkillTime = Math.max(ball.visualSkillTime, 0.42);
+  return { config, level };
+}
+
+function applyDirectSkillModifiers(state: CanonicalState, context: DirectHitContext) {
+  if (!context.ball.canTriggerSkills) {
+    context.ball.lastHitBrickId = context.brick.id;
+    return;
+  }
+
+  const originalTrait = context.brick.trait;
+  const crush = consumeDirectSkill(state, context.ball, "warrior-crush");
+  if (crush) {
+    const bonus = originalTrait !== "standard" ? Math.max(0, skillValue(state, crush.config.id)) : 0;
+    context.bypassGuard = context.guardWasReady;
+    context.requestedDamage += bonus;
+    context.skillActivations.push({ id: crush.config.id, level: crush.level, bonusDamage: bonus });
+  }
+
+  if (!context.guardWasReady || context.bypassGuard) {
+    const smash = consumeDirectSkill(state, context.ball, "warrior-smash");
+    if (smash) {
+      const bonus = Math.max(0, skillValue(state, smash.config.id));
+      context.requestedDamage += bonus;
+      context.skillActivations.push({ id: smash.config.id, level: smash.level, bonusDamage: bonus });
+    }
+
+    const repeatedTarget = context.ball.lastHitBrickId === context.brick.id;
+    if (repeatedTarget) {
+      const focus = consumeDirectSkill(state, context.ball, "archer-focus");
+      if (focus) {
+        const evolutionMultiplier = evolved(state, focus.config.id) ? 1.5 : 1;
+        const bonus = Math.max(0, skillValue(state, focus.config.id) * evolutionMultiplier);
+        context.requestedDamage += bonus;
+        context.skillActivations.push({ id: focus.config.id, level: focus.level, bonusDamage: bonus });
+      }
+    }
+
+    const weakpoint = consumeDirectSkill(state, context.ball, "archer-weakpoint");
+    if (weakpoint) {
+      const multiplier = evolved(state, weakpoint.config.id) ? Math.max(4, skillValue(state, weakpoint.config.id)) : Math.max(1, skillValue(state, weakpoint.config.id));
+      const before = context.requestedDamage;
+      context.requestedDamage *= multiplier;
+      context.skillActivations.push({ id: weakpoint.config.id, level: weakpoint.level, bonusDamage: context.requestedDamage - before });
+    }
+
+    const execute = consumeDirectSkill(state, context.ball, "warrior-execute");
+    if (execute) {
+      const threshold = (evolved(state, execute.config.id) ? Math.max(50, skillValue(state, execute.config.id)) : skillValue(state, execute.config.id)) / 100;
+      const canExecute = context.brick.kind !== "boss-core" && context.brick.hp / Math.max(1, context.brick.maxHp) <= threshold;
+      const before = context.requestedDamage;
+      if (canExecute) context.requestedDamage = Math.max(context.requestedDamage, context.brick.hp);
+      context.skillActivations.push({ id: execute.config.id, level: execute.level, bonusDamage: Math.max(0, context.requestedDamage - before) });
+    }
+  }
+
+  context.ball.lastHitBrickId = context.brick.id;
+}
+
+function prepareDirectHit(state: CanonicalState, ball: CanonicalBall, brick: CanonicalBrick): DirectHitContext {
+  const frostBonus = Math.max(0, brick.frostVulnerability);
+  const glassLevel = Math.max(0, Number(ball.payloads.glass ?? 0));
+  const fracture = glassLevel > 0 ? Math.max(0, Math.ceil(brick.hp * Math.min(0.25, glassLevel * 0.05))) : 0;
+  const corrosion = Math.max(0, skillValue(state, "corrosion"));
+  brick.frostVulnerability = 0;
+  const pierceEvolutionDamage = evolved(state, "archer-pierce") && ball.maxPierce > 0 ? Math.max(0, ball.maxPierce - ball.pierce) : 0;
+  const sealedEvolutionDamage = evolved(state, "mage-mana-blast") && brick.traitLockTime > 0 ? 1 : 0;
+  const context: DirectHitContext = {
+    brick,
+    ball,
+    originalTrait: brick.trait,
+    frostBonus,
+    requestedDamage: Math.max(1, 1 + skillValue(state, "common-damage") + frostBonus + fracture + corrosion + pierceEvolutionDamage + sealedEvolutionDamage),
+    guardWasReady: brick.guardReady,
+    bypassGuard: false,
+    poisonLevel: Math.max(0, skillValue(state, "poison")),
+    appliedDamage: 0,
+    passesThrough: false,
+    skillActivations: [],
+  };
+  applyDirectSkillModifiers(state, context);
+  return context;
+}
+
+function applyDirectHitDamage(state: CanonicalState, context: DirectHitContext) {
+  if (context.guardWasReady) {
+    breakBrickGuard(state, context.brick);
+    if (!context.bypassGuard) {
+      if (evolved(state, "common-damage")) {
+        const protectedDamage = Math.max(1, 1 + skillValue(state, "common-damage"));
+        context.appliedDamage = applyBrickDamage(state, context.brick, protectedDamage, context.ball);
+      }
+      return;
+    }
+  }
+  if (context.poisonLevel > 0) {
+    context.brick.poisonTime = Math.max(context.brick.poisonTime, 5);
+    context.brick.poisonTick = Math.min(context.brick.poisonTick || 1, Math.max(0.25, context.poisonLevel));
+  }
+  context.appliedDamage = applyBrickDamage(state, context.brick, context.requestedDamage, context.ball);
+}
+
+function emitDirectSkillActivations(state: CanonicalState, context: DirectHitContext) {
+  for (const activation of context.skillActivations) {
+    const config = skill(state, activation.id);
+    if (!config) continue;
+    emitCanonicalVisual(state, {
+      kind: "skill",
+      skillId: activation.id,
+      x: context.brick.x + context.brick.w / 2,
+      y: context.brick.y + context.brick.h / 2,
+      radius: config.category === "warrior" ? 66 : 58,
+      duration: 0.45,
+      color: config.color,
+      text: config.name,
+    });
+    const attributedDamage = Math.min(context.appliedDamage, Math.max(0, activation.bonusDamage));
+    recordSkill(state, activation.id, attributedDamage, !context.brick.alive && attributedDamage > 0 ? 1 : 0);
+  }
+}
+
+function applyLinkedPayload(state: CanonicalState, context: DirectHitContext) {
+  const linkLevel = Math.max(0, Number(context.ball.payloads.link ?? 0));
+  if (linkLevel <= 0 || !context.brick.alive) return;
+  const radius = 100 + (linkLevel - 1) * 30;
+  const count = Math.max(1, Math.floor(skillValue(state, "link")));
+  const linked = state.bricks
+    .filter((target) => target.alive && target !== context.brick && target.kind !== "boss-core" && target.trait !== "indestructible")
+    .map((target) => ({ target, distance: Math.hypot(target.x - context.brick.x, target.y - context.brick.y) }))
+    .filter((entry) => entry.distance <= radius)
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, count);
+  for (const entry of linked) applyBrickDamage(state, entry.target, 1, context.ball, { respectGuard: true });
+}
+
+function applyPostDirectHitEffects(state: CanonicalState, context: DirectHitContext) {
+  emitDirectSkillActivations(state, context);
+  const centerTargets = () => state.bricks.filter((target) => target.alive && target !== context.brick && target.trait !== "indestructible").sort((a, b) => brickDistance(a, context.brick) - brickDistance(b, context.brick));
+  if (context.skillActivations.some((activation) => activation.id === "warrior-smash") && evolved(state, "warrior-smash")) {
+    const smashRadius = 85 * (1 + skillValue(state, "common-skill-range") / 100) + (evolved(state, "common-skill-range") ? 32 : 0);
+    for (const target of centerTargets().filter((entry) => brickDistance(entry, context.brick) <= smashRadius).slice(0, 2)) applyBrickDamage(state, target, 1, context.ball, { respectGuard: true });
+  }
+  if (!context.brick.alive && context.originalTrait !== "standard" && context.skillActivations.some((activation) => activation.id === "warrior-crush") && evolved(state, "warrior-crush")) {
+    for (const target of state.bricks.filter((entry) => entry.alive && entry.trait === context.originalTrait)) applyBrickDamage(state, target, 1, context.ball, { respectGuard: true });
+  }
+  if (context.frostBonus > 0 && evolved(state, "mage-freeze")) {
+    for (const target of centerTargets().slice(0, 2)) target.frostVulnerability = Math.max(target.frostVulnerability, 1);
+  }
+  if (evolved(state, "common-ball-size")) {
+    const impactRadius = Math.max(30, context.ball.radius * 4);
+    for (const target of centerTargets().filter((entry) => brickDistance(entry, context.brick) <= impactRadius)) applyBrickDamage(state, target, 1, context.ball, { respectGuard: true });
+  }
+  applyLinkedPayload(state, context);
+  if (!context.guardWasReady || context.bypassGuard) triggerCollisionSkills(state, context.ball, context.brick);
+  context.passesThrough = context.ball.pierce > 0;
+  if (context.passesThrough) context.ball.pierce--;
+}
+
+function resolveDestructibleDirectHit(state: CanonicalState, ball: CanonicalBall, brick: CanonicalBrick) {
+  const context = prepareDirectHit(state, ball, brick);
+  applyDirectHitDamage(state, context);
+  applyPostDirectHitEffects(state, context);
+  return context;
 }
 
 function circleRect(ball: CanonicalBall, brick: CanonicalBrick) {
@@ -570,26 +1073,65 @@ function bossReinforcements(state: CanonicalState) {
 function completeWave(state: CanonicalState) {
   const definition = waveDefinitionFrom(state.waves, state.wave);
   state.waveMetrics.push({ wave: state.wave, elapsed: state.elapsed, clearTime: state.waveElapsed, balls: state.balls.length, coreHp: state.coreHp, aliveBricks: state.bricks.filter((brick) => brick.alive).length, brickHp: 0, score: state.score, bossActive: Boolean(definition.boss), skillChoices: state.skillHistory.filter((event) => event.wave === state.wave).map((event) => event.skillId) });
-  if (state.wave >= state.targetWave) { state.complete = true; return; }
-  state.wave++;
+  emitCanonicalEvent(state, { type: "wave-cleared", wave: state.wave, boss: Boolean(definition.boss) });
+  if (state.wave >= state.targetWave) {
+    state.complete = true;
+    state.phase = "complete";
+    emitCanonicalEvent(state, { type: "run-completed", wave: state.wave });
+    return;
+  }
+  if (state.interactive) {
+    state.clearedWave = state.wave;
+    state.clearedBoss = Boolean(definition.boss);
+    state.pendingWave = state.wave + 1;
+    state.phase = "wave-cleared";
+    return;
+  }
+  prepareNextCanonicalWave(state);
+}
+
+function prepareNextCanonicalWave(state: CanonicalState) {
+  const nextWave = state.pendingWave ?? state.wave + 1;
+  state.wave = nextWave;
   state.waveElapsed = 0;
+  state.rowTimer = 0;
+  state.overdriveLevel = 0;
   state.paddleX = GAME_WIDTH / 2;
+  state.lastMove = 0;
+  state.moveBoostTime = 0;
   state.balls = [makeBall(state, state.paddleX)];
   state.items = [];
   state.gravityWells = [];
-  state.visualEvents = [];
+  state.itemBarrierTime = 0;
+  // Stored Iron Wall charges persist between waves, matching the legacy
+  // paddle-owned CORE barrier. The timed item barrier remains wave-scoped.
   state.barrierTime = 0;
-  state.barrierCharges = 0;
+  state.pendingWave = null;
+  state.clearedWave = null;
+  state.clearedBoss = false;
   buildWave(state, state.wave);
+  if (evolved(state, "common-xp")) state.coreHp = Math.min(state.maxCoreHp, state.coreHp + 1);
 }
 
-export function createCanonicalState(options: { seed: number; targetWave?: number; balance?: BalanceConfig; skills?: SkillConfig[]; waves?: WaveDefinition[]; legacyEnchantments?: Partial<Record<LegacyUpgradeId, number>> }): CanonicalState {
+export function createCanonicalState(options: { seed: number; targetWave?: number; balance?: BalanceConfig; skills?: SkillConfig[]; waves?: WaveDefinition[]; legacyEnchantments?: Partial<Record<LegacyUpgradeId, number>>; interactive?: boolean; startingSkills?: UpgradeId[] }): CanonicalState {
+  const runConfig: CanonicalRunConfig = {
+    balance: { ...DEFAULT_BALANCE_CONFIG, ...options.balance },
+    skills: (options.skills?.length ? options.skills : DEFAULT_SKILLS).map((config) => ({ ...config, levels: [...config.levels] as [number, number, number], cooldown: [...config.cooldown] as [number, number, number] })),
+    waves: (options.waves?.length === WAVE_DEFINITIONS.length ? options.waves : WAVE_DEFINITIONS).map((wave) => ({ ...wave, pattern: [...wave.pattern] })),
+    targetWave: options.targetWave ?? 20,
+    startingSkills: [...(options.startingSkills ?? [])],
+  };
+  const interactive = options.interactive ?? false;
   const state: CanonicalState = {
-    seed: options.seed, random: seededRandom(options.seed), balance: { ...DEFAULT_BALANCE_CONFIG, ...options.balance }, skills: options.skills?.length ? options.skills : DEFAULT_SKILLS, waves: options.waves?.length === WAVE_DEFINITIONS.length ? options.waves : WAVE_DEFINITIONS, targetWave: options.targetWave ?? 20,
-    wave: 1, waveElapsed: 0, elapsed: 0, rowTimer: 0, itemBarrierTime: 0, overdriveLevel: 0, shakeStrength: 0, shakeTime: 0, screenFlashTime: 0, paddleX: GAME_WIDTH / 2, paddleWidth: BASE_PADDLE_WIDTH, balls: [], bricks: [], items: [], gravityWells: [], visualEvents: [], particles: [], flashes: [], effects: [], upgrades: [], bossEnhancements: {}, legacyEnchantments: { ...(options.legacyEnchantments ?? {}) }, echoSplitReflections: 0, safetyBlocks: [], ultimateAuras: {}, paddleChargePulse: 0, paddleChargeColor: "#ffffff", coreBreakTime: 0, coreBreakDuration: 0, coreBreakX: GAME_WIDTH / 2, coreBreakY: PLAYER_PADDLE_Y + 36, ghostPaddles: [], skillHistory: [], skillMetrics: {}, waveMetrics: [], coreHp: 8, maxCoreHp: 8, score: 0, bricksBroken: 0, combo: 0, maxCombo: 0, ballLosses: 0, maxBalls: 1, totalDamage: 0, lastDamageElapsed: 0, reflectorBlockedHits: 0, barrierTime: 0, barrierCharges: 0, bossAttackTimer: 0, bossPattern: 0, lastShotTimer: 0, nextBrickId: 1, complete: false, gameOver: false,
+    seed: options.seed, rng: { world: options.seed >>> 0 || 1, reward: (options.seed ^ 0x9e3779b9) >>> 0 || 1 }, runConfig, tick: 0, eventSequence: 0, phase: interactive ? "awaiting-start-skill" : "running", interactive, pendingChoices: [], pendingBossChoices: [], rerollsLeft: 1, pendingWave: null, clearedWave: null, clearedBoss: false, gameOverReason: null, stepEvents: [], balance: runConfig.balance, skills: runConfig.skills, waves: runConfig.waves, targetWave: runConfig.targetWave,
+    wave: 1, waveElapsed: 0, elapsed: 0, rowTimer: 0, itemBarrierTime: 0, overdriveLevel: 0, paddleX: GAME_WIDTH / 2, paddleWidth: BASE_PADDLE_WIDTH, lastMove: 0, moveBoostTime: 0, balls: [], bricks: [], items: [], gravityWells: [], upgrades: [], bossEnhancements: {}, legacyEnchantments: { ...(options.legacyEnchantments ?? {}) }, echoSplitReflections: 0, safetyBlocks: [], ghostPaddles: [], skillHistory: [], skillMetrics: {}, waveMetrics: [], coreHp: 8, maxCoreHp: 8, score: 0, bricksBroken: 0, combo: 0, maxCombo: 0, ballLosses: 0, maxBalls: 1, totalDamage: 0, lastDamageElapsed: 0, reflectorBlockedHits: 0, barrierTime: 0, barrierCharges: 0, bossAttackTimer: 0, bossPattern: 0, lastShotTimer: 0, nextBrickId: 1, complete: false, gameOver: false,
   };
   buildWave(state, 1);
   state.balls = [makeBall(state)];
+  for (const id of runConfig.startingSkills) grantCanonicalSkill(state, id, "start");
+  state.stepEvents.length = 0;
+  if (interactive && runConfig.startingSkills.length === 0) state.pendingChoices = createCanonicalChoices(state);
+  else if (runConfig.startingSkills.length > 0) state.phase = "running";
   return state;
 }
 
@@ -597,15 +1139,23 @@ export function grantCanonicalSkill(state: CanonicalState, skillId: UpgradeId, s
   const config = skill(state, skillId);
   const maxPicks = config?.evolution ? 4 : 3;
   if (pickCount(state, skillId) >= maxPicks) return false;
-  const previousLevel = levelOf(state, skillId);
+  const previousValue = skillValue(state, skillId);
   state.upgrades.push(skillId);
   const nextLevel = levelOf(state, skillId);
+  const nextValue = skillValue(state, skillId);
   state.skillHistory.push({ wave: state.wave, skillId, level: nextLevel, evolved: evolved(state, skillId), source, ballCost });
+  emitCanonicalEvent(state, { type: "upgrade-chosen", skillId, level: nextLevel, source });
   if (skillId === "common-xp") {
-    const config = skill(state, skillId);
-    const gain = Number(config?.levels[nextLevel - 1] ?? 0) - Number(config?.levels[previousLevel - 1] ?? 0);
+    const gain = nextValue - previousValue;
     state.maxCoreHp += gain;
     state.coreHp += gain;
+  }
+  if (skillId === "common-ball-size") {
+    for (const ball of state.balls) ball.radius = 8 + nextValue;
+  }
+  if (skillId === "common-damage") {
+    const gain = nextValue - previousValue;
+    for (const ball of state.balls) ball.attackPower = Math.max(1, ball.attackPower + gain);
   }
   state.paddleWidth = Math.min(280, BASE_PADDLE_WIDTH + skillValue(state, "common-wide"));
   return true;
@@ -613,18 +1163,80 @@ export function grantCanonicalSkill(state: CanonicalState, skillId: UpgradeId, s
 
 export function grantCanonicalEnhancement(state: CanonicalState, skillId: UpgradeId) {
   if (!state.upgrades.includes(skillId)) return false;
+  const previousValue = skillValue(state, skillId);
   state.bossEnhancements[skillId] = (state.bossEnhancements[skillId] ?? 0) + 1;
+  const nextValue = skillValue(state, skillId);
+  if (skillId === "common-xp") {
+    const gain = Math.max(0, nextValue - previousValue);
+    state.maxCoreHp += gain;
+    state.coreHp += gain;
+  }
+  if (skillId === "common-wide") state.paddleWidth = Math.min(280, BASE_PADDLE_WIDTH + nextValue);
+  if (skillId === "common-ball-size") {
+    for (const ball of state.balls) ball.radius = 8 + nextValue;
+  }
+  if (skillId === "common-damage") {
+    const gain = nextValue - previousValue;
+    for (const ball of state.balls) ball.attackPower = Math.max(1, ball.attackPower + gain);
+  }
   state.skillHistory.push({ wave: state.wave, skillId, level: levelOf(state, skillId), source: "boss" });
+  emitCanonicalEvent(state, { type: "upgrade-chosen", skillId, level: levelOf(state, skillId), source: "boss" });
   return true;
 }
 
-export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalControls, dt = FIXED_STEP_SECONDS, options: CanonicalStepOptions = {}) {
-  if (state.complete || state.gameOver) return;
+export function dispatchCanonicalCommand(state: CanonicalState, command: CanonicalCommand): CanonicalStepResult {
+  state.stepEvents.length = 0;
+  if (command.type === "choose-start-skill" && state.phase === "awaiting-start-skill") {
+    const choice = state.pendingChoices.find((entry) => entry.upgrade.id === command.skillId && entry.ballCost === command.ballCost);
+    if (choice && grantCanonicalSkill(state, choice.upgrade.id, "start", choice.ballCost)) {
+      state.pendingChoices = [];
+      state.phase = "running";
+    }
+  } else if (command.type === "choose-wave-skill" && state.phase === "awaiting-wave-skill") {
+    const choice = state.pendingChoices.find((entry) => entry.upgrade.id === command.skillId && entry.ballCost === command.ballCost);
+    if (choice && grantCanonicalSkill(state, choice.upgrade.id, "wave", choice.ballCost)) {
+      state.pendingChoices = [];
+      state.phase = "ready-for-next-wave";
+    }
+  } else if (command.type === "reroll-skills" && (state.phase === "awaiting-start-skill" || state.phase === "awaiting-wave-skill") && state.rerollsLeft > 0) {
+    const excluded = state.pendingChoices.map((entry) => entry.upgrade.id);
+    const next = createCanonicalChoices(state, excluded);
+    state.pendingChoices = next.length >= 3 ? next : createCanonicalChoices(state);
+    state.rerollsLeft -= 1;
+  } else if (command.type === "skip-wave-skill" && state.phase === "awaiting-wave-skill") {
+    state.pendingChoices = [];
+    state.phase = "ready-for-next-wave";
+  } else if (command.type === "acknowledge-wave-clear" && state.phase === "wave-cleared") {
+    state.rerollsLeft = 1;
+    if (state.clearedBoss) {
+      state.pendingBossChoices = createBossChoices(state);
+      state.phase = state.pendingBossChoices.length ? "awaiting-boss-reward" : "ready-for-next-wave";
+    } else {
+      state.pendingChoices = createCanonicalChoices(state);
+      state.phase = state.pendingChoices.length ? "awaiting-wave-skill" : "ready-for-next-wave";
+    }
+  } else if (command.type === "choose-boss-reward" && state.phase === "awaiting-boss-reward") {
+    if (state.pendingBossChoices.includes(command.skillId) && grantCanonicalEnhancement(state, command.skillId)) {
+      state.pendingBossChoices = [];
+      state.phase = "ready-for-next-wave";
+    }
+  } else if (command.type === "start-next-wave" && state.phase === "ready-for-next-wave") {
+    prepareNextCanonicalWave(state);
+    state.phase = "running";
+  }
+  return stepResult(state);
+}
+
+export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalControls, dt = FIXED_STEP_SECONDS, options: CanonicalStepOptions = {}): CanonicalStepResult {
+  state.stepEvents.length = 0;
+  if (state.complete) { state.phase = "complete"; return stepResult(state); }
+  if (state.gameOver) { state.phase = "game-over"; return stepResult(state); }
+  if (state.phase !== "running") return stepResult(state);
+  state.tick += 1;
   // Keep externally visible metrics safe even if a malformed optional skill
   // result/config reaches the simulation. A NaN score would poison HUD,
   // benchmark records, and subsequent comparisons.
   if (!Number.isFinite(state.score)) state.score = 0;
-  state.visualEvents = [];
   const step = options.clampToFixedStep === false
     ? Math.max(0, Math.min(0.025, dt))
     : Math.max(0, Math.min(FIXED_STEP_SECONDS, dt));
@@ -635,23 +1247,25 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
   const nextOverdriveLevel = overdriveLevelAt(state.rowTimer);
   if (nextOverdriveLevel > state.overdriveLevel) {
     const ratio = overdriveMultiplier(nextOverdriveLevel) / Math.max(1, overdriveMultiplier(state.overdriveLevel));
-    for (const ball of state.balls) { ball.vx *= ratio; ball.vy *= ratio; }
+    // Respawn recovery normalizes speed below, so let its easing target the
+    // new global multiplier instead of immediately overwriting this scale.
+    for (const ball of state.balls) {
+      if (ball.respawnRecoveryTime > 0) continue;
+      ball.vx *= ratio;
+      ball.vy *= ratio;
+      if (ball.gravityBaseSpeed !== null) ball.gravityBaseSpeed *= ratio;
+    }
     state.overdriveLevel = nextOverdriveLevel;
   }
   state.itemBarrierTime = Math.max(0, state.itemBarrierTime - step);
-  state.shakeTime = Math.max(0, state.shakeTime - step);
-  state.screenFlashTime = Math.max(0, state.screenFlashTime - step);
-  if (state.shakeTime <= 0) state.shakeStrength = 0;
-  for (const effect of state.effects) effect.life -= step;
-  state.effects = state.effects.filter((effect) => effect.life > 0);
-  for (const particle of state.particles) { particle.x += particle.vx * step; particle.y += particle.vy * step; particle.vy += 150 * step; particle.life -= step; }
-  state.particles = state.particles.filter((particle) => particle.life > 0);
-  for (const flash of state.flashes) { flash.y -= 28 * step; flash.life -= step; }
-  state.flashes = state.flashes.filter((flash) => flash.life > 0);
   state.barrierTime = Math.max(0, state.barrierTime - step);
   const moveMultiplier = 1 + skillValue(state, "common-move-speed") / 100;
+  if (evolved(state, "common-move-speed") && controls.move !== 0 && state.lastMove !== 0 && controls.move !== state.lastMove) state.moveBoostTime = 0.35;
+  state.moveBoostTime = Math.max(0, state.moveBoostTime - step);
+  if (controls.move !== 0) state.lastMove = controls.move;
+  const reversalBoost = state.moveBoostTime > 0 ? 1.4 : 1;
   const previousPaddleX = state.paddleX;
-  state.paddleX = Math.max(state.paddleWidth / 2, Math.min(GAME_WIDTH - state.paddleWidth / 2, state.paddleX + controls.move * PADDLE_SPEED * moveMultiplier * step));
+  state.paddleX = Math.max(state.paddleWidth / 2, Math.min(GAME_WIDTH - state.paddleWidth / 2, state.paddleX + controls.move * PADDLE_SPEED * moveMultiplier * reversalBoost * step));
   // Ghost paddles occupy independent horizontal zones and follow the lowest
   // descending ball, matching the legacy activeGhosts controller.
   const ghostCount = state.ghostPaddles.length;
@@ -672,31 +1286,38 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
     if (!brick.alive) continue;
     brick.healBlockTime = Math.max(0, brick.healBlockTime - step);
     brick.traitLockTime = Math.max(0, brick.traitLockTime - step);
-    brick.frostVulnerability = Math.max(0, brick.frostVulnerability - step);
+    // A freeze mark is a stored next-hit modifier. It is consumed only by
+    // prepareDirectHit and never expires as wall-clock time advances.
     if (brick.trait === "healer" && brick.traitLockTime <= 0) {
       brick.healTimer -= step;
       if (brick.healTimer <= 0) {
         brick.healTimer += 3;
         const healerCenterX = brick.x + brick.w / 2;
         const healerCenterY = brick.y + brick.h / 2;
+        let healed = false;
         for (const near of state.bricks) {
           const nearCenterX = near.x + near.w / 2;
           const nearCenterY = near.y + near.h / 2;
-          if (near.alive && near !== brick && near.healBlockTime <= 0 && Math.hypot(nearCenterX - healerCenterX, nearCenterY - healerCenterY) < 135) near.hp = Math.min(near.maxHp, near.hp + 1);
+          if (near.alive && near !== brick && near.healBlockTime <= 0 && Math.hypot(nearCenterX - healerCenterX, nearCenterY - healerCenterY) < 135) {
+            const previousHp = near.hp;
+            near.hp = Math.min(near.maxHp, near.hp + 1);
+            healed ||= near.hp > previousHp;
+          }
         }
+        if (healed) emitCanonicalVisual(state, { kind: "impact", skillId: "original" as UpgradeId, x: healerCenterX, y: healerCenterY, radius: 135, duration: 0.7, color: "#72f1b8", text: "HEAL PULSE +1" });
       }
     }
     if (brick.burnTime > 0) {
       brick.burnTime -= step;
       brick.burnTick -= step;
-      if (brick.burnTick <= 0) { brick.burnTick += 1; damageBrick(state, brick, 1, state.balls[0], false); }
+      if (brick.burnTick <= 0) { brick.burnTick += 1; applyBrickDamage(state, brick, 1, state.balls[0], { respectGuard: true }); }
     }
     if (brick.poisonTime > 0) {
       brick.poisonTime = Math.max(0, brick.poisonTime - step);
       brick.poisonTick -= step;
       if (brick.poisonTick <= 0) {
         brick.poisonTick += 1;
-        damageBrick(state, brick, Math.max(1, Math.round(skillValue(state, "poison"))), state.balls[0], false);
+        applyBrickDamage(state, brick, Math.max(1, Math.round(skillValue(state, "poison"))), state.balls[0], { respectGuard: true });
       }
     }
   }
@@ -707,7 +1328,7 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
     well.damageTick += 1;
     for (const brick of state.bricks) {
       if (!brick.alive || brick.trait === "indestructible") continue;
-      if (Math.hypot(brick.x + brick.w / 2 - well.x, brick.y + brick.h / 2 - well.y) <= well.radius) damageBrick(state, brick, well.damagePerSecond, state.balls[0], false);
+      if (Math.hypot(brick.x + brick.w / 2 - well.x, brick.y + brick.h / 2 - well.y) <= well.radius) applyBrickDamage(state, brick, well.damagePerSecond, state.balls[0], { respectGuard: true });
     }
   }
   state.gravityWells = state.gravityWells.filter((well) => well.life > 0);
@@ -719,13 +1340,21 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
     if (!item.alive) continue;
     item.y += item.vy * step;
     const magnetRange = skillValue(state, "common-magnet");
-    if (magnetRange > 0 && Math.hypot(item.x - state.paddleX, item.y - PLAYER_PADDLE_Y) <= magnetRange) {
-      item.x += (state.paddleX - item.x) * Math.min(1, step * 9);
+    const fullScreenMagnet = evolved(state, "common-magnet");
+    if (magnetRange > 0 && (fullScreenMagnet || Math.hypot(item.x - state.paddleX, item.y - PLAYER_PADDLE_Y) <= magnetRange)) {
+      const attraction = Math.min(1, step * (fullScreenMagnet ? 16 : 9));
+      item.x += (state.paddleX - item.x) * attraction;
+      if (fullScreenMagnet) item.y += (PLAYER_PADDLE_Y - item.y) * attraction * 0.35;
     }
     if (item.y >= PLAYER_PADDLE_Y - 8 && item.y <= PLAYER_PADDLE_Y + 22 && Math.abs(item.x - state.paddleX) <= state.paddleWidth / 2) {
       item.alive = false;
-      if (item.kind === "multiball") state.balls.push(makeBall(state, state.paddleX, true));
-      else if (item.kind === "auto-barrier") { state.barrierTime = 10; state.barrierCharges = 1; }
+      emitCanonicalEvent(state, { type: "item-collected", kind: item.kind, x: item.x, y: item.y });
+      if (item.kind === "multiball") {
+        const multiball = makeBall(state, state.paddleX, true);
+        multiball.canTriggerSkills = true;
+        state.balls.push(multiball);
+      }
+      else if (item.kind === "auto-barrier") state.itemBarrierTime = 10;
       else if (item.kind === "core-repair") state.coreHp = Math.min(state.maxCoreHp, state.coreHp + 1);
       else for (const ball of state.balls) ball.cooldowns = {};
     } else if (item.y > GAME_HEIGHT + 20) item.alive = false;
@@ -737,12 +1366,14 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
       .sort((a, b) => b.y - a.y || Math.abs(a.x - state.paddleX) - Math.abs(b.x - state.paddleX))[0];
     if (target) {
       const source = state.balls[0];
-      if (source) damageBrick(state, target, 1, source, false);
-      state.visualEvents.push({ kind: "impact", skillId: "last-shot" as UpgradeId, x: target.x + target.w / 2, y: target.y + target.h / 2, radius: 48, duration: 0.35, color: "#ff6b87" });
+      if (source) applyBrickDamage(state, target, 1, source, { respectGuard: true });
+      emitCanonicalVisual(state, { kind: "impact", skillId: "last-shot" as UpgradeId, x: target.x + target.w / 2, y: target.y + target.h / 2, radius: 48, duration: 0.35, color: "#ff6b87" });
     }
     state.lastShotTimer = Math.max(0.25, lastShotLevel);
   }
-  const overdrive = overdriveMultiplier(overdriveLevelAt(state.waveElapsed));
+  const overdrive = overdriveMultiplier(state.overdriveLevel);
+  let lostMainBall = false;
+  let lostBallCount = 0;
   for (const ball of [...state.balls]) {
     ball.visualSkillTime = Math.max(0, ball.visualSkillTime - step);
     if (ball.visualSkillTime <= 0) ball.visualSkill = null;
@@ -776,24 +1407,39 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
       ball.vx *= desiredSpeed / currentSpeed;
       ball.vy *= desiredSpeed / currentSpeed;
     }
-    const well = state.gravityWells.find((entry) => Math.hypot(entry.x - ball.x, entry.y - ball.y) < entry.radius);
+    const well = ball.missileTime > 0 ? undefined : state.gravityWells.find((entry) => Math.hypot(entry.x - ball.x, entry.y - ball.y) < entry.radius);
     if (well) {
       const dx = well.x - ball.x;
       const dy = well.y - ball.y;
       const distance = Math.max(1, Math.hypot(dx, dy));
-      const speed = Math.max(1, Math.hypot(ball.vx, ball.vy));
+      ball.gravityBaseSpeed ??= Math.max(1, Math.hypot(ball.vx, ball.vy));
       const inwardX = dx / distance;
       const inwardY = dy / distance;
       let tangentX = -inwardY;
       let tangentY = inwardX;
       if (ball.vx * tangentX + ball.vy * tangentY < 0) { tangentX *= -1; tangentY *= -1; }
-      const orbitRadius = well.radius * 0.46;
+      const lifeRatio = Math.max(0, Math.min(1, well.life / 4));
+      const convergence = 1 - lifeRatio;
+      const orbitRadius = well.radius * (0.06 + 0.4 * lifeRatio);
       const correction = Math.max(-0.72, Math.min(0.72, (distance - orbitRadius) / Math.max(1, orbitRadius)));
-      const targetX = tangentX + inwardX * correction;
-      const targetY = tangentY + inwardY * correction;
+      const tangentWeight = 1 - convergence * 0.82;
+      const inwardWeight = 0.05 + convergence * 1.8;
+      const targetX = tangentX * tangentWeight + inwardX * (correction + inwardWeight);
+      const targetY = tangentY * tangentWeight + inwardY * (correction + inwardWeight);
       const length = Math.max(0.001, Math.hypot(targetX, targetY));
-      ball.vx = targetX / length * speed;
-      ball.vy = targetY / length * speed;
+      const desiredVx = targetX / length * ball.gravityBaseSpeed;
+      const desiredVy = targetY / length * ball.gravityBaseSpeed;
+      const steering = Math.min(1, step * (4 + convergence * 8));
+      ball.vx += (desiredVx - ball.vx) * steering;
+      ball.vy += (desiredVy - ball.vy) * steering;
+      const steeredSpeed = Math.max(1, Math.hypot(ball.vx, ball.vy));
+      ball.vx *= ball.gravityBaseSpeed / steeredSpeed;
+      ball.vy *= ball.gravityBaseSpeed / steeredSpeed;
+    } else if (ball.gravityBaseSpeed !== null) {
+      const affectedSpeed = Math.max(1, Math.hypot(ball.vx, ball.vy));
+      ball.vx *= ball.gravityBaseSpeed / affectedSpeed;
+      ball.vy *= ball.gravityBaseSpeed / affectedSpeed;
+      ball.gravityBaseSpeed = null;
     }
     const previousBallX = ball.x;
     const previousBallY = ball.y;
@@ -807,7 +1453,7 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
         ball,
         previousBallX,
         previousBallY,
-        { x: state.paddleX, previousX: previousPaddleX, y: PLAYER_PADDLE_Y, width: state.paddleWidth },
+        { x: state.paddleX, previousX: previousPaddleX, y: PLAYER_PADDLE_Y, width: state.paddleWidth + (evolved(state, "common-wide") ? 40 : 0) },
         4,
         18,
         10,
@@ -824,19 +1470,19 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
       const aim = paddleAimDirection(paddleContact.contactX, PLAYER_PADDLE_Y, controls.aimX, controls.aimY);
       ball.vx = aim.horizontalRatio * speed;
       ball.vy = aim.verticalRatio * speed;
-      state.combo = 0;
+      state.combo = evolved(state, "common-combo") ? Math.floor(state.combo / 2) : 0;
+      emitCanonicalEvent(state, { type: "paddle-reflected", x: paddleContact.contactX, y: PLAYER_PADDLE_Y });
       const echoThreshold = canonicalEchoSplitThreshold(state);
       if (echoThreshold > 0 && ++state.echoSplitReflections >= echoThreshold) {
         state.echoSplitReflections = 0;
         state.balls.push(cloneEchoSplitBall(state, ball));
-        state.visualEvents.push({ kind: "skill", skillId: "echo-split" as UpgradeId, x: state.paddleX, y: PLAYER_PADDLE_Y, radius: 68, duration: 0.6, color: "#fff27a" });
+        emitCanonicalVisual(state, { kind: "skill", skillId: "echo-split" as UpgradeId, x: state.paddleX, y: PLAYER_PADDLE_Y, radius: 68, duration: 0.6, color: "#fff27a" });
       }
       }
     }
     if (ball.vy > 0 && state.ghostPaddles.length > 0) {
       for (let index = 0; index < state.ghostPaddles.length; index += 1) {
         if (state.ghostPaddleActive && state.ghostPaddleActive[index] === false) continue;
-        const zoneWidth = GAME_WIDTH / state.ghostPaddles.length;
         const width = state.ghostPaddleWidths?.[index] ?? 92;
         const contact = sweptPaddleContact(ball, previousBallX, previousBallY, {
           x: state.ghostPaddles[index], previousX: state.ghostPaddles[index], y: GAME_HEIGHT - 42, width,
@@ -856,56 +1502,109 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
       if (!brick.alive) continue;
       const collision = circleRect(ball, brick);
       if (!collision) continue;
+      const indestructible = brick.trait === "indestructible";
+      if (indestructible) {
+        emitCanonicalVisual(state, { kind: "impact", skillId: "original" as UpgradeId, x: brick.x + brick.w / 2, y: brick.y + brick.h / 2, radius: 34, duration: 0.35, color: "#aeb8ca" });
+      }
       const protectedUnderside = brick.trait === "reflector" && brick.traitLockTime <= 0 && collision.ny > 0 && ball.vy < 0;
-      if (!protectedUnderside) {
-        const baseDamage = Math.max(1, 1 + skillValue(state, "common-damage") + Math.max(0, brick.frostVulnerability));
-        brick.frostVulnerability = 0;
-        const guardWasReady = brick.guardReady;
-        damageBrick(state, brick, baseDamage, ball, true);
-        const linkLevel = Math.max(0, Number(ball.payloads.link ?? 0));
-        if (linkLevel > 0 && brick.alive) {
-          const radius = 100 + (linkLevel - 1) * 30;
-          const count = Math.max(1, Math.floor(skillValue(state, "link")));
-          const linked = state.bricks
-            .filter((target) => target.alive && target !== brick && target.kind !== "boss-core")
-            .map((target) => ({ target, distance: Math.hypot(target.x - brick.x, target.y - brick.y) }))
-            .filter((entry) => entry.distance <= radius)
-            .sort((a, b) => a.distance - b.distance)
-            .slice(0, count);
-          for (const entry of linked) damageBrick(state, entry.target, 1, ball, false);
-        }
-        if (ball.pierce > 0) ball.pierce--;
-        if (!guardWasReady) triggerCollisionSkills(state, ball, brick);
-      } else state.reflectorBlockedHits++;
-      if (collision.nx) ball.vx = collision.nx * Math.abs(ball.vx); else ball.vy = collision.ny * Math.abs(ball.vy);
-      ball.x += collision.nx * 1.5;
-      ball.y += collision.ny * 1.5;
+      let passesThrough = false;
+      if (!indestructible && !protectedUnderside) {
+        passesThrough = resolveDestructibleDirectHit(state, ball, brick).passesThrough;
+      } else if (protectedUnderside) {
+        state.reflectorBlockedHits++;
+        emitCanonicalVisual(state, { kind: "impact", skillId: "original" as UpgradeId, x: brick.x + brick.w / 2, y: brick.y + brick.h, radius: 48, duration: 0.4, color: "#65dcff" });
+      }
+      if (passesThrough) {
+        if (collision.nx < 0) ball.x = brick.x + brick.w + ball.radius + 0.1;
+        else if (collision.nx > 0) ball.x = brick.x - ball.radius - 0.1;
+        else if (collision.ny < 0) ball.y = brick.y + brick.h + ball.radius + 0.1;
+        else ball.y = brick.y - ball.radius - 0.1;
+      } else {
+        if (collision.nx) ball.vx = collision.nx * Math.abs(ball.vx); else ball.vy = collision.ny * Math.abs(ball.vy);
+        ball.x += collision.nx * 1.5;
+        ball.y += collision.ny * 1.5;
+      }
       normalizeBallAngle(ball);
       break;
     }
     if (ball.y - ball.radius > GAME_HEIGHT) {
-      if (state.barrierTime > 0 && state.barrierCharges > 0) { state.barrierCharges--; ball.y = GAME_HEIGHT - ball.radius; ball.vy = -Math.abs(ball.vy); }
-      else state.balls.splice(state.balls.indexOf(ball), 1);
+      if (state.itemBarrierTime > 0) {
+        ball.y = GAME_HEIGHT - ball.radius;
+        ball.vy = -Math.abs(ball.vy);
+        emitCanonicalEvent(state, { type: "barrier-reflected", x: ball.x, y: GAME_HEIGHT - 18, chargesRemaining: -1 });
+      }
+      else if (!ball.temporary && !ball.waveBonus && state.barrierCharges > 0) {
+        state.barrierCharges--;
+        ball.y = GAME_HEIGHT - ball.radius;
+        ball.vy = -Math.abs(ball.vy);
+        emitCanonicalEvent(state, { type: "barrier-reflected", x: ball.x, y: GAME_HEIGHT - 18, chargesRemaining: state.barrierCharges });
+      }
+      else {
+        state.balls.splice(state.balls.indexOf(ball), 1);
+        lostBallCount++;
+        if (!ball.temporary && !ball.waveBonus) lostMainBall = true;
+        emitCanonicalEvent(state, { type: "ball-out", x: ball.x, y: GAME_HEIGHT - 8, remainingBalls: state.balls.length });
+      }
     }
   }
-  if (!state.balls.length) {
-    state.ballLosses++;
+  state.ballLosses += lostBallCount;
+  if (lostMainBall) {
     state.coreHp--;
-    if (state.coreHp <= 0) state.gameOver = true;
-    else state.balls = [makeBall(state, state.paddleX, false, true)];
+    emitCanonicalEvent(state, {
+      type: "core-damaged",
+      amount: 1,
+      remaining: Math.max(0, state.coreHp),
+      x: state.paddleX,
+      y: PLAYER_PADDLE_Y + 36,
+      speedPercent: Math.round(overdriveMultiplier(state.overdriveLevel) * 100),
+    });
+    if (state.coreHp <= 0) {
+      state.gameOver = true;
+      state.gameOverReason = "core";
+      state.phase = "game-over";
+      emitCanonicalEvent(state, { type: "game-over", reason: "core" });
+    }
+    else state.balls.push(makeBall(state, state.paddleX, false, true));
   }
   state.maxBalls = Math.max(state.maxBalls, state.balls.length);
-  if (!state.bricks.some((brick) => brick.alive && brick.trait !== "indestructible")) completeWave(state);
+  const currentWaveIsBoss = Boolean(waveDefinitionFrom(state.waves, state.wave).boss);
+  const bossCoreDestroyed = currentWaveIsBoss && !state.bricks.some((brick) => brick.alive && brick.kind === "boss-core");
+  const normalWaveCleared = !currentWaveIsBoss && !state.bricks.some((brick) => brick.alive && brick.trait !== "indestructible");
+  if (bossCoreDestroyed || normalWaveCleared) completeWave(state);
+  return stepResult(state);
 }
 
 export function canonicalSnapshot(state: CanonicalState) {
   return {
-    wave: state.wave, elapsed: Number(state.elapsed.toFixed(6)), waveElapsed: Number(state.waveElapsed.toFixed(6)), rowTimer: Number(state.rowTimer.toFixed(6)), itemBarrierTime: Number(state.itemBarrierTime.toFixed(6)), shakeStrength: Number(state.shakeStrength.toFixed(6)), shakeTime: Number(state.shakeTime.toFixed(6)), screenFlashTime: Number(state.screenFlashTime.toFixed(6)), paddleX: Number(state.paddleX.toFixed(4)), coreHp: state.coreHp, score: Number.isFinite(state.score) ? state.score : 0, bricksBroken: state.bricksBroken,
-    balls: state.balls.map((ball) => ({ x: Number(ball.x.toFixed(4)), y: Number(ball.y.toFixed(4)), vx: Number(ball.vx.toFixed(4)), vy: Number(ball.vy.toFixed(4)), attackPower: ball.attackPower, pierce: ball.pierce, maxPierce: ball.maxPierce, payload: ball.payload, payloadLevel: ball.payloadLevel, payloads: { ...ball.payloads }, skillCharges: { ...ball.skillCharges }, cooldowns: { ...ball.cooldowns } })),
+    tick: state.tick, phase: state.phase, rng: { ...state.rng }, wave: state.wave, pendingWave: state.pendingWave, elapsed: Number(state.elapsed.toFixed(6)), waveElapsed: Number(state.waveElapsed.toFixed(6)), rowTimer: Number(state.rowTimer.toFixed(6)), itemBarrierTime: Number(state.itemBarrierTime.toFixed(6)), paddleX: Number(state.paddleX.toFixed(4)), lastMove: state.lastMove, moveBoostTime: Number(state.moveBoostTime.toFixed(4)), coreHp: state.coreHp, score: Number.isFinite(state.score) ? state.score : 0, bricksBroken: state.bricksBroken,
+    balls: state.balls.map((ball) => ({ x: Number(ball.x.toFixed(4)), y: Number(ball.y.toFixed(4)), vx: Number(ball.vx.toFixed(4)), vy: Number(ball.vy.toFixed(4)), attackPower: ball.attackPower, pierce: ball.pierce, maxPierce: ball.maxPierce, payload: ball.payload, payloadLevel: ball.payloadLevel, payloads: { ...ball.payloads }, skillCharges: { ...ball.skillCharges }, cooldowns: { ...ball.cooldowns }, lastHitBrickId: ball.lastHitBrickId })),
     bricks: state.bricks.filter((brick) => brick.alive).map((brick) => [brick.id, Number(brick.hp.toFixed(3)), brick.guardReady, Number(brick.traitLockTime.toFixed(3)), Number(brick.frostVulnerability.toFixed(3))]),
     upgrades: [...state.upgrades], skillHistory: state.skillHistory.map((event) => ({ ...event })), complete: state.complete, gameOver: state.gameOver, totalDamage: Number(state.totalDamage.toFixed(3)), lastDamageElapsed: Number(state.lastDamageElapsed.toFixed(3)), reflectorBlockedHits: state.reflectorBlockedHits, barrierTime: Number(state.barrierTime.toFixed(3)), barrierCharges: state.barrierCharges, echoSplitReflections: state.echoSplitReflections,
-    safetyBlocks: state.safetyBlocks.map((block) => ({ ...block })), effects: state.effects.map((effect) => ({ ...effect })), particles: state.particles.map((particle) => ({ ...particle })), flashes: state.flashes.map((flash) => ({ ...flash })), ultimateAuras: { ...state.ultimateAuras }, paddleChargePulse: state.paddleChargePulse, paddleChargeColor: state.paddleChargeColor, coreBreakTime: state.coreBreakTime, coreBreakDuration: state.coreBreakDuration, coreBreakX: state.coreBreakX, coreBreakY: state.coreBreakY, ghostPaddles: [...state.ghostPaddles],
+    safetyBlocks: state.safetyBlocks.map((block) => ({ ...block })), ghostPaddles: [...state.ghostPaddles],
   };
+}
+
+export function serializeCanonicalState(state: CanonicalState) {
+  return JSON.stringify(state, (key, value) => key === "stepEvents" ? undefined : value);
+}
+
+export function restoreCanonicalState(serialized: string): CanonicalState {
+  const parsed = JSON.parse(serialized) as Omit<CanonicalState, "stepEvents">;
+  const state = { ...parsed, stepEvents: [] } as CanonicalState;
+  state.runConfig.startingSkills ??= [];
+  state.balance = state.runConfig.balance;
+  state.skills = state.runConfig.skills;
+  state.waves = state.runConfig.waves;
+  state.targetWave = state.runConfig.targetWave;
+  state.lastMove ??= 0;
+  state.moveBoostTime ??= 0;
+  for (const ball of state.balls) {
+    ball.canTriggerSkills ??= !ball.temporary;
+    ball.skillGeneration ??= 0;
+    ball.lastHitBrickId ??= null;
+    ball.gravityBaseSpeed ??= null;
+  }
+  return state;
 }
 
 /** Ball-only parity phase; deliberately excludes brick/paddle/game rules. */
@@ -946,7 +1645,7 @@ export function resolveCanonicalPaddleCollisionPure(state: CanonicalState, previ
   for (const ball of state.balls) {
     if (ball.vy <= 0) continue;
     const prior = previous.get(ball) ?? { x: ball.x, y: ball.y };
-    const contact = sweptPaddleContact(ball, prior.x, prior.y, { x: state.paddleX, previousX: state.paddleX, y: paddleY, width: state.paddleWidth }, options.slop ?? 4, options.sideDepth ?? 18, options.forgiveness ?? 10);
+    const contact = sweptPaddleContact(ball, prior.x, prior.y, { x: state.paddleX, previousX: state.paddleX, y: paddleY, width: state.paddleWidth + (evolved(state, "common-wide") ? 40 : 0) }, options.slop ?? 4, options.sideDepth ?? 18, options.forgiveness ?? 10);
     if (!contact) continue;
     ball.x = contact.contactX; ball.y = paddleY - ball.radius - 0.1;
     const speed = Math.max(300, Math.hypot(ball.vx, ball.vy));

@@ -1,6 +1,6 @@
 import type { UpgradeId } from "./skill-config";
 import type { GameState } from "./_types/game";
-import { finiteNumber } from "./canonical-state-mapping";
+import { finiteNumber } from "./game-runtime-projection";
 
 export type HudSkillLevel = { id: UpgradeId; level: number; enhancement?: number };
 

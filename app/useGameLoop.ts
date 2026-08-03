@@ -5,10 +5,9 @@ type MutableRef<T> = { current: T };
 type UseGameLoopOptions = {
   enabledRef: MutableRef<boolean>;
   runningRef: MutableRef<boolean>;
-  drawGame: () => void;
-  canonicalStep: (dt: number) => "complete" | "game-over" | null;
-  legacyStep?: (dt: number) => void;
-  simulationMode?: "legacy" | "canonical";
+  drawGame: (dt: number) => void;
+  canonicalStep: (dt: number) => "complete" | "game-over" | "paused" | null;
+  simulationRateRef?: MutableRef<number>;
   onCanonicalOutcome?: (outcome: "complete" | "game-over") => void;
 };
 
@@ -21,7 +20,7 @@ export const CANONICAL_MAX_FRAME_DELTA_SECONDS = 0.25;
 // for (let step = 0; step < steps && runningRef.current; step += 1) updateRef.current(dt);
 // speed: botSpeedRef.current; botSpeedRef.current = botSpeed; CPU 자동 · 최대 8
 
-export type FixedStepAdvanceResult = { accumulator: number; steps: number; outcome: "complete" | "game-over" | null };
+export type FixedStepAdvanceResult = { accumulator: number; steps: number; outcome: "complete" | "game-over" | "paused" | null };
 
 /**
  * Advances a fixed-step accumulator without dropping the residual time. The
@@ -31,14 +30,14 @@ export type FixedStepAdvanceResult = { accumulator: number; steps: number; outco
 export function advanceCanonicalAccumulator(
   accumulator: number,
   frameDelta: number,
-  step: (dt: number) => "complete" | "game-over" | null,
+  step: (dt: number) => "complete" | "game-over" | "paused" | null,
   fixedStep = CANONICAL_FIXED_STEP_SECONDS,
   maxSubsteps = CANONICAL_MAX_SUBSTEPS,
 ): FixedStepAdvanceResult {
   const safeStep = Math.max(Number.EPSILON, fixedStep);
   let remaining = Math.max(0, accumulator) + Math.min(CANONICAL_MAX_FRAME_DELTA_SECONDS, Math.max(0, frameDelta));
   let steps = 0;
-  let outcome: "complete" | "game-over" | null = null;
+  let outcome: "complete" | "game-over" | "paused" | null = null;
   while (remaining + Number.EPSILON >= safeStep && steps < maxSubsteps) {
     outcome = step(safeStep);
     remaining -= safeStep;
@@ -49,21 +48,17 @@ export function advanceCanonicalAccumulator(
 }
 
 /** Owns the animation-frame clock and lifecycle for the canonical game runtime. */
-export function useGameLoop({ enabledRef, runningRef, drawGame, canonicalStep, legacyStep, simulationMode = "canonical", onCanonicalOutcome }: UseGameLoopOptions) {
+export function useGameLoop({ enabledRef, runningRef, drawGame, canonicalStep, simulationRateRef, onCanonicalOutcome }: UseGameLoopOptions) {
   const frameRef = useRef<number | null>(null);
   const lastRef = useRef(0);
   const drawRef = useRef(drawGame);
   const canonicalStepRef = useRef(canonicalStep);
   const canonicalOutcomeRef = useRef(onCanonicalOutcome);
-  const legacyStepRef = useRef(legacyStep);
-  const simulationModeRef = useRef(simulationMode);
   const canonicalAccumulatorRef = useRef(0);
   const loopRef = useRef<(time: number) => void>(() => undefined);
   useEffect(() => { drawRef.current = drawGame; }, [drawGame]);
   useEffect(() => { canonicalStepRef.current = canonicalStep; }, [canonicalStep]);
   useEffect(() => { canonicalOutcomeRef.current = onCanonicalOutcome; }, [onCanonicalOutcome]);
-  useEffect(() => { legacyStepRef.current = legacyStep; }, [legacyStep]);
-  useEffect(() => { simulationModeRef.current = simulationMode; }, [simulationMode]);
 
   const resetClock = useCallback(() => {
     lastRef.current = performance.now();
@@ -95,19 +90,18 @@ export function useGameLoop({ enabledRef, runningRef, drawGame, canonicalStep, l
       const dt = Math.max(0, Math.min(0.025, (time - lastRef.current) / 1000 || 0));
       lastRef.current = time;
       if (runningRef.current) {
-        if (simulationModeRef.current === "legacy") {
-          canonicalAccumulatorRef.current = 0;
-          legacyStepRef.current?.(dt);
-        } else {
-          const result = advanceCanonicalAccumulator(canonicalAccumulatorRef.current, dt, (fixedDt) => canonicalStepRef.current(fixedDt));
-          canonicalAccumulatorRef.current = result.accumulator;
-          if (result.outcome) canonicalOutcomeRef.current?.(result.outcome);
-        }
+        const simulationDelta = dt * Math.max(1, simulationRateRef?.current ?? 1);
+        const result = advanceCanonicalAccumulator(canonicalAccumulatorRef.current, simulationDelta, (fixedDt) => canonicalStepRef.current(fixedDt));
+        canonicalAccumulatorRef.current = result.accumulator;
+        if (result.outcome === "paused") canonicalAccumulatorRef.current = 0;
+        else if (result.outcome) canonicalOutcomeRef.current?.(result.outcome);
       } else {
         // Pausing must not carry simulation debt into the next run.
         canonicalAccumulatorRef.current = 0;
       }
-      drawRef.current();
+      // Presentation time is wall-clock based and continues while simulation
+      // is paused or terminal, so transient effects can always expire.
+      drawRef.current(dt);
       frameRef.current = requestAnimationFrame(loop);
     };
     loopRef.current = loop;
@@ -115,7 +109,7 @@ export function useGameLoop({ enabledRef, runningRef, drawGame, canonicalStep, l
       disposed = true;
       stop();
     };
-  }, [enabledRef, runningRef, stop]);
+  }, [enabledRef, runningRef, simulationRateRef, stop]);
 
   return { resetClock, start, stop };
 }

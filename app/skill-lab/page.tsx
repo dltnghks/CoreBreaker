@@ -155,15 +155,15 @@ export default function SkillLab() {
           {visibleSkills.map((skill) => (
             <button key={skill.id} data-category={skill.category} className={`${styles.skillCard} ${selected.id === skill.id ? styles.selected : ""}`} style={skillStyle(skill)} onClick={() => setSelectedId(skill.id)}>
               <i className={styles.skillIcon} aria-hidden="true">{CATEGORY_ICONS[skill.category]}</i>
-              <span>{CATEGORY_LABELS[skill.category]} · {SKILL_MECHANIC_LABELS[skill.mechanic]} · {skill.ultimate ? "보스 궁극기" : "일반 스킬"}</span><strong>{skill.name}</strong><small><b>발동</b> {skill.trigger}</small>
+              <span>{CATEGORY_LABELS[skill.category]} · {SKILL_MECHANIC_LABELS[skill.mechanic]} · 일반 스킬</span><strong>{skill.name}</strong><small><b>발동</b> {skill.trigger}</small>
               <p className={styles.description}><SkillDescriptionText text={skill.description} /></p>
-              <em>{skill.levels.map((value) => `${value}${skill.unit}`).join(" / ")}{skill.cooldown.some((value) => value > 0) ? ` · CD ${skill.cooldown.join("/")}s` : ""} · {skill.evolution ? "LV3 EVOLUTION" : skill.ultimate ? "ULTIMATE" : "PERMANENT"}</em>
+              <em>{skill.levels.map((value) => `${value}${skill.unit}`).join(" / ")}{skill.cooldown.some((value) => value > 0) ? ` · CD ${skill.cooldown.join("/")}s` : ""} · {skill.evolution ? "LV3 EVOLUTION" : "PERMANENT"}</em>
             </button>
           ))}
         </div>
 
         <aside className={styles.editor} style={skillStyle(selected)}>
-          <div className={styles.editorHeading}><span>{CATEGORY_LABELS[selected.category]} · {SKILL_MECHANIC_LABELS[selected.mechanic]} · {selected.ultimate ? "ULTIMATE" : "NORMAL"}</span><strong>{selected.name}</strong></div>
+          <div className={styles.editorHeading}><span>{CATEGORY_LABELS[selected.category]} · {SKILL_MECHANIC_LABELS[selected.mechanic]} · NORMAL</span><strong>{selected.name}</strong></div>
           <label>이름<input value={selected.name} onChange={(event) => updateSelected({ name: event.target.value })} /></label>
           <label>적용 기준<input value="스킬 보유 공 · 공별 독립 쿨타임" readOnly /></label>
           <label>발동 조건<input value={selected.trigger} onChange={(event) => updateSelected({ trigger: event.target.value })} /></label>
