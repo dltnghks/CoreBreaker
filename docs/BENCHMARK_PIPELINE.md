@@ -23,8 +23,8 @@
 - 스킬 이펙트, 아이템, 보스, 웨이브 전환을 화면으로 확인한다.
 - 1×, 2×, 4×, 8× 관찰 배속을 지원한다.
 - 결과 메타데이터:
-  - `engineVersion: live-game-runtime-v1`
-  - `engineParity: exact-live-runtime`
+  - `engineVersion: canonical-command-contract-v6`
+  - `engineParity: canonical-semantic-events-projection`
   - `policyVersion: predictive-controls-v3-reflector-top-bank`
 
 실제 플레이와의 시각·물리 패리티를 확인할 때 WATCH RUN을 기준으로 사용한다.

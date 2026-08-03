@@ -19,5 +19,6 @@ test("fixed-step accumulator preserves residual time and resets on pause/stop", 
 
 test("canonical path clamps frame deltas before fixed-step advancement", () => {
   assert.match(source, /const dt = Math\.max\(0, Math\.min\(0\.025/);
-  assert.match(source, /advanceCanonicalAccumulator\(canonicalAccumulatorRef\.current, dt/);
+  assert.match(source, /const simulationDelta = dt \* Math\.max\(1, simulationRateRef\?\.current \?\? 1\)/);
+  assert.match(source, /advanceCanonicalAccumulator\(canonicalAccumulatorRef\.current, simulationDelta/);
 });
