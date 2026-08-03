@@ -141,6 +141,9 @@ export type Brick = {
   frostVulnerability: number;
   traitLockTime: number;
   lastHitPaddleId: string | null;
+  healthFlashTime?: number;
+  healthFlashDuration?: number;
+  healthFlashKind?: "damage" | "heal" | null;
 };
 
 export type DropItem = {
@@ -155,7 +158,7 @@ export type DropItem = {
 export type SafetyBlock = { ownerPaddleId: string; x: number; y: number; width: number; color: string };
 export type GravityWell = { ownerPaddleId: string; x: number; y: number; radius: number; life: number; maxLife: number; color: string; damagePerSecond: number; damageTick: number };
 export type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
-export type Flash = { text: string; x: number; y: number; life: number; color: string; emphasis?: "damage" };
+export type Flash = { text: string; x: number; y: number; life: number; color: string; emphasis?: "damage" | "heal" };
 export type GameEffect = { kind: "ring" | "beam" | "blast" | "drop" | "spark" | "lightning" | "skill"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string; variant: number; skillId: ClassSkillId | null };
 export type PaddleCounter = { reflections: number; barrierReflections: number; missileReflections: number; safetyTimer: number; gravityTimer: number; directKills: number; pierceKills: number; feverMilestone: number; lastShotTimer: number; combo: number; comboTimer: number; skillCooldowns: Partial<Record<ClassSkillId, number>>; skillReflections?: Partial<Record<ClassSkillId, number>>; chargePulse?: number; chargeColor?: string };
 

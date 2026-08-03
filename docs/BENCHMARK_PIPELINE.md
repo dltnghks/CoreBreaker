@@ -23,7 +23,7 @@
 - 스킬 이펙트, 아이템, 보스, 웨이브 전환을 화면으로 확인한다.
 - 1×, 2×, 4×, 8× 관찰 배속을 지원한다.
 - 결과 메타데이터:
-  - `engineVersion: canonical-command-contract-v13-wave-scoped-iron-wall`
+  - `engineVersion: canonical-command-contract-v14-brick-health-feedback`
   - `engineParity: canonical-semantic-events-projection`
   - `policyVersion: predictive-controls-v3-reflector-top-bank`
 

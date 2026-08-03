@@ -121,6 +121,7 @@ function applyCanonicalStateProjection(target: GameState, source: CanonicalState
       blastVulnerability: 1, blastVulnerabilitySourcePaddleId: null,
       frostVulnerability: canonicalBrick.frostVulnerability, traitLockTime: canonicalBrick.traitLockTime,
       lastHitPaddleId: null,
+      healthFlashTime: 0, healthFlashDuration: 0, healthFlashKind: null,
     };
     brick.x = canonicalBrick.x;
     brick.y = canonicalBrick.y;

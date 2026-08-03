@@ -190,6 +190,22 @@ test("a multiball item creates a skill-owning bonus ball", () => {
   assert.equal(multiball.temporaryTime, 0);
 });
 
+test("healer pulses emit target-specific brick health events", () => {
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  definitions[0] = { ...definitions[0], pattern: ["cs.........."] };
+  const state = engine.createCanonicalState({ seed: 20260805, targetWave: 1, waves: definitions });
+  const healer = state.bricks.find((brick) => brick.trait === "healer");
+  const target = state.bricks.find((brick) => brick.trait === "standard");
+  assert.ok(healer && target);
+  target.maxHp = 3;
+  target.hp = 1;
+  healer.healTimer = 0;
+
+  const result = engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  assert.equal(target.hp, 2);
+  assert.ok(result.events.some((event) => event.type === "brick-healed" && event.brickIndex === target.id && event.amount === 1 && event.hp === 2 && event.maxHp === 3));
+});
+
 test("normal play and benchmark routes use the canonical simulation path", async () => {
   const source = await readFile(new URL("../app/GameRuntime.tsx", import.meta.url), "utf8");
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");

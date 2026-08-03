@@ -5,7 +5,7 @@ import { circleRectangleCollision, sweptPaddleContact } from "./collision-physic
 import type { GameEvent } from "./game-events";
 import type { Upgrade, UpgradeChoice } from "./_types/game";
 
-export const ENGINE_VERSION = "canonical-command-contract-v13-wave-scoped-iron-wall" as const;
+export const ENGINE_VERSION = "canonical-command-contract-v14-brick-health-feedback" as const;
 export const ENGINE_PARITY = "canonical-semantic-events-projection" as const;
 export const POLICY_VERSION = "predictive-controls-v12-focused-builds" as const;
 export const FIXED_STEP_SECONDS = 1 / 120;
@@ -1405,7 +1405,11 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
           if (near.alive && near !== brick && near.healBlockTime <= 0 && Math.hypot(nearCenterX - healerCenterX, nearCenterY - healerCenterY) < 135) {
             const previousHp = near.hp;
             near.hp = Math.min(near.maxHp, near.hp + 1);
-            healed ||= near.hp > previousHp;
+            const restored = near.hp - previousHp;
+            if (restored > 0) {
+              healed = true;
+              emitCanonicalEvent(state, { type: "brick-healed", brickIndex: near.id, amount: restored, hp: near.hp, maxHp: near.maxHp, x: nearCenterX, y: nearCenterY });
+            }
           }
         }
         if (healed) emitCanonicalVisual(state, { kind: "impact", skillId: "original" as UpgradeId, x: healerCenterX, y: healerCenterY, radius: 135, duration: 0.7, color: "#72f1b8", text: "HEAL PULSE +1" });

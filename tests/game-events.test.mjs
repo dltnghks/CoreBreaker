@@ -110,6 +110,21 @@ test("explosive brick events materialize the legacy blast presentation", () => {
   assert.match(presentation, /setImpact\(game, 7, event\.color, 0\.3, 0\.16\)/);
 });
 
+test("brick health changes use distinct compact damage and recovery feedback", () => {
+  const events = fs.readFileSync(new URL("../app/game-events.ts", import.meta.url), "utf8");
+  const presentation = fs.readFileSync(new URL("../app/useGamePresentation.ts", import.meta.url), "utf8");
+  const renderer = fs.readFileSync(new URL("../app/game-renderer.ts", import.meta.url), "utf8");
+  assert.match(events, /type: "brick-healed"/);
+  assert.match(presentation, /healthFlashKind = "damage"/);
+  assert.match(presentation, /healthFlashKind = "heal"/);
+  assert.match(presentation, /emphasis: "heal"/);
+  assert.match(renderer, /ctx\.font = "1000 15px monospace"/);
+  assert.match(renderer, /const damageRatio =/);
+  assert.match(renderer, /const crackCount =/);
+  assert.match(renderer, /barWidth \* healthRatio/);
+  assert.match(renderer, /brick\.healthFlashKind === "heal"/);
+});
+
 test("debug replay recorder is wired to the canonical simulation", () => {
   const source = fs.readFileSync(new URL("../app/GameRuntime.tsx", import.meta.url), "utf8");
   assert.match(source, /createReplayRecorder\("canonical"/);

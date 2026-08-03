@@ -89,11 +89,24 @@ export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor
   };
   game.bricks.forEach((brick: Brick) => {
     if (!brick.alive) return;
-    const alpha = 0.42 + (brick.hp / Math.max(1, brick.maxHp)) * 0.5;
+    const healthRatio = Math.max(0, Math.min(1, brick.hp / Math.max(1, brick.maxHp)));
+    const damageRatio = brick.trait === "indestructible" ? 0 : 1 - healthRatio;
+    const alpha = 0.42 + healthRatio * 0.5;
     const color = brick.kind === "boss-core" ? "#ff4f78" : brick.kind === "boss-armor" ? "#587cff" :
       brick.trait === "guard" ? "#fff27a" : brick.trait === "explosive" ? "#ff8a3d" : brick.trait === "indestructible" ? "#8d96a8" :
       brick.trait === "healer" ? "#72f1b8" : brick.trait === "reflector" ? "#65dcff" : brick.maxHp >= 5 ? "#c5a766" : brick.maxHp >= 3 ? "#aeb4bd" : "#8f969f";
-    ctx.save(); ctx.shadowBlur = 12; ctx.shadowColor = color;
+    const healthFlashRatio = (brick.healthFlashTime ?? 0) / Math.max(0.001, brick.healthFlashDuration ?? 0.001);
+    const centerX = brick.x + brick.w / 2, centerY = brick.y + brick.h / 2;
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    const damageWobble = Math.sin(brick.x * 0.17 + brick.y * 0.11) * damageRatio;
+    const eventScale = brick.healthFlashKind === "damage"
+      ? 1 - healthFlashRatio * 0.045
+      : brick.healthFlashKind === "heal" ? 1 + healthFlashRatio * 0.055 : 1;
+    ctx.rotate(damageWobble * 0.018);
+    ctx.scale((1 - damageRatio * 0.035) * eventScale, (1 + damageRatio * 0.045) * eventScale);
+    ctx.translate(-centerX, -centerY);
+    ctx.shadowBlur = 12; ctx.shadowColor = color;
     const usesNormalWaveDesign = brick.kind === "normal" || brick.kind === "boss-minion";
     ctx.fillStyle = usesNormalWaveDesign ? (brick.trait === "guard" ? `rgba(135,115,25,${alpha})` : brick.trait === "explosive" ? `rgba(174,61,20,${alpha})` : brick.trait === "indestructible" ? "rgba(55,62,76,.98)" : brick.trait === "healer" ? `rgba(30,122,91,${alpha})` : brick.trait === "reflector" ? `rgba(22,102,145,${alpha})` : brick.maxHp >= 5 ? `rgba(111,88,43,${alpha})` : brick.maxHp >= 3 ? `rgba(78,83,92,${alpha})` : `rgba(61,66,73,${alpha})`) : color;
     ctx.globalAlpha = usesNormalWaveDesign ? 1 : alpha; trace(brick); ctx.fill(); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
@@ -119,6 +132,37 @@ export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor
     if (brick.frostVulnerability > 0) { ctx.save(); ctx.globalAlpha = .72 + Math.sin(game.elapsed * 7 + brick.x * .02) * .18; ctx.fillStyle = "rgba(101,220,255,.18)"; ctx.fillRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4); ctx.strokeStyle = "#b9f4ff"; ctx.shadowColor = "#65dcff"; ctx.shadowBlur = 12; ctx.lineWidth = 2; ctx.strokeRect(brick.x - 2, brick.y - 2, brick.w + 4, brick.h + 4); ctx.fillStyle = "#e8fcff"; ctx.font = "900 10px monospace"; ctx.textAlign = "left"; ctx.fillText(`×+${brick.frostVulnerability}`, brick.x + 5, brick.y + 12); ctx.restore(); }
     if (brick.traitLockTime > 0) { ctx.save(); ctx.globalAlpha = .72 + Math.sin(game.elapsed * 9 + brick.x * .025) * .18; ctx.strokeStyle = classSkillColor?.("mage-mana-blast") ?? "#c18cff"; ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 14; ctx.lineWidth = 3; ctx.setLineDash([7, 4]); ctx.strokeRect(brick.x - 4, brick.y - 4, brick.w + 8, brick.h + 8); ctx.setLineDash([]); ctx.fillStyle = "rgba(7,4,18,.9)"; ctx.fillRect(brick.x + brick.w / 2 - 26, brick.y + brick.h - 12, 52, 12); ctx.fillStyle = "#e4b7ff"; ctx.font = "900 9px monospace"; ctx.textAlign = "center"; ctx.fillText(`LOCK ${Math.ceil(brick.traitLockTime)}s`, brick.x + brick.w / 2, brick.y + brick.h - 3); ctx.restore(); }
     if (brick.lastHitPaddleId) { ctx.strokeStyle = "#c18cff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(brick.x + 5, brick.y + brick.h - 4); ctx.lineTo(brick.x + brick.w * .35, brick.y + 5); ctx.moveTo(brick.x + brick.w * .55, brick.y + brick.h - 4); ctx.lineTo(brick.x + brick.w - 5, brick.y + 5); ctx.stroke(); }
+    if (damageRatio > 0.08) {
+      const crackCount = Math.min(4, Math.max(1, Math.ceil(damageRatio * 4)));
+      ctx.save(); ctx.strokeStyle = `rgba(7,9,15,${0.38 + damageRatio * 0.5})`; ctx.lineWidth = 1 + damageRatio * 1.4; ctx.lineCap = "round";
+      for (let crack = 0; crack < crackCount; crack++) {
+        const startX = brick.x + brick.w * (0.2 + ((crack * 0.23 + brick.x * 0.003) % 0.6));
+        const startY = crack % 2 === 0 ? brick.y + 2 : brick.y + brick.h - 2;
+        const direction = crack % 2 === 0 ? 1 : -1;
+        ctx.beginPath(); ctx.moveTo(startX, startY);
+        ctx.lineTo(startX + (crack % 2 ? -5 : 5), startY + direction * brick.h * 0.28);
+        ctx.lineTo(startX + (crack % 2 ? 3 : -3), startY + direction * brick.h * (0.46 + damageRatio * 0.18));
+        if (damageRatio > 0.5) ctx.lineTo(startX + (crack % 2 ? 9 : -9), startY + direction * brick.h * 0.72);
+        ctx.stroke();
+      }
+      if (damageRatio > 0.62) {
+        const chip = Math.min(10, 4 + damageRatio * 7); ctx.fillStyle = "rgba(5,7,12,.78)";
+        ctx.beginPath(); ctx.moveTo(brick.x, brick.y); ctx.lineTo(brick.x + chip, brick.y); ctx.lineTo(brick.x, brick.y + chip * .75); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(brick.x + brick.w, brick.y + brick.h); ctx.lineTo(brick.x + brick.w - chip, brick.y + brick.h); ctx.lineTo(brick.x + brick.w, brick.y + brick.h - chip * .75); ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
+    if (brick.trait !== "indestructible" && brick.maxHp > 1) {
+      const barX = brick.x + 5, barY = brick.y + brick.h - 4, barWidth = brick.w - 10;
+      ctx.fillStyle = "rgba(3,6,12,.72)"; ctx.fillRect(barX, barY, barWidth, 2);
+      ctx.fillStyle = healthRatio > .55 ? "#72f1b8" : healthRatio > .25 ? "#ffcf4a" : "#ff6b87";
+      ctx.fillRect(barX, barY, barWidth * healthRatio, 2);
+    }
+    if (healthFlashRatio > 0 && brick.healthFlashKind) {
+      const flashColor = brick.healthFlashKind === "heal" ? "#72f1b8" : "#ff6b87";
+      ctx.save(); ctx.globalAlpha = Math.min(.72, healthFlashRatio * .72); ctx.fillStyle = flashColor; trace(brick, 2); ctx.fill();
+      ctx.globalAlpha = Math.min(1, healthFlashRatio * 1.2); ctx.strokeStyle = flashColor; ctx.shadowColor = flashColor; ctx.shadowBlur = brick.healthFlashKind === "heal" ? 20 : 13; ctx.lineWidth = brick.healthFlashKind === "heal" ? 3 : 2; trace(brick, -2 * healthFlashRatio); ctx.stroke(); ctx.restore();
+    }
     ctx.strokeStyle = "rgba(4,8,20,.95)"; ctx.lineWidth = brick.kind === "boss-core" ? 5 : 4; ctx.fillStyle = "#fff"; ctx.font = brick.kind === "boss-core" ? "900 18px monospace" : "900 18px monospace"; ctx.textAlign = "center";
     if (brick.kind === "boss-core") { ctx.strokeText("BOSS CORE", brick.x + brick.w / 2, brick.y + brick.h / 2 - 13); ctx.fillText("BOSS CORE", brick.x + brick.w / 2, brick.y + brick.h / 2 - 13); ctx.font = "900 44px monospace"; const hp = String(Math.max(0, Math.ceil(brick.hp))); ctx.strokeText(hp, brick.x + brick.w / 2, brick.y + brick.h / 2 + 30); ctx.fillText(hp, brick.x + brick.w / 2, brick.y + brick.h / 2 + 30); }
     else if (brick.trait !== "indestructible") { const hp = String(Math.max(0, Math.ceil(brick.hp))), y = brick.y + brick.h / 2 + 6; ctx.strokeText(hp, brick.x + brick.w / 2, y); ctx.fillText(hp, brick.x + brick.w / 2, y); }
@@ -339,19 +383,22 @@ export function renderTransientFeedback(ctx: CanvasRendererContext, game: Pick<G
     ctx.fillStyle = f.color;
     ctx.textAlign = "center";
     if (f.emphasis === "damage") {
-      const pulse = 1 + Math.max(0, f.life - 0.55) * 0.45;
+      const pulse = 1 + Math.max(0, f.life - 0.58) * 0.28;
       ctx.save();
       ctx.translate(f.x, f.y);
       ctx.scale(pulse, pulse);
-      ctx.font = "1000 24px monospace";
+      ctx.font = "1000 15px monospace";
       ctx.lineJoin = "round";
-      ctx.lineWidth = 5;
+      ctx.lineWidth = 3;
       ctx.strokeStyle = "rgba(5, 8, 16, .95)";
       ctx.shadowColor = f.color;
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = 8;
       ctx.strokeText(f.text, 0, 0);
       ctx.fillText(f.text, 0, 0);
       ctx.restore();
+    } else if (f.emphasis === "heal") {
+      const pulse = 1 + Math.max(0, f.life - 0.6) * 0.2;
+      ctx.save(); ctx.translate(f.x, f.y); ctx.scale(pulse, pulse); ctx.font = "1000 14px monospace"; ctx.lineJoin = "round"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(3,18,15,.96)"; ctx.shadowColor = f.color; ctx.shadowBlur = 11; ctx.strokeText(f.text, 0, 0); ctx.fillText(f.text, 0, 0); ctx.restore();
     } else {
       ctx.font = `900 ${f.text.includes("BOARD") ? 28 : 15}px monospace`;
       ctx.fillText(f.text, f.x, f.y);

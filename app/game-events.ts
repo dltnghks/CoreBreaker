@@ -12,7 +12,7 @@ type GameEventPayload =
   | { type: "audio"; cue: string; volume?: number }
   | { type: "particle"; x: number; y: number; color: string; count?: number }
   | { type: "effect"; kind: "ring" | "beam" | "blast" | "drop" | "spark" | "lightning" | "skill"; x: number; y: number; x2?: number; y2?: number; color: string; skillId?: ClassSkillId | null }
-  | { type: "flash"; text: string; x: number; y: number; color: string; emphasis?: "damage" }
+  | { type: "flash"; text: string; x: number; y: number; color: string; emphasis?: "damage" | "heal" }
   | { type: "shake"; strength: number; duration: number }
   | {
       type: "skill-activated";
@@ -42,6 +42,7 @@ type GameEventPayload =
     }
   | { type: "upgrade-chosen"; skillId: UpgradeId; level: number; source: "start" | "wave" | "boss" }
   | { type: "brick-damaged"; brickIndex: number; damage: number; x: number; y: number; color: string; source?: UpgradeId; damageType?: "physical" | "magic"; delivery?: "ball" | "skill" | "dot" | "skill-projectile" | "environment" }
+  | { type: "brick-healed"; brickIndex: number; amount: number; hp: number; maxHp: number; x: number; y: number }
   | { type: "brick-destroyed"; brickIndex: number; x: number; y: number; color: string; combo: number; points: number; source?: UpgradeId; damageType?: "physical" | "magic" }
   | { type: "brick-exploded"; brickIndex: number; x: number; y: number; radius: number; color: string }
   | { type: "item-dropped"; itemId: number; kind: string; x: number; y: number }

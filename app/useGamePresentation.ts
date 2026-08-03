@@ -89,6 +89,10 @@ export function useGamePresentation(options: PresentationAdapters) {
     game.particles = game.particles.filter((particle) => particle.life > 0);
     game.flashes.forEach((flash) => { flash.y -= 28 * dt; flash.life -= dt; });
     game.flashes = game.flashes.filter((flash) => flash.life > 0).slice(-maxFlashes);
+    game.bricks.forEach((brick) => {
+      brick.healthFlashTime = Math.max(0, (brick.healthFlashTime ?? 0) - dt);
+      if (brick.healthFlashTime <= 0) brick.healthFlashKind = null;
+    });
     game.effects.forEach((effect) => { effect.life -= dt; });
     game.effects = game.effects.filter((effect) => effect.life > 0);
   }, [gameRef, maxFlashes]);
@@ -165,6 +169,12 @@ export function useGamePresentation(options: PresentationAdapters) {
         const slot = damageSlots.get(slotKey) ?? 0;
         damageSlots.set(slotKey, slot + 1);
         const isMagic = damageType === "magic";
+        const brick = game.bricks.find((entry) => Math.abs(entry.x + entry.w / 2 - event.x) < 1 && Math.abs(entry.y + entry.h / 2 - event.y) < 1);
+        if (brick) {
+          brick.healthFlashDuration = 0.28;
+          brick.healthFlashTime = brick.healthFlashDuration;
+          brick.healthFlashKind = "damage";
+        }
         game.flashes.push({
           text: isMagic ? `✦-${roundedDamage}` : `-${roundedDamage}`,
           x: event.x + (isMagic ? 22 : -18),
@@ -173,6 +183,19 @@ export function useGamePresentation(options: PresentationAdapters) {
           color: isMagic ? "#b996ff" : event.damage >= 3 ? "#ffcf4a" : "#ffffff",
           emphasis: "damage",
         });
+      } else if (event.type === "brick-healed") {
+        const brick = game.bricks.find((entry) => Math.abs(entry.x + entry.w / 2 - event.x) < 1 && Math.abs(entry.y + entry.h / 2 - event.y) < 1);
+        if (brick) {
+          brick.healthFlashDuration = 0.5;
+          brick.healthFlashTime = brick.healthFlashDuration;
+          brick.healthFlashKind = "heal";
+        }
+        pushEffect(game, { kind: "ring", x: event.x, y: event.y, x2: event.x, y2: event.y, size: 30, life: 0.48, maxLife: 0.48, color: "#72f1b8", variant: 0, skillId: null });
+        for (let index = 0; index < 6; index += 1) {
+          const angle = (Math.PI * 2 * index) / 6;
+          pushParticle(game, { x: event.x, y: event.y, vx: Math.cos(angle) * 42, vy: -55 - Math.abs(Math.sin(angle)) * 35, life: 0.52, color: "#72f1b8" });
+        }
+        game.flashes.push({ text: `+${event.amount}`, x: event.x, y: event.y - 8, life: 0.85, color: "#72f1b8", emphasis: "heal" });
       } else if (event.type === "brick-destroyed") {
         playAudio("brick-break", event.combo);
         pushEffect(game, { kind: "spark", x: event.x, y: event.y, x2: event.x, y2: event.y, size: 38, life: 0.42, maxLife: 0.42, color: event.color, variant: event.brickIndex % 2, skillId: null });
