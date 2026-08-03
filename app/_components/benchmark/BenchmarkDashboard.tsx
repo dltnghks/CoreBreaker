@@ -76,6 +76,8 @@ export function BenchmarkDashboard({
             <div><span>평균 파괴</span><strong>{benchmarkAverageBricks.toFixed(1)}</strong></div>
             <div><span>평균 콤보</span><strong>{benchmarkAverageCombo.toFixed(1)}</strong></div>
             <div><span>평균 잔여 코어</span><strong>{benchmarkAverageCore.toFixed(1)}</strong></div>
+            <div><span>평균 물리 피해</span><strong>{Math.round(visibleBotResults.reduce((sum, item) => sum + (item.physicalDamage ?? 0), 0) / visibleBotResults.length)}</strong></div>
+            <div><span>평균 마법 피해</span><strong>{Math.round(visibleBotResults.reduce((sum, item) => sum + (item.magicDamage ?? 0), 0) / visibleBotResults.length)}</strong></div>
           </div>
 
           <div className="benchmark-charts">

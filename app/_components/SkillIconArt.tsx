@@ -8,7 +8,7 @@ const SKILL_SYMBOLS: Partial<Record<UpgradeId, string>> = {
   "archer-rapid": "➶", "archer-pierce": "➵", "archer-ricochet": "⌁", "archer-focus": "◎", "archer-weakpoint": "⌾",
   "mage-fireball": "●", "mage-lightning": "ϟ", "mage-freeze": "❄", "mage-black-hole": "◌", "mage-mana-blast": "✧",
   "common-magnet": "⌁", "common-luck": "✤", "common-wide": "↔", "common-move-speed": "»", "common-xp": "◇", "common-combo": "∞",
-  "common-ball-size": "●", "common-skill-range": "◎", "common-chain": "⌘", "common-damage": "▲", "common-cooldown": "◷",
+  "common-ball-size": "●", "common-skill-range": "◎", "common-chain": "⌘", "common-damage": "▲", "common-magic": "✦", "common-cooldown": "◷",
 };
 
 function skillIconPath(id: UpgradeId) {
@@ -24,6 +24,9 @@ export function SkillIconArt({ id }: { id: UpgradeId }) {
     <>
       <span className="skill-icon-fallback" aria-hidden="true">{SKILL_SYMBOLS[id] ?? "•"}</span>
       {src && (
+        // The fallback must survive a missing user-generated skill asset, which
+        // requires observing the native image error event.
+        // eslint-disable-next-line @next/next/no-img-element
         <img
           className="skill-icon-art"
           src={src}

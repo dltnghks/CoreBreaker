@@ -52,25 +52,23 @@ export default function SkillLab() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(SKILL_STORAGE_KEY);
-      if (saved) {
-        setSkills(normalizeSkillConfigs(JSON.parse(saved)));
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      try {
+        const saved = localStorage.getItem(SKILL_STORAGE_KEY);
+        if (saved) setSkills(normalizeSkillConfigs(JSON.parse(saved)));
+      } catch {
+        setSkills(DEFAULT_SKILLS);
       }
-    } catch {
-      setSkills(DEFAULT_SKILLS);
-    }
+    });
+    return () => { active = false; };
   }, []);
 
-  const selected = skills.find((skill) => skill.id === selectedId) ?? skills[0];
   const visibleSkills = skills.filter((skill) => (filter === "all" || skill.category === filter) && (mechanicFilter === "all" || skill.mechanic === mechanicFilter));
+  const effectiveSelectedId = visibleSkills.some((skill) => skill.id === selectedId) ? selectedId : visibleSkills[0]?.id ?? selectedId;
+  const selected = skills.find((skill) => skill.id === effectiveSelectedId) ?? skills[0];
   const buildSkills = skills.filter((skill) => build[skill.id]);
-
-  useEffect(() => {
-    if (visibleSkills.length > 0 && !visibleSkills.some((skill) => skill.id === selectedId)) {
-      setSelectedId(visibleSkills[0].id);
-    }
-  }, [mechanicFilter, filter, selectedId, visibleSkills]);
 
   const warnings = useMemo(() => {
     const issues: string[] = [];
@@ -101,6 +99,12 @@ export default function SkillLab() {
     const cooldown = [...selected.cooldown] as [number, number, number];
     cooldown[index] = Number.isFinite(value) ? Math.max(0, value) : 0;
     updateSelected({ cooldown });
+  };
+
+  const updateMagicDamage = (index: number, value: number) => {
+    const magicDamage = [...(selected.magicDamage ?? [0, 0, 0])] as [number, number, number];
+    magicDamage[index] = Number.isFinite(value) ? Math.max(0, value) : 0;
+    updateSelected({ magicDamage });
   };
 
   const addToBuild = (skill: SkillConfig) => {
@@ -157,7 +161,7 @@ export default function SkillLab() {
               <i className={styles.skillIcon} aria-hidden="true">{CATEGORY_ICONS[skill.category]}</i>
               <span>{CATEGORY_LABELS[skill.category]} · {SKILL_MECHANIC_LABELS[skill.mechanic]} · 일반 스킬</span><strong>{skill.name}</strong><small><b>발동</b> {skill.trigger}</small>
               <p className={styles.description}><SkillDescriptionText text={skill.description} /></p>
-              <em>{skill.levels.map((value) => `${value}${skill.unit}`).join(" / ")}{skill.cooldown.some((value) => value > 0) ? ` · CD ${skill.cooldown.join("/")}s` : ""} · {skill.evolution ? "LV3 EVOLUTION" : "PERMANENT"}</em>
+              <em>{skill.levels.map((value) => `${value}${skill.unit}`).join(" / ")}{skill.magicDamage ? ` · MAGIC ${skill.magicDamage.join("/")}` : ""}{skill.cooldown.some((value) => value > 0) ? ` · CD ${skill.cooldown.join("/")}s` : ""} · {skill.evolution ? "LV3 EVOLUTION" : "PERMANENT"}</em>
             </button>
           ))}
         </div>
@@ -173,6 +177,9 @@ export default function SkillLab() {
           <div className={styles.levelGrid}>
             {selected.levels.map((value, index) => <label key={index}>LV{index + 1}<input type="number" step="0.1" value={value} onChange={(event) => updateLevel(index, Number(event.target.value))} /></label>)}
           </div>
+          {selected.magicDamage && <div className={styles.levelGrid}>
+            {selected.magicDamage.map((value, index) => <label key={index}>LV{index + 1} 마법 피해<input type="number" min="0" step="0.1" value={value} onChange={(event) => updateMagicDamage(index, Number(event.target.value))} /></label>)}
+          </div>}
           <div className={styles.levelGrid}>
             {selected.cooldown.map((value, index) => <label key={index}>LV{index + 1} 쿨타임<input type="number" min="0" step="0.1" value={value} onChange={(event) => updateCooldown(index, Number(event.target.value))} /></label>)}
           </div>
