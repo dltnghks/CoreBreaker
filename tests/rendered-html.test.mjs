@@ -599,7 +599,7 @@ test("uses neutral common colors and highlights explicit skill values", async ()
   const lab = await readFile(new URL("../app/skill-lab/page.tsx", import.meta.url), "utf8");
   const labCss = await readFile(new URL("../app/skill-lab/skill-lab.module.css", import.meta.url), "utf8");
   const commonColors = [...config.matchAll(/"common-[^"]+": "(#[0-9a-f]+)"/g)].map((match) => match[1]);
-  assert.equal(commonColors.length, 11);
+  assert.equal(commonColors.length, 12);
   assert.ok(commonColors.every((color) => color === "#9aa3b2"));
   assert.match(source, /common: \{ tag: "COMMON", color: "#9aa3b2" \}/);
   assert.match(lab, /common: "#9aa3b2"/);

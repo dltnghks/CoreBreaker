@@ -71,7 +71,10 @@ test("canonical presentation preserves legacy destruction, ball-out, core, and s
   assert.match(presentation, /playAudio\("brick-break", event\.combo\)/);
   assert.match(presentation, /playAudio\("core-damage"\)/);
   assert.match(presentation, /CORE BREAK \/\/ RESPAWN SPEED 100%/);
-  assert.match(presentation, /text: `-\$\{roundedDamage\}`/);
+  assert.match(presentation, /text: isMagic \? `✦-\$\{roundedDamage\}` : `-\$\{roundedDamage\}`/);
+  assert.match(presentation, /const damageSlots = new Map/);
+  assert.match(presentation, /x: event\.x \+ \(isMagic \? 22 : -18\)/);
+  assert.match(presentation, /isMagic \? -10 - slot \* 20 : 12 \+ slot \* 20/);
   assert.match(presentation, /emphasis: "damage"/);
   assert.doesNotMatch(presentation, /event\.text \?\? "충격"/);
   assert.match(presentation, /if \(event\.text\) game\.flashes\.push/);
@@ -85,6 +88,26 @@ test("every run resets the canonical terminal latch before game-over handling", 
   assert.match(body, /canonicalTerminalRef\.current = null/);
   assert.match(runtime, /handleCanonicalOutcome/);
   assert.match(runtime, /finishRun\(\)/);
+});
+
+test("normal runs use a fresh seed while benchmark runs retain their explicit seed", () => {
+  const runtime = fs.readFileSync(new URL("../app/GameRuntime.tsx", import.meta.url), "utf8");
+  assert.match(runtime, /function createRunSeed\(\)/);
+  assert.match(runtime, /crypto\.getRandomValues\(values\)/);
+  assert.match(runtime, /const runSeed = benchSeed \?\? createRunSeed\(\)/);
+  assert.match(runtime, /seed: runSeed/);
+  assert.match(runtime, /createReplayRecorder\("canonical", runSeed\)/);
+  assert.doesNotMatch(runtime, /seed: benchSeed \?\? 1/);
+});
+
+test("explosive brick events materialize the legacy blast presentation", () => {
+  const events = fs.readFileSync(new URL("../app/game-events.ts", import.meta.url), "utf8");
+  const presentation = fs.readFileSync(new URL("../app/useGamePresentation.ts", import.meta.url), "utf8");
+  assert.match(events, /type: "brick-exploded"/);
+  assert.match(presentation, /event\.type === "brick-exploded"/);
+  assert.match(presentation, /kind: "blast"/);
+  assert.match(presentation, /playAudio\("explosion", 1\.4\)/);
+  assert.match(presentation, /setImpact\(game, 7, event\.color, 0\.3, 0\.16\)/);
 });
 
 test("debug replay recorder is wired to the canonical simulation", () => {

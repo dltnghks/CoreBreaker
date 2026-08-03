@@ -41,8 +41,9 @@ type GameEventPayload =
       text?: string;
     }
   | { type: "upgrade-chosen"; skillId: UpgradeId; level: number; source: "start" | "wave" | "boss" }
-  | { type: "brick-damaged"; brickIndex: number; damage: number; x: number; y: number; color: string; source?: UpgradeId }
-  | { type: "brick-destroyed"; brickIndex: number; x: number; y: number; color: string; combo: number; points: number; source?: UpgradeId }
+  | { type: "brick-damaged"; brickIndex: number; damage: number; x: number; y: number; color: string; source?: UpgradeId; damageType?: "physical" | "magic"; delivery?: "ball" | "skill" | "dot" | "skill-projectile" | "environment" }
+  | { type: "brick-destroyed"; brickIndex: number; x: number; y: number; color: string; combo: number; points: number; source?: UpgradeId; damageType?: "physical" | "magic" }
+  | { type: "brick-exploded"; brickIndex: number; x: number; y: number; radius: number; color: string }
   | { type: "item-dropped"; itemId: number; kind: string; x: number; y: number }
   | { type: "item-collected"; kind: string; x: number; y: number }
   | { type: "paddle-reflected"; x: number; y: number }

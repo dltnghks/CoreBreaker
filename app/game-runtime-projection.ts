@@ -20,7 +20,7 @@ export function projectCanonicalBall(ball: CanonicalBall, overrides: Partial<Pic
     pierce: ball.pierce, maxPierce: ball.maxPierce, blast: payloads.blast ?? 0,
     payload: (ball.payload as PayloadId | null) ?? null, payloadLevel: ball.payloadLevel, payloads,
     attackPower: ball.attackPower, missileTime: finiteNumber(ball.missileTime), missileHitCooldown: 0, gravityRescueCooldown: 0,
-    gravityBaseSpeed: ball.gravityBaseSpeed, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0,
+    gravityBaseSpeed: ball.gravityBaseSpeed, explosionBaseSpeed: ball.explosionBaseSpeed, explosionBoostRatio: ball.explosionBoostRatio, explosionBoostTime: ball.explosionBoostTime,
     canTriggerSkills: ball.canTriggerSkills, skillGeneration: ball.skillGeneration, skillCharges: { ...ball.skillCharges }, skillCooldowns: { ...ball.cooldowns },
     visualSkill: ball.visualSkill as Ball["visualSkill"], temporaryTime: finiteNumber(ball.temporaryTime), waveBonus: Boolean(ball.waveBonus),
     respawnRecoveryTime: ball.respawnRecoveryTime, respawnRecoveryDuration: ball.respawnRecoveryDuration,
@@ -161,6 +161,10 @@ function applyCanonicalStateProjection(target: GameState, source: CanonicalState
     damagePerSecond: well.damagePerSecond, damageTick: well.damageTick,
   }));
   target.skillMetrics = Object.fromEntries(Object.entries(source.skillMetrics).map(([id, metric]) => [id, { ...(metric as SkillRunMetric) }])) as GameState["skillMetrics"];
+  target.physicalPower = source.combatStats.physicalPower;
+  target.magicPower = source.combatStats.magicPower;
+  target.physicalDamage = source.physicalDamage;
+  target.magicDamage = source.magicDamage;
   target.skillHistory = source.skillHistory.map((event) => ({ wave: event.wave, skillId: event.skillId, level: event.level, source: event.source }));
   target.bricksBroken = source.bricksBroken;
   target.score = finiteNumber(source.score, finiteNumber(target.score));

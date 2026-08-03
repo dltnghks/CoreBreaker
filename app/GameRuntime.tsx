@@ -116,6 +116,15 @@ function configureRunRandom(seed?: number) {
   environmentRandom = seededRandom(seed);
   decisionRandom = seededRandom(seed ^ 0x9e3779b9);
 }
+
+function createRunSeed() {
+  const values = new Uint32Array(1);
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    crypto.getRandomValues(values);
+    if (values[0] !== 0) return values[0];
+  }
+  return ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0) || 1;
+}
 const PAYLOAD_IDS: PayloadId[] = ["pierce", "blast", "glass", "link"];
 const ITEM_DATA: Record<ItemKind, { label: string; symbol: string; color: string }> = {
   multiball: { label: "MULTI BALL", symbol: "+", color: "#ffcf4a" },
@@ -412,6 +421,10 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     upgrades: [],
     skillHistory: [],
     skillMetrics: {},
+    physicalPower: 1,
+    magicPower: 1,
+    physicalDamage: 0,
+    magicDamage: 0,
     paddleTrack: [],
     particles: [],
     particlePool: [],
@@ -841,6 +854,10 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
       startingSkills: Array.isArray(item.startingSkills) ? item.startingSkills : [],
       skillHistory: Array.isArray(item.skillHistory) ? item.skillHistory : [],
       skillMetrics: item.skillMetrics && typeof item.skillMetrics === "object" ? item.skillMetrics : {},
+      physicalPower: Number(item.physicalPower ?? 1),
+      magicPower: Number(item.magicPower ?? 1),
+      physicalDamage: Number(item.physicalDamage ?? 0),
+      magicDamage: Number(item.magicDamage ?? 0),
       waveSamples: Array.isArray(item.waveSamples) ? item.waveSamples : [],
       evaluationComplete: item.evaluationComplete ?? Number(item.wave) >= BOT_EVALUATION_WAVE,
       skillBench: item.skillBench ?? null,
@@ -966,6 +983,10 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
         startingSkills: game.skillHistory.filter((event) => event.source === "start").map((event) => event.skillId),
         skillHistory: game.skillHistory.map((event) => ({ ...event })),
         skillMetrics: Object.fromEntries(Object.entries(game.skillMetrics).map(([id, metric]) => [id, { ...metric! }])),
+        physicalPower: game.physicalPower,
+        magicPower: game.magicPower,
+        physicalDamage: game.physicalDamage,
+        magicDamage: game.magicDamage,
         createdAt: Date.now(),
         balanceConfig: { ...balanceConfigRef.current },
         benchmarkConfig: benchmarkMode ? { ...benchmarkConfigRef.current } : null,
@@ -1203,8 +1224,9 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     const perSkillRuns = bench.runsPerVariant * variantsPerSkill;
     const withinSkillRun = perSkillRuns > 0 ? botCompletedRunsRef.current % perSkillRuns : 0;
     const benchSeed = asBot ? botSkillBenchActiveRef.current ? 73001 + (withinSkillRun % bench.runsPerVariant) : 104729 + botCompletedRunsRef.current : undefined;
-    configureRunRandom(benchSeed);
-    if (asBot) botPolicyStateRef.current = createBotPolicyState((benchSeed ?? 1) ^ 0x9e3779b9);
+    const runSeed = benchSeed ?? createRunSeed();
+    configureRunRandom(runSeed);
+    if (asBot) botPolicyStateRef.current = createBotPolicyState(runSeed ^ 0x9e3779b9);
     const game = initialGame(activeGhosts, balanceConfigRef.current);
     if (asBot && botSkillBenchActiveRef.current) {
       const skillIndex = Math.floor(botCompletedRunsRef.current / perSkillRuns);
@@ -1236,7 +1258,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     }
     gameRef.current = game;
     canonicalStateRef.current = createCanonicalState({
-        seed: benchSeed ?? 1,
+        seed: runSeed,
         balance: balanceConfigRef.current,
         skills: activeSkillConfigsRef.current,
         waves: getActiveWaveDefinitions(),
@@ -1246,7 +1268,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
       });
     const projectedGame = projectCanonicalStateIntoGameView(game, canonicalStateRef.current);
     gameRef.current = projectedGame;
-    replayRecorderRef.current = createReplayRecorder("canonical", benchSeed ?? 1);
+    replayRecorderRef.current = createReplayRecorder("canonical", runSeed);
     replayFrameRef.current = 0;
     const openingAim = asBot ? botAimPoint(projectedGame.bricks, projectedGame.paddleX, PLAYER_PADDLE_Y) : { x: W / 2, y: H / 3 };
     pointerXRef.current = openingAim.x;
@@ -1339,7 +1361,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
         policy: botPolicy,
         balanceConfig: { ...balanceConfigRef.current },
         benchmarkConfig: { ...benchmarkConfigRef.current },
-        skills: activeSkillConfigsRef.current.map((skill) => ({ ...skill, levels: [...skill.levels] as [number, number, number] })),
+        skills: activeSkillConfigsRef.current.map((skill) => ({ ...skill, levels: [...skill.levels] as [number, number, number], magicDamage: skill.magicDamage ? [...skill.magicDamage] as [number, number, number] : null })),
         waveDefinitions: getActiveWaveDefinitions(),
       };
       worker.postMessage(request);

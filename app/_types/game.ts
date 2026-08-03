@@ -38,6 +38,10 @@ export type BotRunResult = BotMetrics & {
   skillHistory: SkillSelectionEvent[];
   bossEnhancements?: Partial<Record<UpgradeId, number>>;
   skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>;
+  physicalPower?: number;
+  magicPower?: number;
+  physicalDamage?: number;
+  magicDamage?: number;
   createdAt: number;
   balanceConfig: BalanceConfig;
   benchmarkConfig: BenchmarkConfig | null;
@@ -171,6 +175,10 @@ export type GameState = {
   upgrades: UpgradeId[];
   skillHistory: SkillSelectionEvent[];
   skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>;
+  physicalPower: number;
+  magicPower: number;
+  physicalDamage: number;
+  magicDamage: number;
   paddleTrack: number[];
   particles: Particle[];
   particlePool: Particle[];

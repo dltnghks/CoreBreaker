@@ -101,6 +101,7 @@ export function useGamePresentation(options: PresentationAdapters) {
       if (audio) void audio.unlock().then(() => audio.play(cue, volume));
     };
 
+    const damageSlots = new Map<string, number>();
     for (const event of drainGameEvents(eventsRef.current)) {
       if (event.type === "upgrade-chosen") {
         const skill = getSkill(event.skillId);
@@ -140,6 +141,16 @@ export function useGamePresentation(options: PresentationAdapters) {
           pushParticle(game, { x: event.x, y: event.y, vx: Math.cos(angle) * 85, vy: Math.sin(angle) * 85, life: 0.35, color });
         }
         if (event.text) game.flashes.push({ text: event.text, x: event.x, y: event.y - 8, life: 0.65, color, emphasis: "damage" });
+      } else if (event.type === "brick-exploded") {
+        playAudio("explosion", 1.4);
+        pushEffect(game, { kind: "blast", x: event.x, y: event.y, x2: event.x, y2: event.y, size: event.radius, life: 0.72, maxLife: 0.72, color: event.color, variant: 0, skillId: null });
+        for (let index = 0; index < 24; index += 1) {
+          const angle = (Math.PI * 2 * index) / 24;
+          const speed = 220 + (index % 4) * 45;
+          pushParticle(game, { x: event.x, y: event.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 0.55, color: index % 2 === 0 ? "#ffb15c" : event.color });
+        }
+        game.flashes.push({ text: "EXPLOSIVE // BALL LAUNCHED", x: event.x, y: event.y - 18, life: 0.9, color: "#ffb15c" });
+        setImpact(game, 7, event.color, 0.3, 0.16);
       } else if (event.type === "audio") {
         playAudio(event.cue as Parameters<GameAudio["play"]>[0], event.volume);
       } else if (event.type === "shake") {
@@ -149,12 +160,17 @@ export function useGamePresentation(options: PresentationAdapters) {
         const roundedDamage = Math.abs(event.damage - Math.round(event.damage)) < 0.05
           ? String(Math.round(event.damage))
           : event.damage.toFixed(1);
+        const damageType = event.damageType ?? "physical";
+        const slotKey = `${event.brickIndex}:${damageType}`;
+        const slot = damageSlots.get(slotKey) ?? 0;
+        damageSlots.set(slotKey, slot + 1);
+        const isMagic = damageType === "magic";
         game.flashes.push({
-          text: `-${roundedDamage}`,
-          x: event.x,
-          y: event.y + 8,
+          text: isMagic ? `✦-${roundedDamage}` : `-${roundedDamage}`,
+          x: event.x + (isMagic ? 22 : -18),
+          y: event.y + (isMagic ? -10 - slot * 20 : 12 + slot * 20),
           life: 0.82,
-          color: event.damage >= 3 ? "#ffcf4a" : "#ffffff",
+          color: isMagic ? "#b996ff" : event.damage >= 3 ? "#ffcf4a" : "#ffffff",
           emphasis: "damage",
         });
       } else if (event.type === "brick-destroyed") {

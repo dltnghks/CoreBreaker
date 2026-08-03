@@ -90,6 +90,38 @@ test("canonical overdrive accelerates balls and resets for every wave", () => {
   assert.ok(Math.abs(Math.hypot(state.balls[0].vx, state.balls[0].vy) - initialSpeed) < 1e-6);
 });
 
+test("explosive bricks preserve legacy blast damage, launch boost, and restoration", () => {
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  definitions[0] = { ...definitions[0], pattern: ["e..........."] };
+  const state = engine.createCanonicalState({ seed: 20260804, targetWave: 2, waves: definitions });
+  const explosive = state.bricks[0];
+  const nearby = { ...explosive, id: state.nextBrickId++, trait: "standard", x: explosive.x + 80, hp: 3, maxHp: 3, alive: true };
+  state.bricks.push(nearby);
+  const ball = state.balls[0];
+  const baseSpeed = Math.hypot(ball.vx, ball.vy);
+  ball.x = explosive.x + explosive.w / 2;
+  ball.y = explosive.y + explosive.h + ball.radius - 0.5;
+  ball.vx = 0;
+  ball.vy = -baseSpeed;
+  state.paddleX = ball.x;
+
+  const result = engine.stepCanonicalEngine(state, { move: 0, aimX: ball.x, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  const boostedSpeed = Math.hypot(ball.vx, ball.vy);
+  assert.ok(result.events.some((event) => event.type === "brick-exploded" && event.radius === 112));
+  assert.equal(nearby.hp, 2, "legacy explosion deals exactly one physical damage inside radius 112");
+  assert.ok(boostedSpeed > baseSpeed, "explosion must launch rather than slow the source ball");
+  assert.ok(ball.vy > 0, "a ball below the block must launch away from the explosion");
+  assert.equal(ball.explosionBoostTime, 1.25);
+
+  for (let tick = 0; tick < 151; tick += 1) {
+    engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  }
+  assert.equal(ball.explosionBoostTime, 0);
+  assert.equal(ball.explosionBaseSpeed, null);
+  assert.equal(ball.explosionBoostRatio, 1);
+  assert.ok(Math.hypot(ball.vx, ball.vy) < boostedSpeed, "temporary explosion boost must restore the earned base speed");
+});
+
 test("only losing the main ball damages core while temporary balls remain disposable", () => {
   const state = engine.createCanonicalState({ seed: 20260732, targetWave: 1 });
   const main = state.balls[0];
@@ -223,6 +255,9 @@ test("canonical snapshots retain combat and payload fields at the bridge boundar
     skillCharges: { "warrior-guard": 2 },
     cooldowns: { "warrior-guard": 1.25 },
     lastHitBrickId: null,
+    explosionBaseSpeed: null,
+    explosionBoostRatio: 1,
+    explosionBoostTime: 0,
   });
 });
 
@@ -561,7 +596,7 @@ test("guard changes into a standard brick after one direct ball hit", () => {
   assert.ok(result.events.some((event) => event.type === "combat-impact" && event.text === "GUARD BREAK"));
 });
 
-test("iron wall stores up to four CORE guards and boss rewards shorten its activation interval", () => {
+test("base iron wall maintains one wave-scoped CORE guard and boss rewards shorten its interval", () => {
   const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
   definitions[0] = { ...definitions[0], pattern: [".....s......"] };
   const state = engine.createCanonicalState({ seed: 9201, targetWave: 2, waves: definitions, startingSkills: ["warrior-guard"] });
@@ -581,7 +616,7 @@ test("iron wall stores up to four CORE guards and boss rewards shorten its activ
     state.balls[0].cooldowns["warrior-guard"] = 0;
     collide();
   }
-  assert.equal(state.barrierCharges, 4, "normal activations must accumulate without exceeding four stored guards");
+  assert.equal(state.barrierCharges, 1, "non-evolved activations must maintain one guard without stacking");
   assert.equal(state.barrierTime, 0, "stored CORE guards must not use a lifetime");
 
   assert.equal(engine.grantCanonicalEnhancement(state, "warrior-guard"), true);
@@ -592,10 +627,10 @@ test("iron wall stores up to four CORE guards and boss rewards shorten its activ
   state.bricks.forEach((entry) => { if (entry.trait !== "indestructible") entry.alive = false; });
   engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
   assert.equal(state.wave, 2);
-  assert.equal(state.barrierCharges, 4, "stored guards must persist into the next wave");
+  assert.equal(state.barrierCharges, 0, "iron wall guards must reset when the next wave begins");
 });
 
-test("evolved iron wall adds two guards while only a main-ball loss consumes one", () => {
+test("evolved iron wall stacks up to four guards while only a main-ball loss consumes one", () => {
   const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
   definitions[0] = { ...definitions[0], pattern: [".....s......"] };
   const state = engine.createCanonicalState({ seed: 9202, targetWave: 1, waves: definitions, startingSkills: ["warrior-guard", "warrior-guard", "warrior-guard", "warrior-guard"] });
@@ -610,20 +645,28 @@ test("evolved iron wall adds two guards while only a main-ball loss consumes one
   engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
   assert.equal(state.barrierCharges, 2);
 
+  main.cooldowns["warrior-guard"] = 0;
+  main.x = brick.x + brick.w / 2;
+  main.y = brick.y + brick.h + main.radius - 1;
+  main.vx = 0;
+  main.vy = -320;
+  engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  assert.equal(state.barrierCharges, 4, "evolution must unlock accumulation up to four guards");
+
   const bonus = { ...main, x: 650, y: engine.GAME_HEIGHT + main.radius + 1, vx: 0, vy: 320, temporary: true, waveBonus: true, cooldowns: {}, skillCharges: {}, payloads: {} };
   state.balls.push(bonus);
   const coreBefore = state.coreHp;
   let result = engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
-  assert.equal(state.barrierCharges, 2, "a disposable bonus ball must not consume CORE protection");
+  assert.equal(state.barrierCharges, 4, "a disposable bonus ball must not consume CORE protection");
   assert.equal(state.coreHp, coreBefore);
   assert.ok(result.events.some((event) => event.type === "ball-out"));
 
   main.y = engine.GAME_HEIGHT + main.radius + 1;
   main.vy = 320;
   result = engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
-  assert.equal(state.barrierCharges, 1);
+  assert.equal(state.barrierCharges, 3);
   assert.equal(state.coreHp, coreBefore);
-  assert.ok(result.events.some((event) => event.type === "barrier-reflected" && event.chargesRemaining === 1));
+  assert.ok(result.events.some((event) => event.type === "barrier-reflected" && event.chargesRemaining === 3));
 });
 
 test("direct-damage skills modify one direct hit and honor boss enhancement values", () => {
@@ -650,7 +693,13 @@ test("direct-damage skills modify one direct hit and honor boss enhancement valu
   assert.equal(engine.grantCanonicalEnhancement(smash, "warrior-smash"), true);
   const smashResult = collide(smash);
   assert.equal(smash.bricks[0].hp, 17, "boss-enhanced smash must add 2 to the base direct damage");
-  assert.deepEqual(smashResult.events.filter((event) => event.type === "brick-damaged").map((event) => event.damage), [3]);
+  assert.deepEqual(smashResult.events.filter((event) => event.type === "brick-damaged").map((event) => [event.damageType, event.damage, event.source ?? null]), [
+    ["physical", 1, null],
+    ["magic", 2, "warrior-smash"],
+  ]);
+  assert.equal(smash.physicalDamage, 1);
+  assert.equal(smash.magicDamage, 2);
+  assert.equal(smash.skillMetrics["warrior-smash"].damage, 2);
 
   const weakpoint = createHitState("archer-weakpoint");
   collide(weakpoint);
@@ -672,6 +721,19 @@ test("direct-damage skills modify one direct hit and honor boss enhancement valu
   collide(crush);
   assert.equal(crush.bricks[0].guardReady, false);
   assert.equal(crush.bricks[0].hp, 17, "crush must break guard and apply its special-brick bonus in the same hit");
+});
+
+test("run combat stats separate physical ball damage from skill magic scaling", () => {
+  const state = engine.createCanonicalState({ seed: 91001, targetWave: 1, startingSkills: ["mage-lightning", "common-damage"] });
+  assert.equal(state.combatStats.physicalPower, 2);
+  assert.equal(state.balls[0].attackPower, 2);
+  assert.equal(engine.canonicalSkillMagicDamage(state, "mage-lightning"), 1);
+
+  for (let pick = 0; pick < 4; pick++) assert.equal(engine.grantCanonicalSkill(state, "common-magic", "wave"), true);
+  assert.equal(state.combatStats.magicPower, 2);
+  assert.equal(engine.canonicalSkillMagicDamage(state, "mage-lightning"), 2);
+  assert.equal(engine.grantCanonicalEnhancement(state, "mage-lightning"), true);
+  assert.equal(engine.canonicalSkillMagicDamage(state, "mage-lightning"), 4);
 });
 
 test("indirect skill damage breaks a guard before damaging its HP", () => {
@@ -830,7 +892,7 @@ test("canonical paddle collision uses swept contact and legacy rebound semantics
 });
 
 test("the canonical skill catalog contains only normal and common skills", () => {
-  assert.equal(skills.DEFAULT_SKILLS.length, 26);
+  assert.equal(skills.DEFAULT_SKILLS.length, 27);
   assert.ok(skills.DEFAULT_SKILLS.every((entry) => entry.mechanic !== "ultimate"));
   assert.equal("ULTIMATE_SKILLS" in skills, false);
 });
@@ -973,7 +1035,7 @@ test("evolved common luck, ball size, damage, cooldown, and range have concrete 
   ball.x = origin.x + origin.w / 2; ball.y = origin.y + origin.h + ball.radius - 1; ball.vx = 0; ball.vy = -320;
   engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
   assert.equal(state.items.length, 2, "evolved luck must add a utility drop beside multiball");
-  assert.equal(near.hp, 9, "evolved ball size must deal a small nearby impact");
+  assert.equal(near.hp, 8, "nearby brick must receive both the evolved physical impact and fireball magic damage");
   assert.ok(ranged.healBlockTime > 0, "evolved range must include a brick beyond the ordinary level-one fireball radius");
   assert.ok(Math.abs(ball.cooldowns["warrior-smash"] - 0.672) < 1e-6, "evolved cooldown must apply an additional reduction");
 
