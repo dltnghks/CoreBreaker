@@ -83,6 +83,7 @@ function paddleAimDirection(fromX: number, fromY: number, targetX: number, targe
   };
 }
 const RING_EXPLOSION_ASSET = "/assets/vfx/ring-explosion.png";
+const TITLE_LOGO_ASSET = "/assets/ui/forged-core/core-breaker-title.webp";
 const HIT_SPARK_ASSETS = ["/assets/vfx/hit-spark-a.png", "/assets/vfx/hit-spark-b.png"] as const;
 const RADIAL_LIGHTNING_ASSET = "/assets/vfx/radial-lightning.png";
 const MAGE_SPELL_ASSETS = ["/assets/vfx/mage-fireball.png", "/assets/vfx/mage-sparks.png"] as const;
@@ -1662,6 +1663,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
 
             {mode === "lobby" && (
               <div className="overlay lobby-overlay">
+                {!benchmarkMode && <img className="lobby-title-logo" src={TITLE_LOGO_ASSET} alt="CORE BREAKER" />}
                 <p className="overlay-kicker">{benchmarkMode ? benchmarkRunMode === "watch" ? `WATCH RUN · REAL PHYSICS · ${botSpeed}×` : `HEADLESS · W1–W20 · ${benchmarkConfig.runs} RUNS` : "20 WAVES. ONE BALL. BREAK THROUGH."}</p>
                 <h2>{benchmarkMode ? benchmarkRunMode === "watch" ? <>실제 플레이를<br />관찰합니다.</> : <>실제 게임 규칙을<br />병렬 테스트합니다.</> : <>패턴을 돌파하고<br />코어를 지키세요.</>}</h2>
                 <p>{benchmarkMode ? benchmarkRunMode === "watch" ? "봇이 실제 캔버스에서 패들을 조작합니다. 블록 타격마다 적용되는 스킬 효과와 공 손실을 화면으로 확인하세요." : "웨이브 패턴, 블록 체력, 보스와 Skill LAB 수치를 헤드리스 Worker가 동시에 시뮬레이션합니다." : "웨이브마다 공 1개로 고정 패턴을 모두 파괴하세요. 공을 놓치면 CORE 1을 잃고, 새 공은 100% 속도에서 5초 동안 현재 속도로 복귀합니다."}</p>

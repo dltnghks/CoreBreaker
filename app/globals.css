@@ -165,3 +165,4 @@ body{background:radial-gradient(circle at 18% -15%,rgba(115,184,195,.11),transpa
 .skill-loadout-entry .skill-icon-art{filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
 .skill-loadout-entry .skill-icon-fallback{font-size:14px}
 @media(max-width:700px){.upgrade-icon{width:58px;height:58px;margin-top:6px}}
+.lobby-title-logo{display:block;width:min(760px,92%);height:auto;margin:2px auto 2px;filter:drop-shadow(0 18px 28px rgba(0,0,0,.42));object-fit:contain}.gameplay-shell.mode-lobby .lobby-overlay>h2{display:none}.gameplay-shell.mode-lobby .lobby-overlay>p:not(.overlay-kicker){margin-top:16px}
