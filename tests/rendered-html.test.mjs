@@ -66,11 +66,11 @@ test("server-renders the Core Breaker playtest", async () => {
   assert.match(html, /CORE BREAKER/);
   assert.match(html, /LIVE GAMEPLAY/);
   assert.doesNotMatch(html, /고스트 보관함/);
-  assert.match(html, /20 웨이브 시작/);
-  assert.match(html, /20 WAVES\. ONE BALL\. BREAK THROUGH\./);
+  assert.match(html, /게임 시작/);
+  assert.doesNotMatch(html, /20 WAVES\. ONE BALL\. BREAK THROUGH\./);
   assert.match(html, /MULTI BALL/);
   assert.match(html, /CORE/);
-  assert.match(html, /새 공은 100% 속도에서 5초 동안 현재 속도로 복귀합니다/);
+  assert.doesNotMatch(html, /새 공은 100% 속도에서 5초 동안 현재 속도로 복귀합니다/);
   assert.doesNotMatch(html, /플레이테스트 봇/);
   assert.match(html, /href="\/benchmark"/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|react-loading-skeleton/);
