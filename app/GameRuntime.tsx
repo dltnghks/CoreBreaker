@@ -91,9 +91,25 @@ const TITLE_LOGO_ASSET = "/assets/ui/forged-core/core-breaker-title.webp";
 const HIT_SPARK_ASSETS = ["/assets/vfx/hit-spark-a.png", "/assets/vfx/hit-spark-b.png"] as const;
 const RADIAL_LIGHTNING_ASSET = "/assets/vfx/radial-lightning.png";
 const MAGE_SPELL_ASSETS = ["/assets/vfx/mage-fireball.png", "/assets/vfx/mage-sparks.png"] as const;
+const SKILL_SHEET_ASSETS = [
+  "/assets/vfx/skill-sheets/warrior-sheet.png",
+  "/assets/vfx/skill-sheets/archer-sheet.png",
+  "/assets/vfx/skill-sheets/mage-sheet.png",
+] as const;
+const ITEM_ICON_ASSETS: Record<ItemKind, string> = {
+  multiball: "/assets/gameplay/items/multiball.png",
+  "auto-barrier": "/assets/gameplay/items/auto-barrier.png",
+  "core-repair": "/assets/gameplay/items/core-repair.png",
+  "cooldown-reset": "/assets/gameplay/items/cooldown-reset.png",
+};
+const STATUS_ICON_ASSETS = {
+  wave: "/assets/ui/core-breaker/status/wave.png",
+  time: "/assets/ui/core-breaker/status/time.png",
+  core: "/assets/ui/core-breaker/status/core.png",
+} as const;
 const MAX_ACTIVE_FLASHES = 120;
-const PLAYER_BALL_COLOR = "#fff27a";
-const WAVE_MULTIBALL_COLOR = "#9aa3b2";
+const PLAYER_BALL_COLOR = "#fffaf0";
+const WAVE_MULTIBALL_COLOR = "#eef5ff";
 let environmentRandom = () => Math.random();
 let decisionRandom = () => Math.random();
 
@@ -537,6 +553,10 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const radialLightningReadyRef = useRef(false);
   const mageSpellRefs = useRef<Array<HTMLImageElement | null>>([null, null]);
   const mageSpellReadyRef = useRef([false, false]);
+  const skillSheetRefs = useRef<Array<HTMLImageElement | null>>([null, null, null]);
+  const skillSheetReadyRef = useRef([false, false, false]);
+  const itemIconRefs = useRef<Partial<Record<ItemKind, HTMLImageElement | null>>>({});
+  const itemIconReadyRef = useRef<Partial<Record<ItemKind, boolean>>>({});
   const gameRef = useRef<GameState | null>(null);
   // Frame-scoped side effects are emitted by update code and consumed by the
   // canvas/audio boundary immediately before rendering the next frame.
@@ -557,6 +577,39 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     const debugWindow = window as Window & { __echoReplay?: { export: () => ReplayLog | null } };
     debugWindow.__echoReplay = { export: () => replayRecorderRef.current?.log ?? null };
     return () => { delete debugWindow.__echoReplay; delete (debugWindow as Window & { __echoReplayJson?: string }).__echoReplayJson; };
+  }, []);
+  useEffect(() => {
+    const entries = (Object.entries(ITEM_ICON_ASSETS) as Array<[ItemKind, string]>).map(([kind, src]) => {
+      const image = new Image();
+      image.decoding = "async";
+      image.onload = () => { itemIconReadyRef.current[kind] = true; };
+      image.onerror = () => { itemIconReadyRef.current[kind] = false; };
+      image.src = src;
+      itemIconRefs.current[kind] = image;
+      return [kind, image] as const;
+    });
+    return () => {
+      entries.forEach(([, image]) => { image.onload = null; image.onerror = null; });
+      itemIconRefs.current = {};
+      itemIconReadyRef.current = {};
+    };
+  }, []);
+
+  useEffect(() => {
+    const images = SKILL_SHEET_ASSETS.map((src, index) => {
+      const image = new Image();
+      image.decoding = "async";
+      image.onload = () => { skillSheetReadyRef.current[index] = true; };
+      image.onerror = () => { skillSheetReadyRef.current[index] = false; };
+      image.src = src;
+      return image;
+    });
+    skillSheetRefs.current = images;
+    return () => {
+      images.forEach((image) => { image.onload = null; image.onerror = null; });
+      skillSheetRefs.current = [null, null, null];
+      skillSheetReadyRef.current = [false, false, false];
+    };
   }, []);
   // Populated when the caller explicitly opts into canonical simulation.
   const canonicalStateRef = useRef<CanonicalState | null>(null);
@@ -640,7 +693,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const [result, setResult] = useState<GameState | null>(null);
   const [, setSavedMessage] = useState("");
   const [upgradeCatalog, setUpgradeCatalog] = useState<Upgrade[]>(DEFAULT_UPGRADES);
-  const { soundEnabled, isFullscreen, toggleSound, toggleFullscreen } = useRuntimeSettings(audioRef);
+  const { soundEnabled, toggleSound } = useRuntimeSettings(audioRef);
   const { createWorkers, stopWorkers } = useBenchmarkSession();
 
   const [botPolicy, setBotPolicy] = useState<BotPolicy>("balanced");
@@ -1054,14 +1107,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     }
   }, [rerollsLeft]);
 
-  const skipUpgradeChoice = useCallback(() => {
-    const canonical = canonicalStateRef.current;
-    if (canonical?.phase === "awaiting-wave-skill") {
-      const result = dispatchCanonicalCommand(canonical, { type: "skip-wave-skill" });
-      if (result.outcome.type === "ready-for-next-wave" && startCanonicalNextWave()) return;
-    }
-  }, [startCanonicalNextWave]);
-
   const selectInitialSkill = useCallback((upgrade: Upgrade) => {
     applyUpgrade(upgrade, 0, "start");
   }, [applyUpgrade]);
@@ -1186,6 +1231,10 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
       radialLightningReady: radialLightningReadyRef.current,
       mageSpells: mageSpellRefs.current,
       mageSpellReady: mageSpellReadyRef.current,
+      skillSheets: skillSheetRefs.current,
+      skillSheetReady: skillSheetReadyRef.current,
+      itemIcons: itemIconRefs.current,
+      itemIconReady: itemIconReadyRef.current,
       skillValue,
       upgradeLevel,
       classSkillColor,
@@ -1771,8 +1820,30 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
 
       <section className={benchmarkMode ? "workspace" : "workspace solo-workspace"}>
         <div className="game-column">
-          <div className="game-frame">
-            <button className="fullscreen-toggle" type="button" onClick={() => void toggleFullscreen()} aria-label={isFullscreen ? "전체화면 종료" : "전체화면으로 보기"} title={isFullscreen ? "전체화면 종료" : "전체화면"}>{isFullscreen ? "×" : "⛶"}</button>
+          <div className="gameplay-stage">
+            <aside className="in-game-side-panel in-game-skill-panel" aria-label="OWNED SKILLS">
+              <h2>OWNED SKILLS</h2>
+              <div className="in-game-skill-list">
+                {hud.skillLevels.map(({ id, level, enhancement = 0 }) => {
+                  const skill = upgradeCatalog.find((entry) => entry.id === id);
+                  const evolved = isSkillEvolved(gameRef.current?.upgrades ?? [], id);
+                  const category = skill?.category ?? "common";
+                  const playerBall = gameRef.current?.balls.find((ball) => ball.owner === "player");
+                  const cooldownTotal = Math.max(0, Number(skill?.cooldown?.[Math.max(0, Math.min(2, level - 1))] ?? 0));
+                  const cooldownRemaining = Math.max(0, Number(playerBall?.skillCooldowns[id as ClassSkillId] ?? 0));
+                  return <div key={`side-${id}`} className={`in-game-skill-row class-${category}${evolved ? " evolved" : ""}`} tabIndex={0} aria-label={`${skill?.name ?? id} LEVEL ${level}`}>
+                    <span className="in-game-skill-tooltip" role="tooltip"><strong>{skill?.name ?? id}</strong><small>LEVEL {level}{enhancement > 0 ? ` 쨌 +${enhancement}` : ""}</small><p><SkillDescriptionText text={skill?.description ?? ""} /></p></span>
+                    <span className="in-game-skill-icon"><SkillIconArt id={id} /></span>
+                    <span className="in-game-skill-level" aria-label={`LEVEL ${level}`}>{level}</span>
+                    {cooldownTotal > 0 && <span className={`in-game-skill-cooldown${cooldownRemaining > 0 ? " is-cooling" : ""}`} style={{ "--cooldown-remaining": cooldownRemaining / cooldownTotal } as React.CSSProperties} aria-label={cooldownRemaining > 0 ? `COOLDOWN ${cooldownRemaining.toFixed(1)}s` : "READY"} />}
+                    <span className="in-game-skill-copy"><strong>{skill?.name ?? id}</strong><small>LEVEL {level}{enhancement > 0 ? ` · +${enhancement}` : ""}</small></span>
+                  </div>;
+                })}
+              </div>
+              <div className="in-game-locked-slot" aria-label="LOCKED SKILL SLOT">▣</div>
+            </aside>
+
+            <div className="game-frame">
             <canvas
               ref={canvasRef}
               width={W}
@@ -1783,15 +1854,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
             />
             <output className="sr-only" aria-live="polite" aria-atomic="true">코어 체력 {hud.coreHp}/{hud.maxCoreHp}{hud.barriers > 0 ? `, 보호막 ${hud.barriers}개` : ""}</output>
             <div className="hud-badge hud-score" aria-label={`점수 ${formatScore(hud.score)}`}><i aria-hidden="true">✦</i><span><small>SCORE</small><strong>{formatScore(hud.score)}</strong></span></div>
-            <div className="skill-loadout-hud" aria-label="보유 스킬" style={{ pointerEvents: "auto" }}>
-              {hud.skillLevels.map(({ id, level, enhancement = 0 }) => {
-                const skill = upgradeCatalog.find((entry) => entry.id === id);
-                const evolved = isSkillEvolved(gameRef.current?.upgrades ?? [], id);
-                const category = skill?.category ?? "common";
-                const levelState = evolved ? "진화" : level >= 3 ? "최대 강화" : level === 2 ? "강화" : "습득";
-                return <div key={id} className={`skill-loadout-entry class-${category} level-${Math.min(3, level)}${evolved ? " evolved" : ""}`} style={{ "--skill-color": category === "common" ? "#8f98a7" : skill?.color ?? "#8f98a7" } as React.CSSProperties} aria-label={`${skill?.name ?? id}, ${levelState}`} title={`${skill?.name ?? id} · LEVEL ${level}${enhancement > 0 ? ` · +${enhancement}` : ""}`}><i aria-hidden="true"><SkillIconArt id={id} /></i>{evolved && <b aria-hidden="true">✦</b>}{enhancement > 0 && <strong className="skill-enhancement-badge">+{enhancement}</strong>}{mode !== "playing" && <div className="skill-loadout-tooltip" role="tooltip"><b>{skill?.name ?? id}</b><span>LEVEL {level}{enhancement > 0 ? ` · +${enhancement}` : ""}</span><p><SkillDescriptionText text={skill?.description ?? ""} /></p></div>}</div>;
-              })}
-            </div>
             <div className="drop-legend" aria-label="아이템 블록 표시 안내">
               {ITEM_KINDS.map((kind) => <span key={kind} style={{ "--drop-color": ITEM_DATA[kind].color } as React.CSSProperties}><b>{ITEM_DATA[kind].symbol}</b>{ITEM_DATA[kind].label}</span>)}
             </div>
@@ -1821,7 +1883,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                 onSelectInitialSkill={(upgrade) => selectInitialSkill(upgrade)}
                 onApplyUpgrade={(upgrade, ballCost) => applyUpgrade(upgrade, Math.min(2, Math.max(0, ballCost)) as 0 | 1 | 2)}
                 onReroll={rerollUpgradeChoices}
-                onSkip={skipUpgradeChoice}
               />
             )}
 
@@ -1884,6 +1945,13 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                 </div>
               </div>
             )}
+            </div>
+
+            <aside className="in-game-side-panel in-game-stat-panel" aria-label="RUN STATUS">
+              <div className="in-game-stat-card in-game-wave-card"><span>WAVE</span><div className="in-game-stat-value"><img className="in-game-stat-icon" src={STATUS_ICON_ASSETS.wave} alt="" aria-hidden="true" /><strong>{hud.wave}</strong></div></div>
+              <div className="in-game-stat-card in-game-time-card"><span>TIME</span><div className="in-game-stat-value"><img className="in-game-stat-icon" src={STATUS_ICON_ASSETS.time} alt="" aria-hidden="true" /><strong>{String(Math.floor(hud.time / 60)).padStart(2, "0")}:{String(Math.floor(hud.time % 60)).padStart(2, "0")}</strong></div></div>
+              <div className="in-game-stat-card in-game-core-card"><span>CORE</span><div className="in-game-stat-value"><img className="in-game-stat-icon" src={STATUS_ICON_ASSETS.core} alt="" aria-hidden="true" /><strong>{hud.coreHp}</strong></div></div>
+            </aside>
           </div>
 
           <div className="build-tray">

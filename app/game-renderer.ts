@@ -2,6 +2,77 @@ import type { GameState } from "./_types/game";
 import type { Brick, ItemKind } from "./_types/game";
 import type { ClassSkillId, SkillConfig } from "./skill-config";
 
+const GAMEPLAY_ART = {
+  bricks: {
+    standard: "/assets/gameplay/blocks/standard.png",
+    guard: "/assets/gameplay/blocks/guard.png",
+    explosive: "/assets/gameplay/blocks/explosive.png",
+    indestructible: "/assets/gameplay/blocks/indestructible.png",
+    healer: "/assets/gameplay/blocks/healer.png",
+    reflector: "/assets/gameplay/blocks/reflector.png",
+  },
+  ball: "/assets/gameplay/props/ball.png",
+  runeRing: "/assets/gameplay/props/rune-ring.png",
+  paddle: "/assets/gameplay/props/paddle.png",
+} as const;
+
+const WAVE_BACKGROUNDS = [
+  "/assets/gameplay/backgrounds/wave-01-05.png",
+  "/assets/gameplay/backgrounds/wave-06-10.png",
+  "/assets/gameplay/backgrounds/wave-11-15.png",
+  "/assets/gameplay/backgrounds/wave-16-20.png",
+] as const;
+
+// Keep canvas labels consistent with the pixel-style UI font.
+const PIXEL_FONT = '"Neo둥근모", monospace';
+
+const gameplayImages: Record<string, HTMLImageElement | null> = {};
+
+function gameplayImage(key: string, src: string) {
+  if (typeof Image === "undefined") return null;
+  if (!gameplayImages[key]) {
+    const image = new Image();
+    image.src = src;
+    gameplayImages[key] = image;
+  }
+  const image = gameplayImages[key];
+  return image?.complete && image.naturalWidth > 0 ? image : null;
+}
+
+function drawWaveBackground(ctx: CanvasRenderingContext2D, wave: number, width: number, height: number) {
+  const stageIndex = Math.max(0, Math.min(WAVE_BACKGROUNDS.length - 1, Math.floor((Math.max(1, wave) - 1) / 5)));
+  const image = gameplayImage(`wave-background-${stageIndex}`, WAVE_BACKGROUNDS[stageIndex]);
+  if (!image) return;
+  const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  ctx.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+  ctx.restore();
+}
+
+function drawBrickSprite(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number) {
+  const sourceWidth = image.naturalWidth;
+  const sourceHeight = image.naturalHeight;
+  const capSource = sourceWidth * 0.2;
+  const bodySourceX = sourceWidth * 0.12;
+  const bodySourceWidth = sourceWidth * 0.12;
+  const iconSourceX = sourceWidth * 0.32;
+  const iconSourceWidth = sourceWidth * 0.36;
+  const capWidth = Math.min(16, width * 0.18);
+  const centerWidth = Math.max(1, width - capWidth * 2);
+
+  // Nine-slice base: keep the end caps crisp and stretch only a plain body strip.
+  ctx.drawImage(image, 0, 0, capSource, sourceHeight, x, y, capWidth, height);
+  ctx.drawImage(image, bodySourceX, 0, bodySourceWidth, sourceHeight, x + capWidth, y, centerWidth, height);
+  ctx.drawImage(image, sourceWidth - capSource, 0, capSource, sourceHeight, x + width - capWidth, y, capWidth, height);
+
+  // The emblem remains centered and is scaled uniformly with the brick height.
+  const iconWidth = Math.min(width * 0.42, iconSourceWidth / sourceHeight * height);
+  ctx.drawImage(image, iconSourceX, 0, iconSourceWidth, sourceHeight, x + width / 2 - iconWidth / 2, y, iconWidth, height);
+}
+
 // Renderer contract markers: these names document the visual invariants covered
 // by rendered-html tests after extraction from page.tsx. They intentionally keep
 // the contract searchable without coupling tests to orchestration internals.
@@ -56,7 +127,7 @@ export type CanvasRendererContext = CanvasRenderingContext2D;
 
 export type GameCanvasFrame = { ctx: CanvasRenderingContext2D; canvas: HTMLCanvasElement };
 
-export function beginGameCanvasFrame(canvas: HTMLCanvasElement, game: Pick<GameState, "shakeTime" | "shakeStrength">, width: number, height: number, playerLineY: number): GameCanvasFrame | null {
+export function beginGameCanvasFrame(canvas: HTMLCanvasElement, game: Pick<GameState, "shakeTime" | "shakeStrength" | "wave">, width: number, height: number, playerLineY: number): GameCanvasFrame | null {
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
   canvas.width = width;
@@ -68,6 +139,11 @@ export function beginGameCanvasFrame(canvas: HTMLCanvasElement, game: Pick<GameS
     ctx.translate((Math.random() - 0.5) * amount, (Math.random() - 0.5) * amount);
   }
   ctx.fillStyle = "#080b14";
+  ctx.fillRect(0, 0, width, height);
+  drawWaveBackground(ctx, game.wave, width, height);
+  // Slightly dim only the playfield background so bright balls and effects
+  // remain readable across all four wave scenes.
+  ctx.fillStyle = "rgba(0, 0, 0, .30)";
   ctx.fillRect(0, 0, width, height);
   ctx.strokeStyle = "rgba(216,196,151,.28)";
   ctx.beginPath(); ctx.moveTo(0, playerLineY); ctx.lineTo(width, playerLineY); ctx.stroke();
@@ -107,14 +183,23 @@ export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor
     ctx.translate(-centerX, -centerY);
     ctx.shadowBlur = 12; ctx.shadowColor = color;
     const usesNormalWaveDesign = brick.kind === "normal" || brick.kind === "boss-minion";
-    ctx.fillStyle = usesNormalWaveDesign ? (brick.trait === "guard" ? `rgba(135,115,25,${alpha})` : brick.trait === "explosive" ? `rgba(174,61,20,${alpha})` : brick.trait === "indestructible" ? "rgba(55,62,76,.98)" : brick.trait === "healer" ? `rgba(30,122,91,${alpha})` : brick.trait === "reflector" ? `rgba(22,102,145,${alpha})` : brick.maxHp >= 5 ? `rgba(111,88,43,${alpha})` : brick.maxHp >= 3 ? `rgba(78,83,92,${alpha})` : `rgba(61,66,73,${alpha})`) : color;
-    ctx.globalAlpha = usesNormalWaveDesign ? 1 : alpha; trace(brick); ctx.fill(); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
-    trace(brick, 1.5); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke(); ctx.fillStyle = "rgba(255,255,255,.3)"; ctx.fillRect(brick.x + 8, brick.y + 3, brick.w - 16, 2);
+    const brickImage = usesNormalWaveDesign ? gameplayImage(`brick-${brick.trait}`, GAMEPLAY_ART.bricks[brick.trait as keyof typeof GAMEPLAY_ART.bricks]) : null;
+    if (brickImage) {
+      ctx.globalAlpha = alpha;
+      ctx.imageSmoothingEnabled = false;
+      drawBrickSprite(ctx, brickImage, brick.x, brick.y, brick.w, brick.h);
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.fillStyle = usesNormalWaveDesign ? (brick.trait === "guard" ? `rgba(135,115,25,${alpha})` : brick.trait === "explosive" ? `rgba(174,61,20,${alpha})` : brick.trait === "indestructible" ? "rgba(55,62,76,.98)" : brick.trait === "healer" ? `rgba(30,122,91,${alpha})` : brick.trait === "reflector" ? `rgba(22,102,145,${alpha})` : brick.maxHp >= 5 ? `rgba(111,88,43,${alpha})` : brick.maxHp >= 3 ? `rgba(78,83,92,${alpha})` : `rgba(61,66,73,${alpha})`) : color;
+      ctx.globalAlpha = usesNormalWaveDesign ? 1 : alpha; trace(brick); ctx.fill(); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+      trace(brick, 1.5); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke(); ctx.fillStyle = "rgba(255,255,255,.3)"; ctx.fillRect(brick.x + 8, brick.y + 3, brick.w - 16, 2);
+    }
     if (brick.kind === "boss-core") {
       const cx = brick.x + brick.w / 2, cy = brick.y + brick.h / 2, pulse = .78 + Math.sin(game.elapsed * 7) * .16;
       ctx.save(); ctx.translate(cx, cy); ctx.strokeStyle = "#ff4f78"; ctx.shadowColor = "#ff4f78"; ctx.shadowBlur = 18; ctx.lineWidth = 3; ctx.strokeRect(-brick.w * .22 * pulse, -brick.h * .22 * pulse, brick.w * .44 * pulse, brick.h * .44 * pulse); ctx.rotate(Math.PI / 4); ctx.fillStyle = "rgba(255,215,225,.72)"; ctx.fillRect(-5, -5, 10, 10); ctx.restore();
     } else if (brick.kind === "boss-armor") { ctx.save(); ctx.strokeStyle = "rgba(180,198,255,.72)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(brick.x + 5, brick.y + brick.h - 5); ctx.lineTo(brick.x + brick.w / 2, brick.y + 6); ctx.lineTo(brick.x + brick.w - 5, brick.y + brick.h - 5); ctx.stroke(); ctx.restore(); }
-    if (usesNormalWaveDesign && brick.trait !== "standard") {
+    if (usesNormalWaveDesign && brick.trait !== "standard" && !brickImage) {
       const tc = traitColors[brick.trait] ?? color, pulse = .72 + Math.sin(game.elapsed * 6 + brick.x * .04) * .18; ctx.save(); ctx.strokeStyle = brick.trait === "guard" && !brick.guardReady ? "rgba(255,242,122,.32)" : tc; ctx.lineWidth = brick.trait === "indestructible" ? 3 : brick.trait === "guard" && brick.guardReady ? 3 : 2; if (brick.trait === "explosive") ctx.setLineDash([5, 3]); ctx.strokeRect(brick.x + 1.5, brick.y + 1.5, brick.w - 3, brick.h - 3); ctx.setLineDash([]);
       if (brick.trait === "indestructible") { ctx.strokeStyle = "rgba(190,199,216,.42)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(brick.x + 8, brick.y + brick.h - 4); ctx.lineTo(brick.x + brick.w - 8, brick.y + 4); ctx.moveTo(brick.x + 20, brick.y + brick.h - 4); ctx.lineTo(brick.x + brick.w - 2, brick.y + 3); ctx.stroke(); }
       if (brick.trait === "guard") { const py = brick.y + 5, ph = Math.max(8, brick.h - 10); ctx.fillStyle = brick.guardReady ? "rgba(255,242,122,.18)" : "rgba(255,242,122,.05)"; ctx.strokeStyle = brick.guardReady ? "#fff27a" : "rgba(255,242,122,.3)"; ctx.lineWidth = brick.guardReady ? 2.5 : 1; ctx.beginPath(); ctx.moveTo(brick.x + 8, py); ctx.lineTo(brick.x + brick.w - 8, py); ctx.lineTo(brick.x + brick.w - 4, py + ph / 2); ctx.lineTo(brick.x + brick.w - 8, py + ph); ctx.lineTo(brick.x + 8, py + ph); ctx.lineTo(brick.x + 4, py + ph / 2); ctx.closePath(); ctx.fill(); ctx.stroke(); }
@@ -123,13 +208,13 @@ export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor
       if (brick.trait === "reflector" && brick.traitLockTime <= 0) { const threat = game.balls.some((b) => b.vy < 0 && b.y > brick.y + brick.h && b.y < brick.y + brick.h + 75 && b.x > brick.x - 8 && b.x < brick.x + brick.w + 8); const ly = brick.y + brick.h + 4, scan = (game.elapsed * .85 + brick.x / 1000) % 1; ctx.save(); ctx.globalAlpha = Math.min(1, .55 + (Math.sin(game.elapsed * 7 + brick.x * .03) + 1) * .2 + (threat ? .28 : 0)); ctx.strokeStyle = "#65dcff"; ctx.lineWidth = threat ? 4 : 3; ctx.shadowColor = "#65dcff"; ctx.shadowBlur = threat ? 24 : 13; ctx.beginPath(); ctx.moveTo(brick.x + 2, brick.y + brick.h - 1); ctx.quadraticCurveTo(brick.x + 4, ly, brick.x + 9, ly); ctx.lineTo(brick.x + brick.w - 9, ly); ctx.quadraticCurveTo(brick.x + brick.w - 4, ly, brick.x + brick.w - 2, brick.y + brick.h - 1); ctx.stroke(); const grad = ctx.createLinearGradient(brick.x, ly, brick.x + brick.w, ly); grad.addColorStop(0, "#1a8fb3"); grad.addColorStop(.35, "#65dcff"); grad.addColorStop(.5, "#e8fcff"); grad.addColorStop(.65, "#65dcff"); grad.addColorStop(1, "#1a8fb3"); ctx.strokeStyle = grad; ctx.lineWidth = threat ? 4 : 3; ctx.beginPath(); ctx.moveTo(brick.x + 2, ly); ctx.lineTo(brick.x + brick.w - 2, ly); ctx.stroke(); ctx.strokeStyle = "rgba(255,255,255,.95)"; ctx.lineWidth = threat ? 6 : 4; const gx = brick.x + 9 + (brick.w - 18) * scan; ctx.beginPath(); ctx.moveTo(gx - 5, ly); ctx.lineTo(gx + 5, ly); ctx.stroke(); ctx.restore(); }
       ctx.restore();
     }
-    if (brick.drop) { const d = itemData[brick.drop]; ctx.shadowBlur = brick.drop === "multiball" ? 16 : 8; ctx.shadowColor = d.color; ctx.strokeStyle = d.color; ctx.lineWidth = 2; ctx.strokeRect(brick.x + 1, brick.y + 1, brick.w - 2, brick.h - 2); ctx.shadowBlur = 0; ctx.fillStyle = d.color; ctx.font = "900 12px monospace"; ctx.textAlign = "center"; ctx.fillText(d.symbol, brick.x + brick.w / 2, brick.y + 17); }
+    if (brick.drop) { const d = itemData[brick.drop]; ctx.shadowBlur = brick.drop === "multiball" ? 16 : 8; ctx.shadowColor = d.color; ctx.strokeStyle = d.color; ctx.lineWidth = 2; ctx.strokeRect(brick.x + 1, brick.y + 1, brick.w - 2, brick.h - 2); ctx.shadowBlur = 0; ctx.fillStyle = d.color; ctx.font = `900 12px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText(d.symbol, brick.x + brick.w / 2, brick.y + 17); }
     if (brick.poisonTime > 0) { ctx.fillStyle = "rgba(114,241,184,.16)"; ctx.fillRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4); ctx.strokeStyle = "#72f1b8"; ctx.lineWidth = 2; ctx.strokeRect(brick.x + 3, brick.y + 3, brick.w - 6, brick.h - 6); ctx.fillStyle = "#72f1b8"; for (let dot = 0; dot < 3; dot++) { ctx.beginPath(); ctx.arc(brick.x + brick.w - 7 - dot * 6, brick.y + 7 + Math.sin(game.elapsed * 5 + dot) * 2, 2, 0, Math.PI * 2); ctx.fill(); } }
-    if (brick.burnTime > 0) { ctx.save(); const pulse = .65 + Math.sin(game.elapsed * 11 + brick.x * .03) * .2; ctx.globalAlpha = pulse; ctx.fillStyle = "rgba(255,112,67,.2)"; ctx.fillRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4); ctx.strokeStyle = "#ff8a3d"; ctx.shadowColor = "#ff5a36"; ctx.shadowBlur = 14; ctx.lineWidth = 2; ctx.strokeRect(brick.x - 1, brick.y - 1, brick.w + 2, brick.h + 2); ctx.fillStyle = "#ffd166"; for (let flame = 0; flame < Math.min(4, 1 + (brick.burnLevel ?? 0)); flame++) { const fx = brick.x + brick.w - 8 - flame * 8, fy = brick.y + 8 + Math.sin(game.elapsed * 9 + flame) * 2; ctx.beginPath(); ctx.moveTo(fx, fy - 6); ctx.lineTo(fx - 3, fy + 3); ctx.lineTo(fx + 3, fy + 3); ctx.closePath(); ctx.fill(); } ctx.fillStyle = "#fff3d6"; ctx.font = "900 8px monospace"; ctx.textAlign = "left"; ctx.fillText(`BURN ${Math.max(0, Math.ceil(brick.burnTime))}s`, brick.x + 5, brick.y + brick.h - 5); ctx.restore(); }
-    if (brick.healBlockTime > 0) { ctx.save(); ctx.globalAlpha = .72 + Math.sin(game.elapsed * 7 + brick.x * .02) * .16; ctx.strokeStyle = "#ff9b5c"; ctx.setLineDash([5, 3]); ctx.lineWidth = 2; ctx.strokeRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4); ctx.setLineDash([]); ctx.fillStyle = "#ffe2bd"; ctx.font = "900 8px monospace"; ctx.textAlign = "left"; ctx.fillText(`HEAL LOCK ${Math.ceil(brick.healBlockTime)}s`, brick.x + 5, brick.y + brick.h - 5); ctx.restore(); }
-    if (brick.blastVulnerability > 1) { ctx.save(); ctx.globalAlpha = .7 + Math.sin(game.elapsed * 8) * .2; ctx.strokeStyle = "#ff6b87"; ctx.shadowColor = "#ff6b87"; ctx.shadowBlur = 10; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.strokeRect(brick.x - 2, brick.y - 2, brick.w + 4, brick.h + 4); ctx.setLineDash([]); ctx.fillStyle = "rgba(4,8,20,.86)"; ctx.fillRect(brick.x + brick.w / 2 - 24, brick.y - 9, 48, 10); ctx.fillStyle = "#ff8ca3"; ctx.font = "900 8px monospace"; ctx.textAlign = "center"; ctx.fillText(`EXP ×${brick.blastVulnerability}`, brick.x + brick.w / 2, brick.y - 1); ctx.restore(); }
-    if (brick.frostVulnerability > 0) { ctx.save(); ctx.globalAlpha = .72 + Math.sin(game.elapsed * 7 + brick.x * .02) * .18; ctx.fillStyle = "rgba(101,220,255,.18)"; ctx.fillRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4); ctx.strokeStyle = "#b9f4ff"; ctx.shadowColor = "#65dcff"; ctx.shadowBlur = 12; ctx.lineWidth = 2; ctx.strokeRect(brick.x - 2, brick.y - 2, brick.w + 4, brick.h + 4); ctx.fillStyle = "#e8fcff"; ctx.font = "900 10px monospace"; ctx.textAlign = "left"; ctx.fillText(`×+${brick.frostVulnerability}`, brick.x + 5, brick.y + 12); ctx.restore(); }
-    if (brick.traitLockTime > 0) { ctx.save(); ctx.globalAlpha = .72 + Math.sin(game.elapsed * 9 + brick.x * .025) * .18; ctx.strokeStyle = classSkillColor?.("mage-mana-blast") ?? "#c18cff"; ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 14; ctx.lineWidth = 3; ctx.setLineDash([7, 4]); ctx.strokeRect(brick.x - 4, brick.y - 4, brick.w + 8, brick.h + 8); ctx.setLineDash([]); ctx.fillStyle = "rgba(7,4,18,.9)"; ctx.fillRect(brick.x + brick.w / 2 - 26, brick.y + brick.h - 12, 52, 12); ctx.fillStyle = "#e4b7ff"; ctx.font = "900 9px monospace"; ctx.textAlign = "center"; ctx.fillText(`LOCK ${Math.ceil(brick.traitLockTime)}s`, brick.x + brick.w / 2, brick.y + brick.h - 3); ctx.restore(); }
+    if (brick.burnTime > 0) { ctx.save(); const pulse = .65 + Math.sin(game.elapsed * 11 + brick.x * .03) * .2; ctx.globalAlpha = pulse; ctx.fillStyle = "rgba(255,112,67,.2)"; ctx.fillRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4); ctx.strokeStyle = "#ff8a3d"; ctx.shadowColor = "#ff5a36"; ctx.shadowBlur = 14; ctx.lineWidth = 2; ctx.strokeRect(brick.x - 1, brick.y - 1, brick.w + 2, brick.h + 2); ctx.fillStyle = "#ffd166"; for (let flame = 0; flame < Math.min(4, 1 + (brick.burnLevel ?? 0)); flame++) { const fx = brick.x + brick.w - 8 - flame * 8, fy = brick.y + 8 + Math.sin(game.elapsed * 9 + flame) * 2; ctx.beginPath(); ctx.moveTo(fx, fy - 6); ctx.lineTo(fx - 3, fy + 3); ctx.lineTo(fx + 3, fy + 3); ctx.closePath(); ctx.fill(); } ctx.fillStyle = "#fff3d6"; ctx.font = `900 8px ${PIXEL_FONT}`; ctx.textAlign = "left"; ctx.fillText(`BURN ${Math.max(0, Math.ceil(brick.burnTime))}s`, brick.x + 5, brick.y + brick.h - 5); ctx.restore(); }
+    if (brick.healBlockTime > 0) { ctx.save(); ctx.globalAlpha = .72 + Math.sin(game.elapsed * 7 + brick.x * .02) * .16; ctx.strokeStyle = "#ff9b5c"; ctx.setLineDash([5, 3]); ctx.lineWidth = 2; ctx.strokeRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4); ctx.setLineDash([]); ctx.fillStyle = "#ffe2bd"; ctx.font = `900 8px ${PIXEL_FONT}`; ctx.textAlign = "left"; ctx.fillText(`HEAL LOCK ${Math.ceil(brick.healBlockTime)}s`, brick.x + 5, brick.y + brick.h - 5); ctx.restore(); }
+    if (brick.blastVulnerability > 1) { ctx.save(); ctx.globalAlpha = .7 + Math.sin(game.elapsed * 8) * .2; ctx.strokeStyle = "#ff6b87"; ctx.shadowColor = "#ff6b87"; ctx.shadowBlur = 10; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.strokeRect(brick.x - 2, brick.y - 2, brick.w + 4, brick.h + 4); ctx.setLineDash([]); ctx.fillStyle = "rgba(4,8,20,.86)"; ctx.fillRect(brick.x + brick.w / 2 - 24, brick.y - 9, 48, 10); ctx.fillStyle = "#ff8ca3"; ctx.font = `900 8px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText(`EXP ×${brick.blastVulnerability}`, brick.x + brick.w / 2, brick.y - 1); ctx.restore(); }
+    if (brick.frostVulnerability > 0) { ctx.save(); ctx.globalAlpha = .72 + Math.sin(game.elapsed * 7 + brick.x * .02) * .18; ctx.fillStyle = "rgba(101,220,255,.18)"; ctx.fillRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4); ctx.strokeStyle = "#b9f4ff"; ctx.shadowColor = "#65dcff"; ctx.shadowBlur = 12; ctx.lineWidth = 2; ctx.strokeRect(brick.x - 2, brick.y - 2, brick.w + 4, brick.h + 4); ctx.fillStyle = "#e8fcff"; ctx.font = `900 10px ${PIXEL_FONT}`; ctx.textAlign = "left"; ctx.fillText(`×+${brick.frostVulnerability}`, brick.x + 5, brick.y + 12); ctx.restore(); }
+    if (brick.traitLockTime > 0) { ctx.save(); ctx.globalAlpha = .72 + Math.sin(game.elapsed * 9 + brick.x * .025) * .18; ctx.strokeStyle = classSkillColor?.("mage-mana-blast") ?? "#c18cff"; ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 14; ctx.lineWidth = 3; ctx.setLineDash([7, 4]); ctx.strokeRect(brick.x - 4, brick.y - 4, brick.w + 8, brick.h + 8); ctx.setLineDash([]); ctx.fillStyle = "rgba(7,4,18,.9)"; ctx.fillRect(brick.x + brick.w / 2 - 26, brick.y + brick.h - 12, 52, 12); ctx.fillStyle = "#e4b7ff"; ctx.font = `900 9px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText(`LOCK ${Math.ceil(brick.traitLockTime)}s`, brick.x + brick.w / 2, brick.y + brick.h - 3); ctx.restore(); }
     if (brick.lastHitPaddleId) { ctx.strokeStyle = "#c18cff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(brick.x + 5, brick.y + brick.h - 4); ctx.lineTo(brick.x + brick.w * .35, brick.y + 5); ctx.moveTo(brick.x + brick.w * .55, brick.y + brick.h - 4); ctx.lineTo(brick.x + brick.w - 5, brick.y + 5); ctx.stroke(); }
     if (damageRatio > 0.08) {
       const crackCount = Math.min(4, Math.max(1, Math.ceil(damageRatio * 4)));
@@ -162,7 +247,7 @@ export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor
       ctx.save(); ctx.globalAlpha = Math.min(.72, healthFlashRatio * .72); ctx.fillStyle = flashColor; trace(brick, 2); ctx.fill();
       ctx.globalAlpha = Math.min(1, healthFlashRatio * 1.2); ctx.strokeStyle = flashColor; ctx.shadowColor = flashColor; ctx.shadowBlur = brick.healthFlashKind === "heal" ? 20 : 13; ctx.lineWidth = brick.healthFlashKind === "heal" ? 3 : 2; trace(brick, -2 * healthFlashRatio); ctx.stroke(); ctx.restore();
     }
-    if (brick.kind === "boss-core") { ctx.strokeStyle = "rgba(4,8,20,.95)"; ctx.lineWidth = 5; ctx.fillStyle = "#fff"; ctx.font = "900 18px monospace"; ctx.textAlign = "center"; ctx.strokeText("BOSS CORE", brick.x + brick.w / 2, brick.y + brick.h / 2 - 13); ctx.fillText("BOSS CORE", brick.x + brick.w / 2, brick.y + brick.h / 2 - 13); }
+    if (brick.kind === "boss-core") { ctx.strokeStyle = "rgba(4,8,20,.95)"; ctx.lineWidth = 5; ctx.fillStyle = "#fff"; ctx.font = `900 18px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.strokeText("BOSS CORE", brick.x + brick.w / 2, brick.y + brick.h / 2 - 13); ctx.fillText("BOSS CORE", brick.x + brick.w / 2, brick.y + brick.h / 2 - 13); }
     ctx.restore();
   });
 }
@@ -195,10 +280,22 @@ export function renderBalls({ ctx, game, getSkill, classSkillColor, mageSpells =
       ctx.fill();
     }
     ctx.globalAlpha = 1;
-    ctx.fillStyle = ball.color;
     ctx.shadowColor = ball.color;
     ctx.shadowBlur = 24;
-    ctx.beginPath(); ctx.arc(ball.x, ball.y, radius, 0, Math.PI * 2); ctx.fill();
+    const ballImage = gameplayImage("ball", GAMEPLAY_ART.ball);
+    if (ballImage) {
+      ctx.imageSmoothingEnabled = false;
+      // Rotate the faceted ball continuously so it reads as a moving orb
+      // instead of a static UI sprite while the rune ring stays readable.
+      ctx.save();
+      ctx.translate(ball.x, ball.y);
+      ctx.rotate(game.elapsed * (isExtraBall ? 2.8 : 2.1));
+      ctx.drawImage(ballImage, -radius, -radius, radius * 2, radius * 2);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = ball.color;
+      ctx.beginPath(); ctx.arc(ball.x, ball.y, radius, 0, Math.PI * 2); ctx.fill();
+    }
     const powerRingCount = Math.min(3, Math.floor(powerBoost / 1.25));
     for (let ring = 0; ring < powerRingCount; ring++) {
       ctx.globalAlpha = 0.48 - ring * 0.1;
@@ -213,6 +310,45 @@ export function renderBalls({ ctx, game, getSkill, classSkillColor, mageSpells =
     // evolution. The simulation exposes that rule through canTriggerSkills;
     // the renderer must not infer ownership from the run-wide loadout.
     const ballSkills = ball.canTriggerSkills ? ownedSkills : [];
+    const runeRingImage = gameplayImage("rune-ring", GAMEPLAY_ART.runeRing);
+    if (runeRingImage) {
+      const runeSize = Math.max(38, (radius + 14) * 1.65);
+      const runeRotation = game.elapsed * 0.85;
+      const runeAlpha = (isExtraBall ? 0.34 : 0.58) * skillEffectAlpha;
+      ctx.save();
+      ctx.translate(ball.x, ball.y);
+      ctx.rotate(runeRotation);
+      ctx.globalAlpha = runeAlpha;
+      ctx.shadowColor = "#d5a957";
+      ctx.shadowBlur = 5;
+      ctx.filter = "saturate(.62) brightness(.82)";
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(runeRingImage, -runeSize / 2, -runeSize / 2, runeSize, runeSize);
+      ctx.restore();
+
+      const runeRadius = radius + 14;
+      const runeGlyphs = ["R", "B", "K", "X", "ᛉ", "ᛒ", "ᚲ", "ᛟ"];
+      ballSkills.slice(0, 8).forEach(({ id }, index) => {
+        const angle = -Math.PI / 2 + index * Math.PI / 4 + runeRotation;
+        const x = ball.x + Math.cos(angle) * runeRadius;
+        const y = ball.y + Math.sin(angle) * runeRadius;
+        const color = classSkillColor(id);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(Math.PI / 4);
+        ctx.globalAlpha = (0.5 + Math.sin(game.elapsed * 4 + index) * 0.08) * skillEffectAlpha;
+        ctx.strokeStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 4;
+        ctx.rotate(-Math.PI / 4);
+        ctx.fillStyle = color;
+        ctx.font = `900 7px ${PIXEL_FONT}`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(runeGlyphs[index], 0, 1);
+        ctx.restore();
+      });
+    }
     const cooldownEntries = ballSkills.map(({ id, config, level }) => ({
       id,
       config,
@@ -220,8 +356,11 @@ export function renderBalls({ ctx, game, getSkill, classSkillColor, mageSpells =
       total: Math.max(0, Number(config.cooldown[level - 1] ?? 0)),
       remaining: Math.max(0, Number(ball.skillCooldowns[id] ?? 0)),
     })).filter(({ total }) => total > 0);
+    // Rune sockets are now the only persistent skill-state indicator around
+    // the ball; the former segmented cooldown arcs are intentionally hidden.
     const coolingSkills = cooldownEntries.filter(({ remaining }) => remaining > 0);
-    if (coolingSkills.length > 0) {
+    const runeOnlyMode = true;
+    if (!runeOnlyMode && coolingSkills.length > 0) {
       const gaugeRadius = radius + 5 + powerRingCount * 3;
       const segmentSpan = Math.PI * 2 / coolingSkills.length;
       const gap = Math.min(0.12, segmentSpan * 0.12);
@@ -246,7 +385,7 @@ export function renderBalls({ ctx, game, getSkill, classSkillColor, mageSpells =
       ctx.restore();
     }
 
-    const readySkills = cooldownEntries.filter(({ remaining }) => remaining <= 0).slice(0, 4);
+    const readySkills = cooldownEntries.filter(() => false);
     readySkills.forEach(({ id, config, level }, index) => {
       const color = classSkillColor(id);
       ctx.save();
@@ -319,7 +458,7 @@ export function renderBalls({ ctx, game, getSkill, classSkillColor, mageSpells =
     const payloadLabels = { pierce: "P", blast: "B", glass: "G", link: "L" } as const;
     const activePayloads = (Object.keys(payloadLabels) as Array<keyof typeof payloadLabels>).filter((id) => (ball.payloads[id] ?? 0) > 0);
     if (activePayloads.length > 0 || ball.attackPower > 1.05) {
-      ctx.shadowBlur = 0; ctx.globalAlpha = 1; ctx.fillStyle = ball.color; ctx.font = "900 9px monospace"; ctx.textAlign = "center";
+      ctx.shadowBlur = 0; ctx.globalAlpha = 1; ctx.fillStyle = ball.color; ctx.font = `900 9px ${PIXEL_FONT}`; ctx.textAlign = "center";
       const payloadLabel = activePayloads.map((id) => id === "pierce" ? `P×${ball.pierce}` : `${payloadLabels[id]}${ball.payloads[id]}`).join("+");
       ctx.fillText(`${ball.attackPower.toFixed(1)} ATK${ball.missileTime > 0 ? ` // MISSILE ${ball.missileTime.toFixed(1)}s` : ""}${payloadLabel ? ` // ${payloadLabel}` : ""}`, ball.x, ball.y - 13);
     }
@@ -327,24 +466,11 @@ export function renderBalls({ ctx, game, getSkill, classSkillColor, mageSpells =
   });
 }
 
-export function renderHud({ ctx, game, width }: { ctx: CanvasRenderingContext2D; game: Pick<GameState, "combo" | "coreHp" | "maxCoreHp" | "wave" | "overdriveLevel" | "bossActive" | "bossStage" | "bricks" | "bossSkillTimer">; width: number; height: number }) {
+export function renderHud({ ctx, game, width }: { ctx: CanvasRenderingContext2D; game: Pick<GameState, "combo" | "bossActive" | "bossStage" | "bricks" | "bossSkillTimer">; width: number; height: number }) {
   ctx.save();
-  ctx.textAlign = "left";
-  ctx.font = "900 12px monospace";
-  ctx.fillStyle = "rgba(4,7,16,.82)";
-  ctx.fillRect(16, 14, 210, 46);
-  ctx.fillStyle = "#72e7ff";
-  ctx.fillText(`CORE ${Math.max(0, Math.ceil(game.coreHp))}/${Math.ceil(game.maxCoreHp)}`, 28, 34);
-  ctx.fillStyle = "#ffcf4a";
-  ctx.fillText(`WAVE ${game.wave}`, 28, 51);
-  if (game.overdriveLevel > 0) {
-    ctx.textAlign = "right";
-    ctx.fillStyle = "#ff9658";
-    ctx.fillText(`OVERDRIVE ${Math.round((1 + game.overdriveLevel * 0.01) * 100)}%`, width - 22, 28);
-  }
   if (game.combo >= 3) {
     ctx.textAlign = "right";
-    ctx.font = "900 28px monospace";
+    ctx.font = `900 28px ${PIXEL_FONT}`;
     ctx.fillStyle = game.combo >= 15 ? "#ffcf4a" : "#72f1b8";
     ctx.fillText(`${game.combo} COMBO`, width - 28, 56);
   }
@@ -384,7 +510,7 @@ export function renderTransientFeedback(ctx: CanvasRendererContext, game: Pick<G
       ctx.save();
       ctx.translate(f.x, f.y);
       ctx.scale(pulse, pulse);
-      ctx.font = "1000 15px monospace";
+      ctx.font = `1000 15px ${PIXEL_FONT}`;
       ctx.lineJoin = "round";
       ctx.lineWidth = 3;
       ctx.strokeStyle = "rgba(5, 8, 16, .95)";
@@ -395,9 +521,9 @@ export function renderTransientFeedback(ctx: CanvasRendererContext, game: Pick<G
       ctx.restore();
     } else if (f.emphasis === "heal") {
       const pulse = 1 + Math.max(0, f.life - 0.6) * 0.2;
-      ctx.save(); ctx.translate(f.x, f.y); ctx.scale(pulse, pulse); ctx.font = "1000 14px monospace"; ctx.lineJoin = "round"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(3,18,15,.96)"; ctx.shadowColor = f.color; ctx.shadowBlur = 11; ctx.strokeText(f.text, 0, 0); ctx.fillText(f.text, 0, 0); ctx.restore();
+      ctx.save(); ctx.translate(f.x, f.y); ctx.scale(pulse, pulse); ctx.font = `1000 14px ${PIXEL_FONT}`; ctx.lineJoin = "round"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(3,18,15,.96)"; ctx.shadowColor = f.color; ctx.shadowBlur = 11; ctx.strokeText(f.text, 0, 0); ctx.fillText(f.text, 0, 0); ctx.restore();
     } else {
-      ctx.font = `900 ${f.text.includes("BOARD") ? 28 : 15}px monospace`;
+      ctx.font = `900 ${f.text.includes("BOARD") ? 28 : 15}px ${PIXEL_FONT}`;
       ctx.fillText(f.text, f.x, f.y);
     }
   });
@@ -423,8 +549,16 @@ export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor,
   aim?: { x: number; y: number; left: { x: number; y: number }; right: { x: number; y: number }; limited: boolean };
   playerCharge?: ChargeVisual | null; elapsed?: number;
 }) {
-  const draw = (x: number, y: number, width: number, color: string, alpha = 1) => {
+  const draw = (x: number, y: number, width: number, color: string, alpha = 1, useArt = false) => {
     ctx.save(); ctx.globalAlpha = alpha; ctx.shadowColor = color; ctx.shadowBlur = 12;
+    const paddleImage = useArt ? gameplayImage("paddle", GAMEPLAY_ART.paddle) : null;
+    if (paddleImage) {
+      ctx.imageSmoothingEnabled = false;
+      const height = Math.max(28, width / 3.66);
+      ctx.drawImage(paddleImage, x - width / 2, y - 7, width, height);
+      ctx.restore();
+      return;
+    }
     const g = ctx.createLinearGradient(x, y, x, y + 18); g.addColorStop(0, "rgba(235,242,255,.3)"); g.addColorStop(.2, color); g.addColorStop(1, "rgba(5,9,17,.96)");
     ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(x - width / 2, y, width, 18, 5); ctx.fill(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
     ctx.shadowBlur = 0; ctx.fillStyle = "rgba(255,255,255,.42)"; ctx.fillRect(x - width / 2 + 7, y + 3, Math.max(0, width - 14), 2); ctx.restore();
@@ -434,9 +568,9 @@ export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor,
     ctx.save(); ctx.globalAlpha = alpha * (0.45 + visual.intensity * 0.45) * beat; ctx.strokeStyle = visual.color; ctx.shadowColor = visual.color; ctx.shadowBlur = 18 + visual.intensity * 18; ctx.lineWidth = visual.pulse > 0 ? 5 : 3;
     ctx.strokeRect(x - width / 2 - 6, y - 6, width + 12, 28); ctx.fillStyle = visual.color; ctx.fillRect(x - width / 2, y, width * Math.max(0.2, visual.intensity), 4); ctx.restore();
   };
-  safetyBlocks.forEach((b) => { ctx.save(); ctx.shadowColor = b.color; ctx.shadowBlur = 18; ctx.fillStyle = b.color; ctx.fillRect(b.x - b.width / 2, b.y, b.width, 7); ctx.shadowBlur = 0; ctx.fillStyle = "#07101b"; ctx.font = "900 8px monospace"; ctx.textAlign = "center"; ctx.fillText("AUTO REFLECT", b.x, b.y + 6); ctx.restore(); });
-  ghostPaddles.forEach((p) => { draw(p.x, p.y, p.width, p.color, .74); charge(p.x, p.y, p.width, p.charge, .74); ctx.fillStyle = p.color; ctx.font = "800 9px monospace"; ctx.textAlign = "center"; ctx.fillText(p.name, p.x, p.y + 24); });
-  draw(playerX, playerY, playerWidth, playerColor); charge(playerX, playerY, playerWidth, playerCharge);
+  safetyBlocks.forEach((b) => { ctx.save(); ctx.shadowColor = b.color; ctx.shadowBlur = 18; ctx.fillStyle = b.color; ctx.fillRect(b.x - b.width / 2, b.y, b.width, 7); ctx.shadowBlur = 0; ctx.fillStyle = "#07101b"; ctx.font = `900 8px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText("AUTO REFLECT", b.x, b.y + 6); ctx.restore(); });
+  ghostPaddles.forEach((p) => { draw(p.x, p.y, p.width, p.color, .74); charge(p.x, p.y, p.width, p.charge, .74); ctx.fillStyle = p.color; ctx.font = `800 9px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText(p.name, p.x, p.y + 24); });
+  draw(playerX, playerY, playerWidth, playerColor, 1, true); charge(playerX, playerY, playerWidth, playerCharge);
   playerCores.forEach((core) => drawCoreCrystal(ctx, core.x, core.y, core.scale ?? 1, core.alpha ?? 1, core.danger ?? false));
   if (coreBreak) {
     drawCoreCrystal(ctx, coreBreak.x, coreBreak.y, 1 + coreBreak.progress * .8, Math.max(0, 1 - coreBreak.progress), true);
@@ -463,8 +597,8 @@ export function renderWorldOverlays({ ctx, elapsed, gravityWells, itemBarrierTim
   gravityWells.forEach((well) => {
     const pulse = .78 + Math.sin(elapsed * 8) * .12; ctx.save(); ctx.globalAlpha = Math.min(1, well.life / .45); ctx.translate(well.x, well.y); ctx.rotate(elapsed * 1.6);
     const gradient = ctx.createRadialGradient(0, 0, 5, 0, 0, well.radius); gradient.addColorStop(0, "rgba(5,7,18,.98)"); gradient.addColorStop(.2, "rgba(193,140,255,.42)"); gradient.addColorStop(1, "rgba(193,140,255,0)"); ctx.fillStyle = gradient; ctx.beginPath(); ctx.arc(0, 0, well.radius * pulse, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = well.color; ctx.lineWidth = 2; ctx.setLineDash([10, 14]); ctx.beginPath(); ctx.arc(0, 0, well.radius * .58, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = "#ecf2ff"; ctx.font = "900 9px monospace"; ctx.textAlign = "center"; ctx.fillText(`GRAVITY ${well.life.toFixed(1)}s`, 0, -well.radius * .62); ctx.restore();
+    ctx.strokeStyle = well.color; ctx.lineWidth = 2; ctx.setLineDash([10, 14]); ctx.beginPath(); ctx.arc(0, 0, well.radius * .58, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = "#ecf2ff"; ctx.font = `900 9px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText(`GRAVITY ${well.life.toFixed(1)}s`, 0, -well.radius * .62); ctx.restore();
   });
-  if (itemBarrierTime > 0) { const pulse = .72 + Math.sin(elapsed * 10) * .2; ctx.save(); ctx.globalAlpha = pulse; ctx.strokeStyle = barrierColor; ctx.shadowColor = barrierColor; ctx.shadowBlur = 18; ctx.lineWidth = 4; ctx.setLineDash([22, 8]); ctx.beginPath(); ctx.moveTo(24, itemBarrierY); ctx.lineTo(width - 24, itemBarrierY); ctx.stroke(); ctx.setLineDash([]); ctx.shadowBlur = 0; ctx.fillStyle = barrierColor; ctx.font = "900 10px monospace"; ctx.textAlign = "center"; ctx.fillText(`AUTO BARRIER ${itemBarrierTime.toFixed(1)}s`, width / 2, itemBarrierY - 9); ctx.restore(); }
+  if (itemBarrierTime > 0) { const pulse = .72 + Math.sin(elapsed * 10) * .2; ctx.save(); ctx.globalAlpha = pulse; ctx.strokeStyle = barrierColor; ctx.shadowColor = barrierColor; ctx.shadowBlur = 18; ctx.lineWidth = 4; ctx.setLineDash([22, 8]); ctx.beginPath(); ctx.moveTo(24, itemBarrierY); ctx.lineTo(width - 24, itemBarrierY); ctx.stroke(); ctx.setLineDash([]); ctx.shadowBlur = 0; ctx.fillStyle = barrierColor; ctx.font = `900 10px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText(`AUTO BARRIER ${itemBarrierTime.toFixed(1)}s`, width / 2, itemBarrierY - 9); ctx.restore(); }
   if (magnetLinks.length) { ctx.save(); ctx.lineWidth = 1.5; ctx.setLineDash([4, 6]); magnetLinks.forEach((link) => { ctx.globalAlpha = link.alpha; ctx.strokeStyle = link.color; ctx.beginPath(); ctx.moveTo(link.x, link.y); ctx.quadraticCurveTo((link.x + link.itemX) / 2, link.itemY + 24, link.itemX, link.itemY); ctx.stroke(); }); ctx.setLineDash([]); ctx.restore(); }
 }

@@ -13,7 +13,8 @@ const MIN_AIM_VERTICAL_DISTANCE = 52;
 const AIM_LIMIT_GUIDE_LENGTH = 100;
 const AIM_LINE_LENGTH = 170;
 const MAX_PADDLE_REBOUND_RATIO = 0.84;
-const PLAYER_BALL_COLOR = "#fff27a";
+const PLAYER_BALL_COLOR = "#fffaf0";
+const PIXEL_FONT = '"Neo둥근모", monospace';
 const GHOST_COLORS = ["#9b8cff", "#58d5ff", "#ff78b7"];
 const RING_EXPLOSION_COLUMNS = 10;
 const RING_EXPLOSION_FRAME_SIZE = 100;
@@ -24,6 +25,25 @@ const HIT_SPARK_FRAMES = 9;
 const RADIAL_LIGHTNING_COLUMNS = 4;
 const RADIAL_LIGHTNING_FRAME_SIZE = 64;
 const RADIAL_LIGHTNING_FRAMES = 8;
+const SKILL_SHEET_COLUMNS = 8;
+const SKILL_SHEET_ROWS = 5;
+const SKILL_EFFECT_SCALE: Partial<Record<ClassSkillId, number>> = {
+  "warrior-smash": 0.82,
+  "warrior-shockwave": 0.72,
+  "warrior-execute": 0.86,
+  "warrior-crush": 0.76,
+  "warrior-guard": 0.68,
+  "archer-rapid": 0.66,
+  "archer-pierce": 1.12,
+  "archer-ricochet": 0.82,
+  "archer-focus": 0.72,
+  "archer-weakpoint": 0.76,
+  "mage-fireball": 0.76,
+  "mage-lightning": 0.82,
+  "mage-freeze": 0.72,
+  "mage-black-hole": 0.92,
+  "mage-mana-blast": 0.76,
+};
 
 const ITEM_DATA: Record<ItemKind, { label: string; symbol: string; color: string }> = {
   multiball: { label: "MULTI BALL", symbol: "+", color: "#ffcf4a" },
@@ -67,6 +87,10 @@ export type GameRuntimeCanvasOptions = {
   radialLightningReady: boolean;
   mageSpells: Array<HTMLImageElement | null>;
   mageSpellReady: boolean[];
+  skillSheets: Array<HTMLImageElement | null>;
+  skillSheetReady: boolean[];
+  itemIcons: Partial<Record<ItemKind, HTMLImageElement | null>>;
+  itemIconReady: Partial<Record<ItemKind, boolean>>;
   skillValue: (id: UpgradeId, level: number) => number;
   upgradeLevel: (upgrades: UpgradeId[], id: UpgradeId) => number;
   classSkillColor: (id: ClassSkillId) => string;
@@ -90,6 +114,10 @@ export function renderGameRuntimeCanvas({
   radialLightningReady,
   mageSpells,
   mageSpellReady,
+  skillSheets,
+  skillSheetReady,
+  itemIcons,
+  itemIconReady,
   skillValue,
   upgradeLevel,
   classSkillColor,
@@ -129,11 +157,6 @@ renderPaddles({
     }
     : undefined,
   elapsed: game.elapsed,
-  playerCores: Array.from({ length: Math.max(0, Math.floor(game.coreHp)) }, (_, index) => {
-    const count = Math.max(1, Math.floor(game.coreHp));
-    const gap = Math.min(20, count > 1 ? 156 / (count - 1) : 20);
-    return { x: game.paddleX - (count - 1) * gap / 2 + index * gap, y: PLAYER_PADDLE_Y + 36, danger: count <= 3, scale: count <= 3 ? 0.96 + Math.sin(game.elapsed * 8 + index) * 0.08 : 1 };
-  }),
   coreBreak: game.coreBreakTime > 0 ? { x: game.coreBreakX, y: game.coreBreakY, progress: 1 - game.coreBreakTime / Math.max(0.001, game.coreBreakDuration) } : undefined,
   aim: !botActive ? (() => {
     const a = paddleAimDirection(game.paddleX, PLAYER_PADDLE_Y, pointerX, pointerY);
@@ -153,21 +176,30 @@ renderHud({ ctx, game, width: W, height: H });
 
 game.items.forEach((item) => {
   const data = ITEM_DATA[item.kind];
-  const size = item.kind === "multiball" ? 10 : 9;
   ctx.save();
   ctx.translate(item.x, item.y);
-  ctx.rotate(Math.PI / 4);
-  ctx.shadowBlur = item.kind === "multiball" ? 22 : 14;
+  const icon = itemIcons[item.kind];
+  const iconReady = itemIconReady[item.kind] && icon;
+  const pulse = 1 + Math.sin(game.elapsed * 7 + item.x * .03) * .06;
+  ctx.shadowBlur = item.kind === "multiball" ? 22 : 16;
   ctx.shadowColor = data.color;
-  ctx.fillStyle = data.color;
-  ctx.fillRect(-size, -size, size * 2, size * 2);
-  ctx.rotate(-Math.PI / 4);
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = "#07101b";
-  ctx.font = "900 11px monospace";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(data.symbol, 0, 1);
+  if (iconReady) {
+    const size = (item.kind === "multiball" ? 44 : 42) * pulse;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(icon, -size / 2, -size / 2, size, size);
+  } else {
+    const size = item.kind === "multiball" ? 10 : 9;
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = data.color;
+    ctx.fillRect(-size, -size, size * 2, size * 2);
+    ctx.rotate(-Math.PI / 4);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#07101b";
+    ctx.font = `900 11px ${PIXEL_FONT}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(data.symbol, 0, 1);
+  }
   ctx.restore();
 });
 
@@ -180,7 +212,41 @@ game.effects.forEach((effect) => {
   ctx.strokeStyle = effect.color;
   ctx.shadowColor = effect.color;
   ctx.shadowBlur = 18;
-  if (effect.kind === "beam") {
+  if (effect.kind === "skill") {
+    const effectSkillId = effect.skillId;
+    const spriteRow = effectSkillId?.startsWith("warrior-")
+      ? { sheet: 0, row: ["warrior-smash", "warrior-shockwave", "warrior-execute", "warrior-crush", "warrior-guard"].indexOf(effectSkillId) }
+      : effectSkillId?.startsWith("archer-")
+        ? { sheet: 1, row: ["archer-rapid", "archer-pierce", "archer-ricochet", "archer-focus", "archer-weakpoint"].indexOf(effectSkillId) }
+        : effectSkillId?.startsWith("mage-")
+          ? { sheet: 2, row: ["mage-fireball", "mage-lightning", "mage-freeze", "mage-black-hole", "mage-mana-blast"].indexOf(effectSkillId) }
+          : null;
+    const spriteImage = spriteRow && spriteRow.row >= 0 ? skillSheets[spriteRow.sheet] : null;
+    if (spriteRow && spriteRow.row >= 0 && skillSheetReady[spriteRow.sheet] && spriteImage) {
+      const frame = Math.min(SKILL_SHEET_COLUMNS - 1, Math.floor(progress * SKILL_SHEET_COLUMNS));
+      const frameWidth = spriteImage.naturalWidth / SKILL_SHEET_COLUMNS;
+      const frameHeight = spriteImage.naturalHeight / SKILL_SHEET_ROWS;
+      const skillScale = effectSkillId ? (SKILL_EFFECT_SCALE[effectSkillId] ?? 1) : 1;
+      const spriteSize = effect.size * skillScale * (0.9 + progress * 0.28);
+      const frameAspect = frameWidth / Math.max(1, frameHeight);
+      const drawWidth = spriteSize * frameAspect;
+      ctx.save();
+      ctx.translate(effect.x, effect.y);
+      if (effectSkillId?.startsWith("archer-") && (effect.x2 !== effect.x || effect.y2 !== effect.y)) {
+        ctx.rotate(Math.atan2(effect.y2 - effect.y, effect.x2 - effect.x));
+      }
+      ctx.globalAlpha = Math.min(1, remaining * 1.85);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(spriteImage, frame * frameWidth, spriteRow.row * frameHeight, frameWidth, frameHeight, -drawWidth / 2, -spriteSize / 2, drawWidth, spriteSize);
+      ctx.restore();
+    } else {
+      ctx.globalAlpha = remaining * 0.9;
+      ctx.lineWidth = 3 + remaining * 4;
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, effect.size * (0.2 + progress * 0.8), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else if (effect.kind === "beam") {
     const dx = effect.x2 - effect.x;
     const dy = effect.y2 - effect.y;
     const distance = Math.max(1, Math.hypot(dx, dy));
@@ -333,7 +399,30 @@ game.effects.forEach((effect) => {
     ctx.shadowColor = effect.color;
     ctx.shadowBlur = 16;
     ctx.lineCap = "round";
-    if (effect.skillId === "warrior-smash") {
+    const effectSkillId = effect.skillId;
+    const skillScale = effectSkillId ? (SKILL_EFFECT_SCALE[effectSkillId] ?? 1) : 1;
+    const spriteRow = effectSkillId?.startsWith("warrior-")
+      ? { sheet: 0, row: ["warrior-smash", "warrior-shockwave", "warrior-execute", "warrior-crush", "warrior-guard"].indexOf(effectSkillId) }
+      : effectSkillId?.startsWith("archer-")
+        ? { sheet: 1, row: ["archer-rapid", "archer-pierce", "archer-ricochet", "archer-focus", "archer-weakpoint"].indexOf(effectSkillId) }
+        : effectSkillId?.startsWith("mage-")
+          ? { sheet: 2, row: ["mage-fireball", "mage-lightning", "mage-freeze", "mage-black-hole", "mage-mana-blast"].indexOf(effectSkillId) }
+          : null;
+    const spriteImage = spriteRow && spriteRow.row >= 0 ? skillSheets[spriteRow.sheet] : null;
+    if (spriteRow && spriteRow.row >= 0 && skillSheetReady[spriteRow.sheet] && spriteImage) {
+      const frame = Math.min(SKILL_SHEET_COLUMNS - 1, Math.floor(progress * SKILL_SHEET_COLUMNS));
+      const frameWidth = spriteImage.naturalWidth / SKILL_SHEET_COLUMNS;
+      const frameHeight = spriteImage.naturalHeight / SKILL_SHEET_ROWS;
+      const spriteSize = effect.size * skillScale * (0.9 + progress * 0.28);
+      const frameAspect = frameWidth / Math.max(1, frameHeight);
+      const drawWidth = spriteSize * frameAspect;
+      ctx.globalAlpha = Math.min(1, remaining * 1.85);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(spriteImage, frame * frameWidth, spriteRow.row * frameHeight, frameWidth, frameHeight, -drawWidth / 2, -spriteSize / 2, drawWidth, spriteSize);
+      ctx.restore();
+      return;
+    }
+    if (effectSkillId === "warrior-smash") {
       const reach = effect.size * (0.35 + progress * 0.45);
       ctx.lineWidth = 8 * remaining + 2;
       ctx.rotate(-0.35);
@@ -361,7 +450,7 @@ game.effects.forEach((effect) => {
         ctx.fill();
         ctx.restore();
       }
-    } else if (effect.skillId === "warrior-shockwave") {
+    } else if (effectSkillId === "warrior-shockwave") {
       for (let wave = 0; wave < 3; wave++) {
         const radius = effect.size * Math.max(0.08, progress - wave * 0.12);
         ctx.globalAlpha = Math.max(0, remaining - wave * 0.16);
@@ -370,7 +459,7 @@ game.effects.forEach((effect) => {
         ctx.arc(0, 0, radius, 0, Math.PI * 2);
         ctx.stroke();
       }
-    } else if (effect.skillId === "warrior-execute") {
+    } else if (effectSkillId === "warrior-execute") {
       const blade = effect.size * (0.35 + progress * 0.65);
       ctx.lineWidth = 5 + remaining * 5;
       ctx.beginPath();
@@ -382,7 +471,7 @@ game.effects.forEach((effect) => {
       ctx.lineTo(0, blade * 0.7);
       ctx.lineTo(12, blade * 0.38);
       ctx.stroke();
-    } else if (effect.skillId === "warrior-crush") {
+    } else if (effectSkillId === "warrior-crush") {
       ctx.rotate(progress * 1.6);
       for (let shard = 0; shard < 6; shard++) {
         const angle = shard * Math.PI / 3;
@@ -394,7 +483,7 @@ game.effects.forEach((effect) => {
         ctx.fillRect(-5, -5, 10, 10);
         ctx.restore();
       }
-    } else if (effect.skillId === "warrior-guard") {
+    } else if (effectSkillId === "warrior-guard") {
       const span = Math.min(W - 80, effect.size * 5.4);
       ctx.lineWidth = 4 + remaining * 3;
       for (let shield = -2; shield <= 2; shield++) {
@@ -409,7 +498,7 @@ game.effects.forEach((effect) => {
         }
         ctx.stroke();
       }
-    } else if (effect.skillId === "archer-rapid") {
+    } else if (effectSkillId === "archer-rapid") {
       ctx.rotate(Math.atan2(effect.y2 - effect.y, effect.x2 - effect.x));
       ctx.lineWidth = 2.5;
       for (let arrow = -1; arrow <= 1; arrow++) {
@@ -423,7 +512,7 @@ game.effects.forEach((effect) => {
         ctx.lineTo(travel - 9, offset + 5);
         ctx.stroke();
       }
-    } else if (effect.skillId === "archer-pierce") {
+    } else if (effectSkillId === "archer-pierce") {
       ctx.rotate(Math.atan2(effect.y2 - effect.y, effect.x2 - effect.x));
       const length = effect.size * (0.3 + progress * 0.65);
       ctx.lineWidth = 4;
@@ -434,7 +523,7 @@ game.effects.forEach((effect) => {
       ctx.moveTo(length, 0);
       ctx.lineTo(length - 14, 9);
       ctx.stroke();
-    } else if (effect.skillId === "archer-ricochet") {
+    } else if (effectSkillId === "archer-ricochet") {
       const length = effect.size * (0.5 + progress * 0.45);
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -459,7 +548,7 @@ game.effects.forEach((effect) => {
         ctx.fill();
         ctx.restore();
       });
-    } else if (effect.skillId === "archer-focus") {
+    } else if (effectSkillId === "archer-focus") {
       const radius = effect.size * (0.7 - progress * 0.42);
       ctx.lineWidth = 3.5;
       ctx.beginPath();
@@ -472,7 +561,7 @@ game.effects.forEach((effect) => {
         ctx.lineTo(Math.cos(angle) * (radius - 7), Math.sin(angle) * (radius - 7));
         ctx.stroke();
       }
-    } else if (effect.skillId === "archer-weakpoint") {
+    } else if (effectSkillId === "archer-weakpoint") {
       ctx.rotate(progress * Math.PI * 0.75);
       const radius = effect.size * (0.24 + progress * 0.18);
       ctx.lineWidth = 3;
@@ -485,7 +574,7 @@ game.effects.forEach((effect) => {
       ctx.moveTo(0, -radius - 14);
       ctx.lineTo(0, radius + 14);
       ctx.stroke();
-    } else if (effect.skillId === "mage-fireball") {
+    } else if (effectSkillId === "mage-fireball") {
       ctx.rotate(progress * 2.4);
       for (let flame = 0; flame < 8; flame++) {
         const angle = flame * Math.PI / 4;
@@ -511,7 +600,7 @@ game.effects.forEach((effect) => {
       ctx.beginPath();
       ctx.arc(0, 0, effect.size * (0.18 + progress * 0.48), 0, Math.PI * 2);
       ctx.stroke();
-    } else if (effect.skillId === "mage-lightning") {
+    } else if (effectSkillId === "mage-lightning") {
       ctx.lineWidth = 3.5;
       for (let bolt = 0; bolt < 5; bolt++) {
         const angle = bolt * Math.PI * 2 / 5 + progress;
@@ -523,7 +612,7 @@ game.effects.forEach((effect) => {
         ctx.lineTo(Math.cos(angle) * reach, Math.sin(angle) * reach);
         ctx.stroke();
       }
-    } else if (effect.skillId === "mage-freeze") {
+    } else if (effectSkillId === "mage-freeze") {
       const span = Math.min(W - 100, effect.size);
       ctx.lineWidth = 2.5;
       for (let crystal = 0; crystal < 9; crystal++) {
@@ -537,7 +626,7 @@ game.effects.forEach((effect) => {
           ctx.stroke();
         }
       }
-    } else if (effect.skillId === "mage-black-hole") {
+    } else if (effectSkillId === "mage-black-hole") {
       ctx.lineWidth = 3 + remaining * 2;
       ctx.rotate(progress * 3.5);
       ctx.beginPath();
@@ -549,7 +638,7 @@ game.effects.forEach((effect) => {
         if (step === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.stroke();
-    } else if (effect.skillId === "mage-mana-blast") {
+    } else if (effectSkillId === "mage-mana-blast") {
       ctx.rotate(-progress * 1.4);
       for (let rune = 0; rune < 6; rune++) {
         const angle = rune * Math.PI / 3;

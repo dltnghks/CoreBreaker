@@ -168,6 +168,234 @@ body{background:radial-gradient(circle at 18% -15%,rgba(115,184,195,.11),transpa
 .gameplay-shell.mode-lobby .lobby-overlay .primary-button{width:min(270px,82vw);min-width:0 !important;aspect-ratio:3 / 1;height:auto;padding:0 24px;display:inline-flex;align-items:center;justify-content:center;background-size:100% 100%}
 .gameplay-shell.mode-lobby .lobby-overlay .primary-button{color:#fff !important;background:rgba(8,13,26,.84) !important;border:1px solid rgba(101,220,255,.66);box-shadow:0 0 22px rgba(101,220,255,.18),inset 0 0 18px rgba(101,220,255,.08);clip-path:none;background-image:none !important;filter:none !important}
 .lobby-title-logo{display:block;width:min(760px,92%);height:auto;margin:2px auto 2px;filter:drop-shadow(0 18px 28px rgba(0,0,0,.42));object-fit:contain}.gameplay-shell.mode-lobby .lobby-overlay>h2{display:none}.gameplay-shell.mode-lobby .lobby-overlay>p:not(.overlay-kicker){margin-top:16px}
-.gameplay-shell.mode-lobby .lobby-overlay{isolation:isolate;overflow:hidden;background:linear-gradient(180deg,rgba(5,8,18,.48),rgba(5,8,18,.9)),url("/assets/ui/forged-core/title-background.webp") center/cover no-repeat}.lobby-core-glow{position:absolute;z-index:0;top:16%;left:50%;width:min(330px,42vw);height:auto;transform:translateX(-50%);opacity:.42;mix-blend-mode:screen;pointer-events:none;filter:drop-shadow(0 0 30px rgba(101,220,255,.4))}.gameplay-shell.mode-lobby .lobby-overlay>p,.gameplay-shell.mode-lobby .lobby-overlay>h2,.gameplay-shell.mode-lobby .lobby-overlay>img.lobby-title-logo,.gameplay-shell.mode-lobby .lobby-overlay>button,.gameplay-shell.mode-lobby .lobby-overlay>small{position:relative;z-index:1}.gameplay-shell.mode-lobby .lobby-overlay .primary-button{min-width:250px;filter:drop-shadow(0 12px 22px rgba(0,0,0,.28))}
+.gameplay-shell.mode-lobby .lobby-overlay{isolation:isolate;overflow:hidden;background:linear-gradient(180deg,rgba(5,8,18,.18),rgba(5,8,18,.4)),url("/assets/ui/forged-core/title-screen.png") center/cover no-repeat}.lobby-core-glow{position:absolute;z-index:0;top:16%;left:50%;width:min(330px,42vw);height:auto;transform:translateX(-50%);opacity:.42;mix-blend-mode:screen;pointer-events:none;filter:drop-shadow(0 0 30px rgba(101,220,255,.4))}.gameplay-shell.mode-lobby .lobby-overlay>p,.gameplay-shell.mode-lobby .lobby-overlay>h2,.gameplay-shell.mode-lobby .lobby-overlay>img.lobby-title-logo,.gameplay-shell.mode-lobby .lobby-overlay>button,.gameplay-shell.mode-lobby .lobby-overlay>small{position:relative;z-index:1}.gameplay-shell.mode-lobby .lobby-overlay .primary-button{min-width:250px;filter:drop-shadow(0 12px 22px rgba(0,0,0,.28))}.gameplay-shell.mode-lobby .lobby-title-logo,.gameplay-shell.mode-lobby .lobby-core-glow{display:none}
 .balance-auto-controls{margin:12px 0;padding:12px;border:1px solid rgba(167,139,250,.24);background:rgba(124,77,255,.045)}.balance-auto-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}.balance-auto-heading span{color:#a78bfa;font:900 9px monospace;letter-spacing:.12em}.balance-auto-heading small{color:#687895;font:700 8px monospace}.balance-auto-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.balance-auto-grid label{display:grid;gap:4px;color:#71809d;font:800 7px monospace}.balance-auto-grid select{min-width:0;padding:7px 5px;border:1px solid rgba(157,180,225,.18);color:#eaf0ff;background:#080d18;font-size:8px}.balance-auto-progress{margin:9px 0;color:#9aabc7;font:700 8px/1.5 monospace}.balance-auto-start,.balance-auto-stop{width:100%;padding:9px;border:1px solid #a78bfa;color:#d6c8ff;background:rgba(167,139,250,.09);font:900 8px monospace;cursor:pointer}.balance-auto-stop{border-color:#ff7d8f;color:#ff9aaa;background:rgba(255,93,122,.07)}@media(max-width:700px){.balance-auto-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .balance-auto-controls{margin:12px 0;padding:12px;border:1px solid rgba(167,139,250,.24);background:rgba(124,77,255,.045)}.balance-auto-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}.balance-auto-heading span{color:#a78bfa;font:900 9px monospace;letter-spacing:.12em}.balance-auto-heading small{color:#687895;font:700 8px monospace}.balance-auto-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.balance-auto-grid label{display:grid;gap:4px;color:#71809d;font:800 7px monospace}.balance-auto-grid select{min-width:0;padding:7px 5px;border:1px solid rgba(157,180,225,.18);color:#eaf0ff;background:#080d18;font-size:8px}.balance-auto-progress{margin:9px 0;color:#9aabc7;font:700 8px/1.5 monospace}.balance-auto-start,.balance-auto-stop{width:100%;padding:9px;border:1px solid #a78bfa;color:#d6c8ff;background:rgba(167,139,250,.09);font:900 8px monospace;cursor:pointer}.balance-auto-stop{border-color:#ff7d8f;color:#ff9aaa;background:rgba(255,93,122,.07)}@media(max-width:700px){.balance-auto-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.gameplay-shell .hud-badge{border:0;background-image:url("/assets/ui/core-breaker/panels/hud.png");background-size:100% 100%;background-repeat:no-repeat;background-color:transparent;backdrop-filter:none;clip-path:none;box-shadow:0 10px 24px rgba(0,0,0,.38)}
+.gameplay-shell .hud-wave{background-image:url("/assets/ui/core-breaker/panels/title.png");background-size:100% 100%;background-repeat:no-repeat;background-color:transparent;clip-path:none}
+.gameplay-shell .skill-loadout-entry{border:0;border-radius:0;background-image:url("/assets/ui/core-breaker/panels/content.png");background-size:100% 100%;background-repeat:no-repeat;background-color:transparent;box-shadow:0 5px 15px rgba(0,0,0,.45)}
+.primary-button,.secondary-button{background-size:100% 100%;background-repeat:no-repeat;border:0;text-shadow:0 1px 2px rgba(0,0,0,.8)}
+.primary-button{color:#fff!important;background-image:url("/assets/ui/core-breaker/buttons/start.png")!important;background-color:transparent!important}
+.secondary-button{color:#fff!important;background-image:url("/assets/ui/core-breaker/buttons/confirm.png")!important;background-color:transparent!important}
+.primary-button:disabled,.secondary-button:disabled{background-image:url("/assets/ui/core-breaker/buttons/disabled.png")!important;background-color:transparent!important}
+.upgrade-choice-actions button{border:0;background-image:url("/assets/ui/core-breaker/buttons/confirm.png");background-size:100% 100%;background-repeat:no-repeat;background-color:transparent;text-shadow:0 1px 2px rgba(0,0,0,.8)}
+.upgrade-choice-actions button:disabled{background-image:url("/assets/ui/core-breaker/buttons/disabled.png");background-color:transparent}
+.gameplay-shell.mode-lobby .lobby-overlay .primary-button{background-image:url("/assets/ui/core-breaker/buttons/start.png")!important;background-color:transparent!important;border:0;box-shadow:0 12px 24px rgba(0,0,0,.35);clip-path:none;aspect-ratio:555 / 207;line-height:1}
+
+/* Raster UI uses 9-slice borders so corners and metal trims stay pixel-crisp. */
+.primary-button,.secondary-button,.upgrade-choice-actions button{background-image:none!important;background-color:transparent!important;border:12px solid transparent;border-image-slice:28 fill;border-image-width:12px;border-image-repeat:stretch;box-sizing:border-box}
+.primary-button{border-image-source:url("/assets/ui/core-breaker/buttons/start.png")}
+.secondary-button,.upgrade-choice-actions button{border-image-source:url("/assets/ui/core-breaker/buttons/confirm.png")}
+.primary-button:disabled,.secondary-button:disabled,.upgrade-choice-actions button:disabled{border-image-source:url("/assets/ui/core-breaker/buttons/disabled.png")}
+.gameplay-shell .hud-badge{background-image:none!important;border:12px solid transparent;border-image-source:url("/assets/ui/core-breaker/panels/hud.png");border-image-slice:32 fill;border-image-width:12px;border-image-repeat:stretch;box-sizing:border-box}
+.gameplay-shell .hud-wave{border-image-source:url("/assets/ui/core-breaker/panels/title.png");border-image-slice:32 fill;border-image-width:14px;border-image-repeat:stretch}
+.gameplay-shell .skill-loadout-entry{background-image:none!important;border:8px solid transparent;border-image-source:url("/assets/ui/core-breaker/panels/content.png");border-image-slice:32 fill;border-image-width:8px;border-image-repeat:stretch;box-sizing:border-box}
+.upgrade-card{background-image:none!important;background-color:transparent;border:14px solid transparent;border-image-source:url("/assets/ui/core-breaker/panels/content.png");border-image-slice:32 fill;border-image-width:14px;border-image-repeat:stretch;border-radius:0;box-sizing:border-box}
+.upgrade-card.evolution-card,.boss-enhancement-card{border-image-source:url("/assets/ui/core-breaker/panels/gold.png");border-image-slice:32 fill;border-image-width:14px}
+.upgrade-card:hover{border-color:transparent;filter:brightness(1.08)}
+.upgrade-card:disabled:hover{border-color:transparent;filter:grayscale(.7);opacity:.48}
+.gameplay-shell.mode-lobby .lobby-overlay .primary-button{background-image:none!important;background-color:transparent!important;border:12px solid transparent;border-image-source:url("/assets/ui/core-breaker/buttons/start.png");border-image-slice:28 fill;border-image-width:12px;border-image-repeat:stretch;box-sizing:border-box}
+
+/* In-game skill UI has a smaller canvas than the lobby, so size these panels explicitly. */
+.gameplay-shell .level-overlay{padding:16px 18px;justify-content:flex-start;overflow:hidden}
+.gameplay-shell .level-overlay h2{margin:0 0 4px;font-size:clamp(24px,4vw,38px)}
+.gameplay-shell .upgrade-grid{width:min(820px,100%);gap:8px;margin-top:10px}
+.gameplay-shell .upgrade-card{min-height:204px;padding:14px 12px;border-width:10px;border-image-width:10px}
+.gameplay-shell .upgrade-card.class-warrior,.gameplay-shell .upgrade-card.class-archer,.gameplay-shell .upgrade-card.class-mage,.gameplay-shell .upgrade-card.class-common{clip-path:none;border-style:solid;border-left-width:10px;border-radius:0;box-shadow:none}
+.gameplay-shell .initial-skill-overlay .upgrade-card{min-height:188px}
+.gameplay-shell .initial-skill-overlay .upgrade-icon{width:54px;height:54px;margin-top:6px}
+.gameplay-shell .upgrade-card strong{margin-top:8px;font-size:17px}
+.gameplay-shell .upgrade-card p{margin:6px 0 10px;font-size:11px}
+.gameplay-shell .upgrade-level-values{gap:4px;margin-bottom:7px}
+.gameplay-shell .upgrade-level-values span{padding:5px 3px}
+.gameplay-shell .upgrade-level-values small{font-size:7px}
+.gameplay-shell .upgrade-level-values b{font-size:10px}
+.gameplay-shell .upgrade-choice-actions{margin-top:8px}
+.gameplay-shell .skill-loadout-hud{top:58px;left:10px;gap:5px}
+.gameplay-shell .skill-loadout-entry{width:42px;min-width:42px;height:42px;padding:4px;border-width:6px;border-image-width:6px;border-image-slice:32 fill}
+.gameplay-shell .skill-loadout-entry i{width:27px;height:27px}
+
+/* In-game layout: owned skills / playfield / run status. */
+.gameplay-stage{display:grid;grid-template-columns:minmax(184px,220px) minmax(0,1fr) minmax(164px,200px);gap:14px;align-items:stretch;width:100%;max-width:1500px;margin:0 auto}
+.gameplay-stage .game-frame{width:100%;max-width:none;margin:0;min-width:0}
+.in-game-side-panel{min-width:0;min-height:0;padding:12px 10px;border:12px solid transparent;border-image-source:url("/assets/ui/core-breaker/panels/content.png");border-image-slice:32 fill;border-image-width:12px;border-image-repeat:stretch;background:transparent;box-sizing:border-box;color:#eee7d7}
+.in-game-side-panel h2{margin:0 0 10px;color:#e2c477;text-align:center;font:900 16px/1 Georgia,serif;letter-spacing:.05em}
+.in-game-skill-list{display:flex;flex-direction:column;gap:8px}
+.in-game-skill-row{display:grid;grid-template-columns:48px minmax(0,1fr);gap:8px;align-items:center;min-height:58px;padding:5px;border:6px solid transparent;border-image-source:url("/assets/ui/core-breaker/panels/hud.png");border-image-slice:32 fill;border-image-width:6px;border-image-repeat:stretch;background:transparent;box-sizing:border-box}
+.in-game-skill-row.evolved{filter:brightness(1.18);border-image-source:url("/assets/ui/core-breaker/panels/gold.png")}
+.in-game-skill-icon{width:42px;height:42px;display:grid;place-items:center;overflow:hidden}
+.in-game-skill-icon .skill-icon-art{width:100%;height:100%;object-fit:contain}
+.in-game-skill-copy{min-width:0;display:flex;flex-direction:column;gap:4px}
+.in-game-skill-copy strong{overflow:hidden;color:#f1eadc;font:900 11px/1.15 Georgia,serif;text-overflow:ellipsis;white-space:nowrap}
+.in-game-skill-copy small{color:#c3a65f;font:800 9px monospace;letter-spacing:.04em}
+.in-game-locked-slot{display:grid;place-items:center;width:100%;height:54px;margin-top:10px;border:8px solid transparent;border-image-source:url("/assets/ui/core-breaker/panels/hud.png");border-image-slice:32 fill;border-image-width:8px;border-image-repeat:stretch;color:#8a8174;font-size:22px;opacity:.78;box-sizing:border-box}
+.in-game-stat-panel{display:flex;flex-direction:column;gap:18px;padding:12px 8px}
+.in-game-stat-card{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:132px;padding:12px 8px;border:12px solid transparent;border-image-source:url("/assets/ui/core-breaker/panels/gold.png");border-image-slice:32 fill;border-image-width:12px;border-image-repeat:stretch;box-sizing:border-box;text-align:center}
+.in-game-stat-card span{color:#e2c477;font:900 13px Georgia,serif;letter-spacing:.08em}
+.in-game-stat-card strong{margin-top:8px;color:#f1eadc;font:900 42px/1 Georgia,serif}
+.in-game-stat-icon{width:46px;height:46px;margin-top:7px;object-fit:contain;image-rendering:auto;filter:drop-shadow(0 0 7px rgba(104,194,255,.35))}
+.in-game-time-card{border-image-source:url("/assets/ui/core-breaker/panels/content.png")}
+.in-game-time-card strong{font-size:28px;letter-spacing:.06em}
+.in-game-core-card{margin-top:auto}
+.in-game-core-card>div{display:flex;align-items:center;gap:8px;margin-top:7px}
+.in-game-core-card img.in-game-stat-icon{width:42px;height:42px;margin-top:0}
+.in-game-core-card strong{margin-top:0;font-size:28px}
+.gameplay-shell.mode-playing .game-frame .hud-badge,.gameplay-shell.mode-playing .game-frame .drop-legend,.gameplay-shell.mode-playing .game-frame .skill-loadout-hud{display:none}
+.gameplay-shell:not(.mode-playing) .in-game-side-panel{display:none}
+.gameplay-shell:not(.mode-playing) .gameplay-stage{display:block;max-width:1500px}
+.gameplay-shell:not(.mode-playing) .gameplay-stage .game-frame{width:100%;max-width:none}
+@media(max-width:1120px){.gameplay-stage{grid-template-columns:150px minmax(0,1fr) 140px;gap:8px}.in-game-side-panel{padding:10px 6px}.in-game-skill-row{grid-template-columns:38px minmax(0,1fr);gap:5px;min-height:48px;padding:3px}.in-game-skill-icon{width:34px;height:34px}.in-game-skill-copy strong{font-size:9px}.in-game-skill-copy small{font-size:7px}.in-game-stat-card{min-height:110px}.in-game-stat-card strong{font-size:32px}}
+@media(max-width:760px){.gameplay-stage{display:flex;flex-direction:column;gap:8px}.gameplay-stage .game-frame{order:1}.in-game-skill-panel,.in-game-stat-panel{order:2;min-height:0}.in-game-skill-panel{display:none!important}.in-game-stat-panel{display:grid!important;grid-template-columns:repeat(3,1fr);padding:6px}.in-game-stat-card{min-height:72px}.in-game-stat-card strong{font-size:24px}.in-game-time-card strong,.in-game-core-card strong{font-size:18px}.in-game-core-card{margin-top:0}}
+
+/* Final gameplay UI placement pass: keep title art clear and make skill cards readable. */
+.gameplay-shell.mode-lobby .lobby-overlay .primary-button{position:absolute;left:50%;bottom:9%;transform:translateX(-50%);margin:0;width:min(270px,82vw)}
+.gameplay-shell.mode-lobby .lobby-overlay .primary-button:hover{transform:translate(-50%,-2px)}
+.gameplay-shell.mode-lobby .lobby-overlay>small{position:absolute;left:50%;bottom:4%;transform:translateX(-50%);margin:0;white-space:nowrap}
+.gameplay-shell .level-overlay{padding:16px clamp(18px,5vw,64px);justify-content:flex-start;overflow-y:auto;overflow-x:hidden}
+.gameplay-shell .level-overlay .upgrade-grid{width:min(820px,calc(100% - 12px));margin-left:auto;margin-right:auto}
+.upgrade-card-heading{display:flex;align-items:center;gap:10px;min-width:0;min-height:58px;margin-top:6px}
+.upgrade-card-heading .upgrade-icon{flex:0 0 54px;width:54px;height:54px;margin:0}
+.gameplay-shell .upgrade-card-heading strong{min-width:0;margin:0;font-size:17px;line-height:1.15;word-break:keep-all}
+.upgrade-level-values span{border:8px solid transparent;border-image-source:url("/assets/ui/core-breaker/panels/content.png");border-image-slice:32 fill;border-image-width:8px;border-image-repeat:stretch;background:transparent;box-sizing:border-box}
+.upgrade-level-values span.next,.upgrade-level-values span.evolution{border-image-source:url("/assets/ui/core-breaker/panels/gold.png");box-shadow:none}
+.upgrade-level-values span.owned{opacity:.48}
+@media(max-width:700px){.gameplay-shell .level-overlay{padding-left:14px;padding-right:14px}.gameplay-shell .level-overlay .upgrade-grid{width:100%}.upgrade-card-heading .upgrade-icon{flex-basis:48px;width:48px;height:48px}.gameplay-shell .upgrade-card-heading strong{font-size:15px}}
+
+/* Skill selection keeps the same three-column stage geometry as gameplay.
+   The side panels remain reserved as invisible gutters so the modal does not expand into them. */
+.gameplay-shell.mode-initialskills .gameplay-stage,
+.gameplay-shell.mode-levelup .gameplay-stage{display:grid;grid-template-columns:minmax(184px,220px) minmax(0,1fr) minmax(164px,200px);gap:14px;max-width:1500px}
+.gameplay-shell.mode-initialskills .in-game-side-panel,
+.gameplay-shell.mode-levelup .in-game-side-panel{display:block!important;visibility:visible;pointer-events:auto}
+.gameplay-shell.mode-initialskills .gameplay-stage .game-frame,
+.gameplay-shell.mode-levelup .gameplay-stage .game-frame{width:100%;max-width:none}
+@media(max-width:1120px){.gameplay-shell.mode-initialskills .gameplay-stage,.gameplay-shell.mode-levelup .gameplay-stage{grid-template-columns:150px minmax(0,1fr) 140px;gap:8px}}
+@media(max-width:760px){.gameplay-shell.mode-initialskills .gameplay-stage,.gameplay-shell.mode-levelup .gameplay-stage{display:flex}.gameplay-shell.mode-initialskills .in-game-side-panel,.gameplay-shell.mode-levelup .in-game-side-panel{display:none!important}}
+
+/* After entering the game, the stage frame and both information rails stay mounted
+   while only the center canvas/overlay changes between play, transition, rewards, and results. */
+.gameplay-shell:not(.mode-lobby) .gameplay-stage{display:grid;grid-template-columns:minmax(184px,220px) minmax(0,1fr) minmax(164px,200px);gap:14px;max-width:1500px}
+.gameplay-shell:not(.mode-lobby) .in-game-side-panel{display:block!important;visibility:visible;pointer-events:auto}
+.gameplay-shell:not(.mode-lobby) .gameplay-stage .game-frame{width:100%;max-width:none}
+.in-game-skill-row{position:relative;cursor:help;outline:none}
+.in-game-skill-row:focus-visible{filter:brightness(1.18);box-shadow:0 0 0 2px rgba(226,196,119,.65)}
+.in-game-skill-tooltip{position:absolute;z-index:40;left:calc(100% + 12px);top:50%;width:230px;padding:12px;transform:translateY(-50%) translateX(-5px);border:8px solid transparent;border-image-source:url("/assets/ui/core-breaker/panels/content.png");border-image-slice:32 fill;border-image-width:8px;border-image-repeat:stretch;background:transparent;box-sizing:border-box;opacity:0;pointer-events:none;transition:opacity .16s,transform .16s;text-align:left;box-shadow:0 12px 26px rgba(0,0,0,.55)}
+.in-game-skill-row:hover .in-game-skill-tooltip,.in-game-skill-row:focus-visible .in-game-skill-tooltip{opacity:1;transform:translateY(-50%) translateX(0)}
+.in-game-skill-tooltip strong{display:block;color:#f1eadc;font:900 13px/1.2 Georgia,serif}
+.in-game-skill-tooltip small{display:block;margin-top:5px;color:#e2c477;font:800 9px monospace}
+.in-game-skill-tooltip p{margin:8px 0 0;color:#c4c9d4;font:500 11px/1.45 sans-serif;word-break:keep-all}
+@media(max-width:1120px){.gameplay-shell:not(.mode-lobby) .gameplay-stage{grid-template-columns:150px minmax(0,1fr) 140px;gap:8px}.in-game-skill-tooltip{width:205px}}
+@media(max-width:760px){.gameplay-shell:not(.mode-lobby) .gameplay-stage{display:flex}.gameplay-shell:not(.mode-lobby) .in-game-skill-panel{display:none!important}.in-game-skill-tooltip{left:auto;right:0;top:calc(100% + 8px);transform:translateY(-5px);width:220px}.in-game-skill-row:hover .in-game-skill-tooltip,.in-game-skill-row:focus-visible .in-game-skill-tooltip{transform:translateY(0)}}
+
+/* Owned skills stay compact as the run gains more skills: icon-only, two-column grid. */
+.in-game-skill-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;justify-items:stretch}
+.in-game-skill-row{display:grid;place-items:center;justify-items:center;align-items:center;width:100%;min-height:58px;height:58px;padding:4px}
+.in-game-skill-copy{display:none}
+.in-game-skill-icon{position:relative;width:46px;height:46px;display:grid;place-items:center;justify-self:center;align-self:center;overflow:hidden}
+.in-game-skill-icon .skill-icon-fallback{position:absolute;inset:0;display:grid;place-items:center}
+.in-game-skill-icon .skill-icon-art{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.in-game-skill-icon .skill-icon-art,.in-game-skill-icon .skill-icon-fallback{filter:none!important;opacity:1!important}
+.in-game-skill-level{position:absolute;right:2px;bottom:1px;z-index:4;min-width:15px;height:15px;padding:0 3px;display:grid;place-items:center;border:1px solid rgba(255,235,170,.8);border-radius:3px;color:#fff4c2;background:rgba(7,10,18,.92);font:900 9px/1 var(--pixel-font);text-shadow:0 1px 2px #000;pointer-events:none}
+.in-game-skill-cooldown{position:absolute;left:8px;right:8px;bottom:6px;height:calc(var(--cooldown-remaining,0) * 100%);min-height:0;border-radius:2px;background:rgba(4,7,13,.72);pointer-events:none;z-index:2;transition:height .12s linear;box-shadow:inset 0 1px rgba(255,255,255,.08)}
+.in-game-skill-cooldown.is-cooling{background:rgba(4,7,13,.78)}
+.in-game-skill-row:nth-child(even) .in-game-skill-tooltip{left:auto;right:calc(100% + 8px);transform:translateY(-50%) translateX(5px)}
+.in-game-skill-row:nth-child(even):hover .in-game-skill-tooltip,.in-game-skill-row:nth-child(even):focus-visible .in-game-skill-tooltip{transform:translateY(-50%) translateX(0)}
+.in-game-skill-row,.in-game-skill-row.evolved{border:0;background:transparent;box-shadow:none;border-image:none;filter:none}
+.in-game-skill-row:hover,.in-game-skill-row:focus-visible{filter:brightness(1.2) drop-shadow(0 0 8px rgba(226,196,119,.45))}
+.in-game-skill-panel{border:12px solid transparent;padding:12px 10px;background:transparent;border-image-source:url("/assets/ui/core-breaker/panels/content.png");border-image-slice:32 fill;border-image-width:12px;border-image-repeat:stretch}
+.in-game-locked-slot{display:none!important}
+@media(max-width:1120px){.in-game-skill-row{min-height:48px;height:48px}.in-game-skill-icon{width:36px;height:36px}}
+
+/* Tooltips always open toward the game area and stay above both rails and canvas. */
+.gameplay-shell:not(.mode-lobby) .in-game-skill-panel{position:relative;z-index:60;overflow:visible}
+.gameplay-shell:not(.mode-lobby) .in-game-skill-panel{isolation:isolate;overflow:visible}
+.gameplay-shell:not(.mode-lobby) .in-game-skill-row:hover,.gameplay-shell:not(.mode-lobby) .in-game-skill-row:focus-visible{z-index:10000}
+.gameplay-shell:not(.mode-lobby) .in-game-skill-tooltip{z-index:10001!important;isolation:isolate}
+.gameplay-shell:not(.mode-lobby) .in-game-skill-icon{z-index:1}
+.gameplay-shell:not(.mode-lobby) .game-frame{position:relative;z-index:1}
+.gameplay-shell:not(.mode-lobby) .in-game-stat-panel{position:relative;z-index:20}
+.gameplay-shell:not(.mode-lobby) .in-game-skill-tooltip{left:calc(100% + 12px)!important;right:auto!important;z-index:120;transform:translateY(-50%) translateX(-5px)!important}
+.gameplay-shell:not(.mode-lobby) .in-game-skill-row:hover .in-game-skill-tooltip,.gameplay-shell:not(.mode-lobby) .in-game-skill-row:focus-visible .in-game-skill-tooltip{transform:translateY(-50%) translateX(0)!important}
+.gameplay-shell.mode-initialskills .skill-loadout-hud,.gameplay-shell.mode-levelup .skill-loadout-hud{display:none!important}
+
+/* Match the title frame to the same center-column width used in gameplay. */
+.gameplay-shell.mode-lobby .gameplay-stage{display:grid;grid-template-columns:minmax(184px,220px) minmax(0,1fr) minmax(164px,200px);gap:14px;max-width:1500px}
+.gameplay-shell.mode-lobby .in-game-side-panel{display:block!important;visibility:hidden;pointer-events:none}
+.gameplay-shell.mode-lobby .gameplay-stage .game-frame{width:100%;max-width:none}
+@media(max-width:1120px){.gameplay-shell.mode-lobby .gameplay-stage{grid-template-columns:150px minmax(0,1fr) 140px;gap:8px}}
+@media(max-width:760px){.gameplay-shell.mode-lobby .gameplay-stage{display:block}.gameplay-shell.mode-lobby .in-game-side-panel{display:none!important}.gameplay-shell.mode-lobby .gameplay-stage .game-frame{width:100%}}
+
+/* Skill cards: keep the choice group centered and give Neo둥근모 text more room. */
+.gameplay-shell .level-overlay{justify-content:center;align-items:center;padding:28px clamp(24px,6vw,88px);overflow-y:auto}
+.gameplay-shell .level-overlay .upgrade-grid{width:min(1280px,100%);grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;margin:0 auto}
+.gameplay-shell .level-overlay .upgrade-card{min-height:300px;padding:20px 18px;border-width:12px;border-image-width:12px}
+.gameplay-shell .level-overlay.initial-skill-overlay .upgrade-card{min-height:300px}
+.gameplay-shell .level-overlay .upgrade-card-heading{min-height:70px;gap:14px;margin-top:4px}
+.gameplay-shell .level-overlay .upgrade-card-heading .upgrade-icon{flex-basis:62px;width:62px;height:62px}
+.gameplay-shell .level-overlay .upgrade-card-heading strong{font-size:20px;line-height:1.3;overflow-wrap:anywhere}
+.gameplay-shell .level-overlay .upgrade-card p{margin:12px 0 16px;font-size:13px;line-height:1.75;overflow-wrap:anywhere}
+.gameplay-shell .level-overlay .upgrade-level-values{gap:7px;margin-bottom:10px}
+.gameplay-shell .level-overlay .upgrade-level-values span{min-height:58px;padding:8px 5px}
+.gameplay-shell .level-overlay .upgrade-level-values small{font-size:9px;line-height:1.3}
+.gameplay-shell .level-overlay .upgrade-level-values b{font-size:12px;line-height:1.35}
+@media(max-width:900px){.gameplay-shell .level-overlay .upgrade-grid{gap:12px}.gameplay-shell .level-overlay .upgrade-card{min-height:280px;padding:16px 12px}.gameplay-shell .level-overlay .upgrade-card-heading{gap:9px}.gameplay-shell .level-overlay .upgrade-card-heading .upgrade-icon{flex-basis:52px;width:52px;height:52px}.gameplay-shell .level-overlay .upgrade-card-heading strong{font-size:17px}.gameplay-shell .level-overlay .upgrade-card p{font-size:12px;line-height:1.6}}
+
+/* Neo둥근모: Korean bitmap-style font shared by every game UI surface. */
+@font-face{font-family:"Neo둥근모";src:url("/assets/fonts/neodgm.woff2") format("woff2");font-style:normal;font-weight:400;font-display:swap}
+:root{--pixel-font:"Neo둥근모",monospace}
+body,button,input,textarea,select{font-family:var(--pixel-font)}
+.app-shell *,.gameplay-shell *{font-family:var(--pixel-font)!important}
+
+/* Title screen: show the game frame first, then place the header tabs below it. */
+.gameplay-shell.mode-lobby{display:flex;flex-direction:column}
+.gameplay-shell.mode-lobby>.solo-workspace{order:1}
+.gameplay-shell.mode-lobby>.topbar{order:2;width:min(1500px,100%);margin:14px auto 0;border-top:1px solid var(--line);border-bottom:0}
+
+/* In-game rails: owned skills only reserve room for the two-column icon grid. */
+.gameplay-shell.mode-playing .gameplay-stage{grid-template-columns:112px minmax(0,1fr) 150px}
+.gameplay-shell.mode-playing .in-game-skill-panel{padding:8px 5px;border-width:0;background:transparent}
+.gameplay-shell:not(.mode-lobby) .in-game-skill-panel{padding-left:12px;padding-right:12px}
+.gameplay-shell.mode-playing .in-game-skill-panel h2{margin:0 0 7px;font-size:10px;letter-spacing:.04em}
+.gameplay-shell.mode-playing .in-game-skill-list{gap:4px}
+.gameplay-shell.mode-playing .in-game-skill-row{min-height:48px;height:48px;padding:2px}
+.gameplay-shell.mode-playing .in-game-skill-icon{width:38px;height:38px}
+
+/* Right status rail: no panel art, equal compact cards grouped at the top. */
+.gameplay-shell.mode-playing .in-game-stat-panel{align-self:start;gap:7px;padding:8px 0;min-height:0}
+.gameplay-shell.mode-playing .in-game-stat-card,
+.gameplay-shell.mode-playing .in-game-time-card,
+.gameplay-shell.mode-playing .in-game-core-card{width:100%;min-height:74px;margin:0;padding:7px 5px;border:0;border-image:none;background:rgba(6,10,20,.46);box-sizing:border-box}
+.gameplay-shell.mode-playing .in-game-stat-card span{font-size:9px;letter-spacing:.04em}
+.gameplay-shell.mode-playing .in-game-stat-card strong{margin-top:4px;font-size:23px;line-height:1}
+.gameplay-shell.mode-playing .in-game-stat-icon{width:26px;height:26px;margin-top:3px}
+.gameplay-shell.mode-playing .in-game-core-card>div{gap:4px;margin-top:3px}
+.gameplay-shell.mode-playing .in-game-core-card img.in-game-stat-icon{width:25px;height:25px;margin-top:0}
+.gameplay-shell.mode-playing .in-game-core-card strong{margin-top:0;font-size:21px}
+@media(max-width:1120px){.gameplay-shell.mode-playing .gameplay-stage{grid-template-columns:96px minmax(0,1fr) 132px}.gameplay-shell.mode-playing .in-game-skill-icon{width:34px;height:34px}.gameplay-shell.mode-playing .in-game-stat-card{min-height:68px}.gameplay-shell.mode-playing .in-game-stat-card strong{font-size:20px}}
+
+/* Keep selection overlays and live gameplay on the same three-column HUD frame. */
+.gameplay-shell:not(.mode-lobby) .gameplay-stage{grid-template-columns:112px minmax(0,1fr) 150px}
+.gameplay-shell:not(.mode-lobby) .in-game-skill-panel{padding:8px 5px;border-width:0;background:transparent}
+.gameplay-shell:not(.mode-lobby) .in-game-skill-panel h2{margin:0 0 7px;font-size:10px;letter-spacing:.04em}
+.gameplay-shell:not(.mode-lobby) .in-game-skill-list{gap:4px}
+.gameplay-shell:not(.mode-lobby) .in-game-skill-row{min-height:48px;height:48px;padding:2px}
+.gameplay-shell:not(.mode-lobby) .in-game-skill-icon{width:38px;height:38px}
+.gameplay-shell:not(.mode-lobby) .in-game-stat-panel{align-self:start;gap:7px;padding:8px 0;min-height:0}
+.gameplay-shell:not(.mode-lobby) .in-game-stat-card{display:flex;flex-direction:row;align-items:center;justify-content:space-between;width:100%;min-height:52px;margin:0;padding:7px 6px;border:0;border-image:none;background:rgba(6,10,20,.46);box-sizing:border-box;text-align:left}
+.gameplay-shell:not(.mode-lobby) .in-game-stat-card{justify-content:flex-start;gap:6px}
+.gameplay-shell:not(.mode-lobby) .in-game-stat-card span{order:2;font-size:9px;letter-spacing:.04em}
+.gameplay-shell:not(.mode-lobby) .in-game-stat-value{order:1}
+.gameplay-shell:not(.mode-lobby) .in-game-stat-value{display:flex;align-items:center;gap:4px}
+.gameplay-shell:not(.mode-lobby) .in-game-stat-card strong{margin:0;font-size:20px;line-height:1}
+.gameplay-shell:not(.mode-lobby) .in-game-stat-icon,.gameplay-shell:not(.mode-lobby) .in-game-core-card img.in-game-stat-icon{width:24px;height:24px;margin:0}
+.gameplay-shell .level-overlay .upgrade-level-values{grid-template-columns:1fr;gap:6px}
+.gameplay-shell .level-overlay .upgrade-level-values span{min-height:44px;display:grid;grid-template-columns:42px 1fr auto;align-items:center;text-align:left;padding:6px 9px}
+.gameplay-shell .level-overlay .upgrade-level-values small,.gameplay-shell .level-overlay .upgrade-level-values b,.gameplay-shell .level-overlay .upgrade-level-values i{margin:0}
+@media(max-width:1120px){.gameplay-shell:not(.mode-lobby) .gameplay-stage{grid-template-columns:96px minmax(0,1fr) 132px}.gameplay-shell:not(.mode-lobby) .in-game-skill-icon{width:34px;height:34px}.gameplay-shell:not(.mode-lobby) .in-game-stat-card strong{font-size:18px}}
+
+/* Final override: make the icon grid visibly inset from both panel edges. */
+.gameplay-shell:not(.mode-lobby) .in-game-skill-panel{padding:8px 14px!important}
+.gameplay-shell:not(.mode-lobby) .in-game-skill-list{justify-items:center}
+.gameplay-shell:not(.mode-lobby) .in-game-skill-row{position:relative;width:100%;grid-template-columns:1fr;justify-items:center;align-items:center}
+.gameplay-shell:not(.mode-lobby) .in-game-skill-icon{justify-self:center;align-self:center;margin:0}
+@media(max-width:1120px){.gameplay-shell:not(.mode-lobby) .in-game-skill-panel{padding-left:9px!important;padding-right:9px!important}}

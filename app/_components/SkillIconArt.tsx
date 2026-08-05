@@ -14,7 +14,7 @@ const SKILL_SYMBOLS: Partial<Record<UpgradeId, string>> = {
 function skillIconPath(id: UpgradeId) {
   if (!SKILL_SYMBOLS[id]) return null;
   const category = id.split("-", 1)[0];
-  return appHref(`/assets/ui/skills/forged-core/${category}/${id}.webp`);
+  return appHref(`/assets/ui/skills/forged-core/${category}/${id}.png`);
 }
 
 export function SkillIconArt({ id }: { id: UpgradeId }) {
