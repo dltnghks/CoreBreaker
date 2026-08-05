@@ -6,7 +6,7 @@ import { DEFAULT_SKILLS, type SkillCategory, type SkillConfig, type UpgradeId } 
 import { WAVE_DEFINITIONS, type WaveDefinition } from "./wave-config";
 
 export type HeadlessBotPolicy = "balanced" | "survival" | "random";
-export const PARALLEL_BENCHMARK_RULESET = "canonical-command-v18-typed-stat-damage" as const;
+export const PARALLEL_BENCHMARK_RULESET = "canonical-command-v20-skill-composer" as const;
 export type HeadlessTerminationReason = "complete" | "core-dead" | "timeout";
 export type HeadlessTimeoutDiagnostic = {
   classification: "reflector-lock" | "trajectory-loop" | "healer-stalemate" | "reinforcement-overrun" | "completion-rule" | "no-damage" | "insufficient-throughput";
@@ -26,7 +26,7 @@ export type HeadlessTimeoutDiagnostic = {
 };
 
 
-export type HeadlessBenchmarkRequest = { run: number; seed: number; sessionId?: string; policy: HeadlessBotPolicy; balanceConfig?: BalanceConfig; benchmarkConfig?: BenchmarkConfig; skills?: SkillConfig[]; waveDefinitions?: WaveDefinition[]; maxSimulatedSeconds?: number };
+export type HeadlessBenchmarkRequest = { run: number; seed: number; sessionId?: string; policy: HeadlessBotPolicy; balanceConfig?: BalanceConfig; benchmarkConfig?: BenchmarkConfig; skills?: SkillConfig[]; waveDefinitions?: WaveDefinition[]; maxSimulatedSeconds?: number; startingSkills?: UpgradeId[] };
 export type HeadlessBenchmarkResult = {
   id: string; run: number; seed: number; policy: HeadlessBotPolicy; policyVersion: typeof POLICY_VERSION; engineVersion: typeof ENGINE_VERSION; engineParity: typeof ENGINE_PARITY; speed: 8; elapsed: number; wave: number; score: number; bricks: number; maxCombo: number; coreHp: number; upgrades: UpgradeId[]; startingSkills: UpgradeId[];
   skillHistory: CanonicalState["skillHistory"]; bossEnhancements: CanonicalState["bossEnhancements"]; skillMetrics: CanonicalState["skillMetrics"]; physicalPower: number; magicPower: number; physicalDamage: number; magicDamage: number; createdAt: number; balanceConfig: BalanceConfig; benchmarkConfig: BenchmarkConfig; benchmarkRuleset: typeof PARALLEL_BENCHMARK_RULESET; waveSamples: CanonicalState["waveMetrics"]; evaluationComplete: boolean; terminationReason: HeadlessTerminationReason; timeoutDiagnostic: HeadlessTimeoutDiagnostic | null; skillBench: null; maxBalls: number; ballLosses: number; missileActivations: number; safetySaves: number; gravityRescues: number; finalSnapshot: ReturnType<typeof canonicalSnapshot>;
@@ -46,7 +46,7 @@ function progressionBonus(state: CanonicalState, skillId: UpgradeId) {
   return 3.2;
 }
 
-function benchmarkSkillScore(state: CanonicalState, skill: Pick<SkillConfig, "id" | "category">, policy: Exclude<HeadlessBotPolicy, "random">, random: () => number) {
+function benchmarkSkillScore(state: CanonicalState, skill: { id: UpgradeId; category: SkillCategory }, policy: Exclude<HeadlessBotPolicy, "random">, random: () => number) {
   return POLICY_CATEGORY_WEIGHTS[policy][skill.category] + progressionBonus(state, skill.id) + random() * 0.9;
 }
 
@@ -116,7 +116,7 @@ function observation(state: CanonicalState): BotObservation {
 
 export function runCanonicalControlledSimulation(request: HeadlessBenchmarkRequest, controlProvider: (state: CanonicalState, step: number) => ReturnType<typeof decideBotControls>) {
   const benchmark = { ...DEFAULT_BENCHMARK_CONFIG, ...request.benchmarkConfig } as BenchmarkConfig;
-  const state = createCanonicalState({ seed: request.seed, targetWave: benchmark.targetWave, balance: { ...DEFAULT_BALANCE_CONFIG, ...request.balanceConfig }, skills: request.skills?.length ? request.skills : DEFAULT_SKILLS, waves: request.waveDefinitions?.length === WAVE_DEFINITIONS.length ? request.waveDefinitions : WAVE_DEFINITIONS, interactive: true });
+  const state = createCanonicalState({ seed: request.seed, targetWave: benchmark.targetWave, balance: { ...DEFAULT_BALANCE_CONFIG, ...request.balanceConfig }, skills: request.skills?.length ? request.skills : DEFAULT_SKILLS, waves: request.waveDefinitions?.length === WAVE_DEFINITIONS.length ? request.waveDefinitions : WAVE_DEFINITIONS, interactive: true, startingSkills: request.startingSkills });
   const decisionRandom = seededRandom(request.seed ^ 0x9e3779b9);
   const maxSteps = Math.ceil((request.maxSimulatedSeconds ?? 1800) / FIXED_STEP_SECONDS);
   for (let step = 0; step < maxSteps && !state.complete && !state.gameOver; step++) {

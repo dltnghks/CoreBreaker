@@ -13,18 +13,22 @@ import { appHref } from "./site-path";
 import { SkillSelectionModal } from "./_components/modals/SkillSelectionModal";
 import { SkillIconArt } from "./_components/SkillIconArt";
 import { BenchmarkDashboard } from "./_components/benchmark/BenchmarkDashboard";
+import { BalanceExperimentDashboard } from "./_components/benchmark/BalanceExperimentDashboard";
 import { useGameLoop } from "./useGameLoop";
 import { useGameInput } from "./useGameInput";
 import { useGamePresentation } from "./useGamePresentation";
 import { useRuntimeSettings } from "./useRuntimeSettings";
 import { useBenchmarkSession } from "./useBenchmarkSession";
 import { useGameRuntimeController } from "./useGameRuntimeController";
+import { useBalanceEpochSession } from "./useBalanceEpochSession";
 import { hudSnapshotFromGame, hudSnapshotsEqual, type HudSnapshot } from "./hud-snapshot";
 import { createCanonicalState, dispatchCanonicalCommand, ENGINE_PARITY, ENGINE_VERSION, stepCanonicalEngine, type CanonicalState, type CanonicalStepResult } from "./canonical-engine";
 import { projectCanonicalStateIntoGameView } from "./game-runtime-projection";
 import { emitGameEvent, type GameEventBuffer } from "./game-events";
 import { renderGameRuntimeCanvas } from "./game-runtime-canvas";
 import { createReplayRecorder, type ReplayLog } from "./debug-replay";
+import { fingerprintBalanceConfig, summarizeBalanceCandidate, type BalanceCandidate, type BalanceExperiment, type BalanceExperimentRun, type BalanceTuningParameter } from "./balance-experiment";
+import { putBalanceCandidate, putBalanceCandidateSummary, putBalanceExperiment, putBalanceExperimentRuns } from "./balance-experiment-store";
 
 import type {
   Ball,
@@ -142,7 +146,7 @@ const CLASS_META: Record<SkillCategory, { tag: string; color: string }> = {
 };
 
 function createUpgradeCatalog(skills: SkillConfig[]): Upgrade[] {
-  return skills.map((skill) => ({
+  return skills.filter((skill) => skill.enabled).map((skill) => ({
     id: skill.id,
     name: skill.name,
     category: skill.category,
@@ -192,7 +196,7 @@ function formatSkillDelta(value: number, unit: string) {
 }
 
 function classSkillColor(id: ClassSkillId) {
-  return activeSkillMap[id]?.color ?? SKILL_COLORS[id];
+  return activeSkillMap[id]?.color ?? (id in SKILL_COLORS ? SKILL_COLORS[id as keyof typeof SKILL_COLORS] : "#d66bff");
 }
 
 function ghostPaddleY() {
@@ -607,6 +611,9 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const parallelSessionRef = useRef(0);
   const parallelPendingResultsRef = useRef<BotRunResult[]>([]);
   const parallelFlushRef = useRef<() => void>(() => { });
+  const parallelExperimentRef = useRef<BalanceExperiment | null>(null);
+  const parallelCandidateRef = useRef<BalanceCandidate | null>(null);
+  const parallelExperimentRunsRef = useRef<BalanceExperimentRun[]>([]);
   const balanceConfigRef = useRef<BalanceConfig>(DEFAULT_BALANCE_CONFIG);
   const activeSkillConfigsRef = useRef<SkillConfig[]>(DEFAULT_SKILLS);
   const botLivePersistRef = useRef(0);
@@ -664,6 +671,15 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const [skillBenchConfig, setSkillBenchConfig] = useState<SkillBenchConfig>(DEFAULT_SKILL_BENCH_CONFIG);
   const [skillBenchProgress, setSkillBenchProgress] = useState<SkillBenchProgress>(DEFAULT_SKILL_BENCH_PROGRESS);
   const [benchmarkConfig, setBenchmarkConfig] = useState<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
+  const [experimentRefreshToken, setExperimentRefreshToken] = useState(0);
+  const [tuningSkillId, setTuningSkillId] = useState<ClassSkillId>("warrior-smash");
+  const [tuningLevel, setTuningLevel] = useState<1 | 2 | 3>(1);
+  const [tuningParameter, setTuningParameter] = useState<BalanceTuningParameter>("magicDamage");
+  const [tuningEpochs, setTuningEpochs] = useState(3);
+  const [tuningCandidates, setTuningCandidates] = useState(5);
+  const [tuningRuns, setTuningRuns] = useState(3);
+  const refreshExperiments = useCallback(() => setExperimentRefreshToken((value) => value + 1), []);
+  const balanceEpochSession = useBalanceEpochSession({ createWorkers, stopWorkers, onRefresh: refreshExperiments });
 
   useEffect(() => () => {
     transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
@@ -1327,6 +1343,64 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     setBotRunning(true);
     localStorage.removeItem(BOT_LIVE_STORAGE_KEY);
     parallelPendingResultsRef.current = [];
+    parallelExperimentRunsRef.current = [];
+
+    const createdAt = Date.now();
+    const skillSnapshot = activeSkillConfigsRef.current.map((skill) => ({
+      ...skill,
+      traits: [...skill.traits],
+      traitConfigs: skill.traitConfigs.map((trait) => ({ ...trait, values: [...trait.values] as [number, number, number], damage: [...trait.damage] as [number, number, number] })),
+      levels: [...skill.levels] as [number, number, number],
+      skillDamage: [...skill.skillDamage] as [number, number, number],
+      magicDamage: skill.magicDamage ? [...skill.magicDamage] as [number, number, number] : null,
+      cooldown: [...skill.cooldown] as [number, number, number],
+    }));
+    const candidateConfig = {
+      skills: skillSnapshot,
+      balance: { ...balanceConfigRef.current },
+      benchmark: { ...benchmarkConfigRef.current },
+      waves: getActiveWaveDefinitions(),
+    };
+    const configHash = fingerprintBalanceConfig(candidateConfig);
+    const experimentId = `experiment-${createdAt.toString(36)}-${session}`;
+    const candidateId = `${experimentId}-e1-c1`;
+    const experiment: BalanceExperiment = {
+      id: experimentId,
+      name: `HEADLESS ${new Date(createdAt).toLocaleString("ko-KR")}`,
+      mode: "benchmark-session",
+      status: "running",
+      targetSkillId: null,
+      targetLevel: null,
+      engineVersion: ENGINE_VERSION,
+      rulesetVersion: BENCHMARK_RULESET,
+      policyVersion: POLICY_VERSION,
+      policy: botPolicy,
+      baseConfigHash: configHash,
+      targetRuns,
+      completedRuns: 0,
+      currentEpoch: 1,
+      tuning: null,
+      createdAt,
+      updatedAt: createdAt,
+    };
+    const candidate: BalanceCandidate = {
+      id: candidateId,
+      experimentId,
+      epoch: 1,
+      label: `CURRENT CONFIG · ${configHash}`,
+      parentCandidateId: null,
+      configHash,
+      config: candidateConfig,
+      score: null,
+      status: "running",
+      createdAt,
+      updatedAt: createdAt,
+    };
+    parallelExperimentRef.current = experiment;
+    parallelCandidateRef.current = candidate;
+    void Promise.all([putBalanceExperiment(experiment), putBalanceCandidate(candidate)])
+      .then(() => setExperimentRefreshToken((value) => value + 1))
+      .catch((error) => console.error("[balance-experiment] create failed", error));
 
     let nextRun = 1;
     let completed = 0;
@@ -1337,6 +1411,43 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
       botResultsRef.current = nextResults;
       setBotResults(nextResults);
       void putBenchmarkResults(batch).catch((error) => console.error("[benchmark-store] write failed", error));
+      const activeExperiment = parallelExperimentRef.current;
+      const activeCandidate = parallelCandidateRef.current;
+      if (activeExperiment && activeCandidate) {
+        const wrapped = batch.map((result): BalanceExperimentRun => ({
+          experimentRunId: `${activeCandidate.id}:${result.seed ?? result.run}`,
+          experimentId: activeExperiment.id,
+          candidateId: activeCandidate.id,
+          epoch: activeCandidate.epoch,
+          seedGroup: "train",
+          seed: result.seed ?? result.run,
+          createdAt: result.createdAt,
+          result,
+        }));
+        parallelExperimentRunsRef.current.push(...wrapped);
+        const isComplete = completed >= targetRuns;
+        const nextExperiment: BalanceExperiment = {
+          ...activeExperiment,
+          status: isComplete ? "complete" : activeExperiment.status,
+          completedRuns: completed,
+          updatedAt: Date.now(),
+        };
+        const nextCandidate: BalanceCandidate = {
+          ...activeCandidate,
+          status: isComplete ? "complete" : activeCandidate.status,
+          updatedAt: Date.now(),
+        };
+        parallelExperimentRef.current = nextExperiment;
+        parallelCandidateRef.current = nextCandidate;
+        const summary = summarizeBalanceCandidate(nextCandidate, parallelExperimentRunsRef.current);
+        void Promise.all([
+          putBalanceExperimentRuns(wrapped),
+          putBalanceExperiment(nextExperiment),
+          putBalanceCandidate(nextCandidate),
+          putBalanceCandidateSummary(summary),
+        ]).then(() => setExperimentRefreshToken((value) => value + 1))
+          .catch((error) => console.error("[balance-experiment] flush failed", error));
+      }
     };
     parallelFlushRef.current = flushPending;
     const stopPool = () => {
@@ -1347,6 +1458,8 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     const failPool = (message: string) => {
       if (parallelSessionRef.current !== session) return;
       console.error(`[benchmark-worker] ${message}`);
+      if (parallelExperimentRef.current) parallelExperimentRef.current = { ...parallelExperimentRef.current, status: "failed", updatedAt: Date.now() };
+      if (parallelCandidateRef.current) parallelCandidateRef.current = { ...parallelCandidateRef.current, status: "rejected", updatedAt: Date.now() };
       flushPending();
       stopPool();
       botActiveRef.current = false;
@@ -1362,7 +1475,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
         policy: botPolicy,
         balanceConfig: { ...balanceConfigRef.current },
         benchmarkConfig: { ...benchmarkConfigRef.current },
-        skills: activeSkillConfigsRef.current.map((skill) => ({ ...skill, levels: [...skill.levels] as [number, number, number], magicDamage: skill.magicDamage ? [...skill.magicDamage] as [number, number, number] : null })),
+        skills: activeSkillConfigsRef.current.map((skill) => ({ ...skill, traits: [...skill.traits], traitConfigs: skill.traitConfigs.map((trait) => ({ ...trait, values: [...trait.values] as [number, number, number], damage: [...trait.damage] as [number, number, number] })), levels: [...skill.levels] as [number, number, number], skillDamage: [...skill.skillDamage] as [number, number, number], magicDamage: skill.magicDamage ? [...skill.magicDamage] as [number, number, number] : null })),
         waveDefinitions: getActiveWaveDefinitions(),
       };
       worker.postMessage(request);
@@ -1450,6 +1563,35 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     startRun(true);
   };
 
+  const startBalanceEpochs = () => {
+    void balanceEpochSession.start({
+      skillId: tuningSkillId,
+      level: tuningLevel,
+      parameter: tuningParameter,
+      epochs: tuningEpochs,
+      candidatesPerEpoch: tuningCandidates,
+      runsPerCandidate: tuningRuns,
+      targetCompletionRate: 55,
+      targetCoreHp: 3,
+    }, {
+      skills: activeSkillConfigsRef.current,
+      balance: balanceConfigRef.current,
+      benchmark: benchmarkConfigRef.current,
+      waves: getActiveWaveDefinitions(),
+      policy: botPolicy,
+    }).catch((error) => console.error("[balance-epoch] start failed", error));
+  };
+
+  const resumeBalanceEpochs = (experimentId: string) => {
+    void balanceEpochSession.resume(experimentId, {
+      skills: activeSkillConfigsRef.current,
+      balance: balanceConfigRef.current,
+      benchmark: benchmarkConfigRef.current,
+      waves: getActiveWaveDefinitions(),
+      policy: botPolicy,
+    }).catch((error) => console.error("[balance-epoch] resume failed", error));
+  };
+
   useEffect(() => {
     if (mode !== "result" || !result || !botActiveRef.current) return;
     if (botCompletedRunsRef.current >= botTargetRunsRef.current) {
@@ -1480,6 +1622,8 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
 
   const stopBotSession = () => {
     if (parallelWorkersRef.current.length > 0) {
+      if (parallelExperimentRef.current) parallelExperimentRef.current = { ...parallelExperimentRef.current, status: "paused", updatedAt: Date.now() };
+      if (parallelCandidateRef.current) parallelCandidateRef.current = { ...parallelCandidateRef.current, status: "queued", updatedAt: Date.now() };
       parallelFlushRef.current();
       parallelSessionRef.current += 1;
       stopWorkers(parallelWorkersRef.current);
@@ -1804,9 +1948,26 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                   : <select value="auto" disabled><option value="auto">CPU 자동 · 최대 8</option></select>}
               </label>
             </div>
+            {benchmarkRunMode === "parallel" && (
+              <div className="balance-auto-controls">
+                <div className="balance-auto-heading"><span>AUTO BALANCE EPOCH</span><small>동일 시드 후보 비교</small></div>
+                <div className="balance-auto-grid">
+                  <label>대상 스킬<select value={tuningSkillId} onChange={(event) => { const nextId = event.target.value as ClassSkillId; setTuningSkillId(nextId); if (tuningParameter === "magicDamage" && !NORMAL_SKILLS.find((skill) => skill.id === nextId)?.magicDamage) setTuningParameter("levelValue"); }} disabled={botRunning || balanceEpochSession.progress.running}>{NORMAL_SKILLS.filter((skill) => skill.category !== "common").map((skill) => <option key={skill.id} value={skill.id}>{skill.name}</option>)}</select></label>
+                  <label>레벨<select value={tuningLevel} onChange={(event) => setTuningLevel(Number(event.target.value) as 1 | 2 | 3)} disabled={botRunning || balanceEpochSession.progress.running}>{[1, 2, 3].map((level) => <option key={level} value={level}>LV{level}</option>)}</select></label>
+                  <label>조정 축<select value={tuningParameter} onChange={(event) => setTuningParameter(event.target.value as BalanceTuningParameter)} disabled={botRunning || balanceEpochSession.progress.running}><option value="levelValue">대표 수치</option><option value="magicDamage">마법 피해</option><option value="cooldown">쿨다운</option></select></label>
+                  <label>Epoch<select value={tuningEpochs} onChange={(event) => setTuningEpochs(Number(event.target.value))} disabled={botRunning || balanceEpochSession.progress.running}>{[2, 3, 5, 8].map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+                  <label>후보<select value={tuningCandidates} onChange={(event) => setTuningCandidates(Number(event.target.value))} disabled={botRunning || balanceEpochSession.progress.running}>{[3, 5, 7].map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+                  <label>후보당 Run<select value={tuningRuns} onChange={(event) => setTuningRuns(Number(event.target.value))} disabled={botRunning || balanceEpochSession.progress.running}>{[3, 5, 10].map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+                </div>
+                {balanceEpochSession.progress.status !== "idle" && <p className="balance-auto-progress">EPOCH {balanceEpochSession.progress.epoch}/{balanceEpochSession.progress.totalEpochs} · {balanceEpochSession.progress.completedRuns}/{balanceEpochSession.progress.totalRuns} RUNS · {balanceEpochSession.progress.message}</p>}
+                {balanceEpochSession.progress.running
+                  ? <button type="button" className="balance-auto-stop" onClick={balanceEpochSession.stop}>AUTO TUNE PAUSE</button>
+                  : <button type="button" className="balance-auto-start" onClick={startBalanceEpochs} disabled={botRunning || mode !== "lobby"}>AUTO EPOCH START</button>}
+              </div>
+            )}
             {botRunning
               ? <button className="bot-stop" type="button" onClick={stopBotSession}>{benchmarkRunMode === "watch" ? `WATCH STOP · ${botSpeed}× · W${hud.wave}` : `BOT STOP · ${botCompletedRuns}/${botTargetRuns} · ${parallelWorkerCount} WORKERS`}</button>
-              : <button className="bot-start" type="button" onClick={startBotSession} disabled={mode !== "lobby"}>{showSkillBenchmark ? skillBenchProgress.status === "paused" ? "SKILL BENCH RESUME" : "SKILL BENCH START" : benchmarkRunMode === "watch" ? "WATCH RUN START" : "BENCHMARK START"}</button>}
+              : <button className="bot-start" type="button" onClick={startBotSession} disabled={mode !== "lobby" || balanceEpochSession.progress.running}>{showSkillBenchmark ? skillBenchProgress.status === "paused" ? "SKILL BENCH RESUME" : "SKILL BENCH START" : benchmarkRunMode === "watch" ? "WATCH RUN START" : "BENCHMARK START"}</button>}
             <div className="bot-summary">
               <div><span>AVG TIME</span><strong>{botAverageSurvival.toFixed(1)}s</strong></div>
               <div><span>AVG WAVE</span><strong>{botAverageWave.toFixed(1)}</strong></div>
@@ -1834,7 +1995,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
         </aside>}
       </section>
       {benchmarkMode && (
-        <BenchmarkDashboard
+        <><BenchmarkDashboard
           visibleBotResults={visibleBotResults}
           benchmarkConfig={benchmarkConfig}
           benchmarkCompletionRate={benchmarkCompletionRate}
@@ -1857,7 +2018,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
           activeSkillMap={activeSkillMap}
           maxCoreHp={MAX_CORE_HP}
           benchmarkRuleset={BENCHMARK_RULESET}
-        />
+        /><BalanceExperimentDashboard refreshToken={experimentRefreshToken} onResume={resumeBalanceEpochs} resumeDisabled={botRunning || balanceEpochSession.progress.running || mode !== "lobby"} /></>
       )}
     </main>
   );

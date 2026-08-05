@@ -2,6 +2,49 @@ export type HeroClass = "warrior" | "archer" | "mage" | "common";
 export type SkillCategory = HeroClass;
 export type SkillMechanic = "impact" | "chain" | "control" | "summon" | "defense" | "passive";
 export type EnchantMode = "persistent" | "charge" | "single";
+export type SkillDamageType = "physical" | "magic";
+export type SkillApplicationScope = "per-ball" | "shared";
+export type SkillTriggerType = "brick-hit" | "brick-break" | "repeat-hit" | "special-brick-hit" | "passive";
+export type SkillTrait = "direct-damage" | "smash" | "execute" | "crush" | "focus" | "weakpoint" | "mana-seal" | "splash" | "chain" | "burn" | "freeze" | "pierce" | "rapid-fire" | "barrier" | "black-hole" | "passive";
+export type SkillTraitConfig = {
+  kind: SkillTrait;
+  values: [number, number, number];
+  unit: string;
+  damageType: SkillDamageType;
+  damage: [number, number, number];
+};
+
+export const SKILL_TRIGGER_LABELS: Record<SkillTriggerType, string> = {
+  "brick-hit": "블록 직접 타격",
+  "brick-break": "블록 파괴",
+  "repeat-hit": "같은 블록 연속 타격",
+  "special-brick-hit": "특수 블록 타격",
+  passive: "보유 중 상시 적용",
+};
+
+export const SKILL_APPLICATION_LABELS: Record<SkillApplicationScope, string> = {
+  "per-ball": "스킬 보유 공 · 공별 독립 쿨타임",
+  shared: "전체 공 · 스킬별 공유 쿨타임",
+};
+
+export const SKILL_TRAIT_LABELS: Record<SkillTrait, string> = {
+  "direct-damage": "추가 피해",
+  smash: "강타",
+  execute: "처형",
+  crush: "분쇄",
+  focus: "집중 사격",
+  weakpoint: "약점 사격",
+  "mana-seal": "마력 봉인",
+  splash: "범위 피해",
+  chain: "연쇄 피해",
+  burn: "화상",
+  freeze: "빙결",
+  pierce: "관통",
+  "rapid-fire": "추가 투사체",
+  barrier: "코어 방어막",
+  "black-hole": "블랙홀",
+  passive: "지속 효과",
+};
 
 export const SKILL_MECHANIC_LABELS: Record<SkillMechanic, string> = {
   impact: "타격",
@@ -12,12 +55,15 @@ export const SKILL_MECHANIC_LABELS: Record<SkillMechanic, string> = {
   passive: "지속",
 };
 
-export type ClassSkillId =
+export type BuiltinClassSkillId =
   | "warrior-smash" | "warrior-shockwave" | "warrior-execute" | "warrior-crush" | "warrior-guard"
   | "archer-rapid" | "archer-pierce" | "archer-ricochet" | "archer-focus" | "archer-weakpoint"
   | "mage-fireball" | "mage-lightning" | "mage-freeze" | "mage-black-hole" | "mage-mana-blast"
   | "common-magnet" | "common-luck" | "common-wide" | "common-move-speed" | "common-xp" | "common-combo"
   | "common-ball-size" | "common-skill-range" | "common-chain" | "common-damage" | "common-magic" | "common-cooldown";
+
+export type CustomSkillId = `custom-${string}`;
+export type ClassSkillId = BuiltinClassSkillId | CustomSkillId;
 
 export type LegacyUpgradeId =
   | "pierce" | "blast" | "glass" | "link" | "speed" | "wide" | "magnet" | "chain" | "fever"
@@ -35,12 +81,18 @@ export const ENCHANT_MODE_LABELS: Record<EnchantMode, string> = {
 
 export type SkillConfig = {
   id: ClassSkillId;
+  enabled: boolean;
+  builtIn: boolean;
   name: string;
   category: SkillCategory;
   mechanic: SkillMechanic;
   enchantMode?: EnchantMode;
   owner: "ball";
+  applicationScope: SkillApplicationScope;
   trigger: string;
+  triggerType: SkillTriggerType;
+  traits: SkillTrait[];
+  traitConfigs: SkillTraitConfig[];
   effect: string;
   description: string;
   evolution: string | null;
@@ -49,14 +101,18 @@ export type SkillConfig = {
   levels: [number, number, number];
   /** Skill-owned magic damage before the run magic-power multiplier. */
   magicDamage: [number, number, number] | null;
+  /** Damage owned by this skill before its selected physical/magic stat multiplier. */
+  skillDamage: [number, number, number];
+  damageType: SkillDamageType;
   cooldown: [number, number, number];
   direction: "up" | "down";
+  /** Design-review metadata only; it does not affect runtime selection or combat. */
   risk: number;
   ghost: boolean;
   ballCost: 0;
 };
 
-export const SKILL_MAGIC_DAMAGE: Partial<Record<ClassSkillId, [number, number, number]>> = {
+export const SKILL_MAGIC_DAMAGE: Partial<Record<BuiltinClassSkillId, [number, number, number]>> = {
   "warrior-smash": [1, 2, 3],
   "warrior-shockwave": [1, 1, 2],
   "warrior-crush": [2, 3, 4],
@@ -71,7 +127,7 @@ export const SKILL_MAGIC_DAMAGE: Partial<Record<ClassSkillId, [number, number, n
 
 export const SKILL_STORAGE_KEY = "echo-breaker-class-skills-v1";
 
-export const SKILL_COLORS: Record<ClassSkillId, string> = {
+export const SKILL_COLORS: Record<BuiltinClassSkillId, string> = {
   "warrior-smash": "#ff6b57",
   "warrior-shockwave": "#ff9f43",
   "warrior-execute": "#ff3f6c",
@@ -101,7 +157,7 @@ export const SKILL_COLORS: Record<ClassSkillId, string> = {
   "common-cooldown": "#9aa3b2",
 };
 
-const SKILL_MECHANICS: Record<ClassSkillId, SkillMechanic> = {
+const SKILL_MECHANICS: Record<BuiltinClassSkillId, SkillMechanic> = {
   "warrior-smash": "impact",
   "warrior-shockwave": "chain",
   "warrior-execute": "impact",
@@ -131,7 +187,7 @@ const SKILL_MECHANICS: Record<ClassSkillId, SkillMechanic> = {
   "common-cooldown": "passive",
 };
 
-export const SKILL_COOLDOWNS: Record<ClassSkillId, [number, number, number]> = {
+export const SKILL_COOLDOWNS: Record<BuiltinClassSkillId, [number, number, number]> = {
   "warrior-smash": [1.2, 1, 0.8],
   "warrior-shockwave": [2.8, 2.4, 2],
   "warrior-execute": [3, 2.5, 2],
@@ -161,7 +217,7 @@ export const SKILL_COOLDOWNS: Record<ClassSkillId, [number, number, number]> = {
   "common-cooldown": [0, 0, 0],
 };
 
-export const SKILL_EVOLUTIONS: Partial<Record<ClassSkillId, string>> = {
+export const SKILL_EVOLUTIONS: Partial<Record<BuiltinClassSkillId, string>> = {
   "warrior-smash": "강타 충돌 지점 주변 2개 블록에 마법 공격력만큼 피해를 줍니다.",
   "warrior-shockwave": "충격파로 블럭을 파괴하면 그 블럭에서 새로운 충격파가 이어집니다.",
   "warrior-execute": "처형 기준이 현재 체력 50%로 증가합니다.",
@@ -195,8 +251,59 @@ SKILL_EVOLUTIONS["common-cooldown"] = "스킬 발동 직후 다음 쿨타임이 
 
 SKILL_EVOLUTIONS["archer-rapid"] = "임시 화살이 보유한 다른 스킬과 연사·무한 화살을 사용할 수 있습니다. 생성 세대마다 화살 생성 쿨타임이 증가합니다.";
 
+function builtinTriggerType(id: BuiltinClassSkillId): SkillTriggerType {
+  if (id.startsWith("common-")) return "passive";
+  if (id === "archer-focus") return "repeat-hit";
+  if (id === "warrior-crush" || id === "mage-mana-blast") return "special-brick-hit";
+  return "brick-hit";
+}
+
+function builtinTraits(id: BuiltinClassSkillId): SkillTrait[] {
+  if (id.startsWith("common-")) return ["passive"];
+  const traits: Partial<Record<BuiltinClassSkillId, SkillTrait[]>> = {
+    "warrior-smash": ["smash", "splash"],
+    "warrior-shockwave": ["splash", "chain"],
+    "warrior-execute": ["execute"],
+    "warrior-crush": ["crush"],
+    "warrior-guard": ["barrier"],
+    "archer-rapid": ["rapid-fire"],
+    "archer-pierce": ["pierce"],
+    "archer-ricochet": ["chain"],
+    "archer-focus": ["focus"],
+    "archer-weakpoint": ["weakpoint"],
+    "mage-fireball": ["splash", "burn"],
+    "mage-lightning": ["chain"],
+    "mage-freeze": ["freeze"],
+    "mage-black-hole": ["black-hole"],
+    "mage-mana-blast": ["mana-seal"],
+  };
+  return [...(traits[id] ?? ["direct-damage"])] as SkillTrait[];
+}
+
+function createTraitConfigs(id: BuiltinClassSkillId, traits: SkillTrait[], values: [number, number, number], unit: string): SkillTraitConfig[] {
+  const damage = SKILL_MAGIC_DAMAGE[id] ?? [0, 0, 0];
+  const damageSpec = (kind: SkillTrait): [number, number, number] => id === "warrior-smash" && kind === "splash" ? [1, 1, 1] : [...damage] as [number, number, number];
+  const effectSpec = (kind: SkillTrait): { values: [number, number, number]; unit: string } => {
+    if (kind === "splash") {
+      if (id === "warrior-smash") return { values: [85, 95, 105], unit: "px" };
+      if (id === "warrior-shockwave") return { values: [105, 115, 125], unit: "px" };
+      if (id === "mage-fireball") return { values: [80, 100, 120], unit: "px" };
+    }
+    if (kind === "burn") return { values: [3, 4, 5], unit: "초" };
+    if (kind === "freeze") return { values: [3, 4, 5], unit: "초" };
+    if (kind === "barrier") return { values: [1, 1, 1], unit: "개" };
+    return { values: [...values] as [number, number, number], unit };
+  };
+  return traits.map((kind) => ({
+    kind,
+    ...effectSpec(kind),
+    damageType: "magic",
+    damage: damageSpec(kind),
+  }));
+}
+
 const skill = (
-  id: ClassSkillId,
+  id: BuiltinClassSkillId,
   name: string,
   category: SkillCategory,
   trigger: string,
@@ -207,10 +314,16 @@ const skill = (
   direction: "up" | "down" = "up",
 ): SkillConfig => ({
   id,
+  enabled: true,
+  builtIn: true,
   name,
   category,
   mechanic: SKILL_MECHANICS[id],
   owner: "ball",
+  applicationScope: "per-ball",
+  triggerType: builtinTriggerType(id),
+  traits: builtinTraits(id),
+  traitConfigs: createTraitConfigs(id, builtinTraits(id), levels, unit),
   trigger: SKILL_COOLDOWNS[id][0] > 0 ? "공별 쿨타임 완료 후 블록 타격" : trigger,
   effect,
   description,
@@ -219,6 +332,8 @@ const skill = (
   unit,
   levels,
   magicDamage: SKILL_MAGIC_DAMAGE[id] ? [...SKILL_MAGIC_DAMAGE[id]!] as [number, number, number] : null,
+  skillDamage: SKILL_MAGIC_DAMAGE[id] ? [...SKILL_MAGIC_DAMAGE[id]!] as [number, number, number] : [0, 0, 0],
+  damageType: "magic",
   cooldown: SKILL_COOLDOWNS[id],
   direction,
   risk: 10,
@@ -227,7 +342,7 @@ const skill = (
 });
 
 const passiveSkill = (
-  id: ClassSkillId,
+  id: BuiltinClassSkillId,
   name: string,
   effect: string,
   description: string,
@@ -235,10 +350,16 @@ const passiveSkill = (
   unit: string,
 ): SkillConfig => ({
   id,
+  enabled: true,
+  builtIn: true,
   name,
   category: "common",
   mechanic: SKILL_MECHANICS[id],
   owner: "ball",
+  applicationScope: "per-ball",
+  triggerType: "passive",
+  traits: ["passive"],
+  traitConfigs: [{ kind: "passive", values: [...levels] as [number, number, number], unit, damageType: "magic", damage: [0, 0, 0] }],
   trigger: "획득 즉시 상시 적용",
   effect,
   description,
@@ -247,6 +368,8 @@ const passiveSkill = (
   unit,
   levels,
   magicDamage: null,
+  skillDamage: [0, 0, 0],
+  damageType: "magic",
   cooldown: SKILL_COOLDOWNS[id],
   direction: "up",
   risk: 5,
@@ -288,9 +411,100 @@ export const DEFAULT_SKILLS: SkillConfig[] = [
 
 export const NORMAL_SKILLS = DEFAULT_SKILLS;
 
+const TRIGGER_TYPES = new Set<SkillTriggerType>(["brick-hit", "brick-break", "repeat-hit", "special-brick-hit", "passive"]);
+const TRAITS = new Set<SkillTrait>(["direct-damage", "smash", "execute", "crush", "focus", "weakpoint", "mana-seal", "splash", "chain", "burn", "freeze", "pierce", "rapid-fire", "barrier", "black-hole", "passive"]);
+
+function tuple3(value: unknown, fallback: [number, number, number]) {
+  const values = Array.isArray(value) ? value.map(Number) : [];
+  return values.length === 3 && values.every(Number.isFinite) ? values as [number, number, number] : [...fallback] as [number, number, number];
+}
+
+const SPECIALIZED_TRAIT_BY_ID: Partial<Record<BuiltinClassSkillId, SkillTrait>> = {
+  "warrior-smash": "smash",
+  "warrior-execute": "execute",
+  "warrior-crush": "crush",
+  "archer-focus": "focus",
+  "archer-weakpoint": "weakpoint",
+  "mage-mana-blast": "mana-seal",
+};
+
+function migrateTraitKind(skillId: ClassSkillId, kind: SkillTrait) {
+  return kind === "direct-damage" && !skillId.startsWith("custom-") ? SPECIALIZED_TRAIT_BY_ID[skillId as BuiltinClassSkillId] ?? kind : kind;
+}
+
+function normalizeTraitConfigs(saved: Partial<SkillConfig>, base: SkillConfig, traits: SkillTrait[]) {
+  const savedConfigs = Array.isArray(saved.traitConfigs) ? saved.traitConfigs : [];
+  const legacyDamageType: SkillDamageType = saved.damageType === "physical" ? "physical" : "magic";
+  const legacyDamage = tuple3(saved.skillDamage, tuple3(saved.magicDamage, base.skillDamage));
+  const differs = (left: unknown, right: [number, number, number]) => JSON.stringify(tuple3(left, right)) !== JSON.stringify(right);
+  return traits.map((kind, index): SkillTraitConfig => {
+    const stored = savedConfigs.find((entry) => entry && migrateTraitKind(base.id, entry.kind) === kind);
+    const fallback = base.traitConfigs.find((entry) => entry.kind === kind);
+    const storedMatchesBase = Boolean(stored && fallback
+      && JSON.stringify(tuple3(stored.values, fallback.values)) === JSON.stringify(fallback.values)
+      && JSON.stringify(tuple3(stored.damage, fallback.damage)) === JSON.stringify(fallback.damage)
+      && stored.damageType === fallback.damageType);
+    const legacyPrimaryChanged = index === 0 && (differs(saved.levels, base.levels) || differs(saved.skillDamage, base.skillDamage) || differs(saved.magicDamage, base.magicDamage ?? base.skillDamage) || (saved.damageType && saved.damageType !== base.damageType));
+    const useLegacyFields = (!stored && Array.isArray(saved.traits) && saved.traits.includes(kind)) || (index === 0 && saved.builtIn === false) || (storedMatchesBase && legacyPrimaryChanged);
+    const damageType: SkillDamageType = useLegacyFields ? legacyDamageType : stored?.damageType === "physical" ? "physical" : stored?.damageType === "magic" ? "magic" : fallback?.damageType ?? legacyDamageType;
+    return {
+      kind,
+      values: tuple3(stored?.values, useLegacyFields ? tuple3(saved.levels, fallback?.values ?? base.levels) : fallback?.values ?? tuple3(saved.levels, base.levels)),
+      unit: typeof stored?.unit === "string" ? stored.unit : useLegacyFields ? saved.unit ?? fallback?.unit ?? base.unit : fallback?.unit ?? saved.unit ?? base.unit,
+      damageType,
+      damage: tuple3(stored?.damage, useLegacyFields ? legacyDamage : fallback?.damage ?? legacyDamage).map((value) => Math.max(0, value)) as [number, number, number],
+    };
+  });
+}
+
+function normalizeCommonSkillFields(saved: Partial<SkillConfig>, base: SkillConfig): SkillConfig {
+  const triggerType = TRIGGER_TYPES.has(saved.triggerType as SkillTriggerType) ? saved.triggerType! : base.triggerType;
+  const traits = Array.isArray(saved.traits)
+    ? [...new Set(saved.traits.filter((trait): trait is SkillTrait => TRAITS.has(trait as SkillTrait)).map((trait) => migrateTraitKind(base.id, trait)))]
+    : [...base.traits];
+  const normalizedTraits = traits.length ? traits : [...base.traits];
+  const traitConfigs = normalizeTraitConfigs(saved, base, normalizedTraits);
+  const primary = traitConfigs[0] ?? base.traitConfigs[0];
+  const levels = primary?.values ?? tuple3(saved.levels, base.levels);
+  const skillDamage = primary?.damage ?? tuple3(saved.skillDamage, base.skillDamage);
+  const damageType = primary?.damageType ?? (saved.damageType === "physical" ? "physical" : "magic");
+  const riskValue = Number(saved.risk);
+  return {
+    ...base,
+    ...saved,
+    enabled: saved.enabled !== false,
+    applicationScope: saved.applicationScope === "shared" ? "shared" : "per-ball",
+    triggerType,
+    traits: normalizedTraits,
+    traitConfigs,
+    levels,
+    cooldown: tuple3(saved.cooldown, base.cooldown).map((value) => Math.max(0, value)) as [number, number, number],
+    skillDamage: skillDamage.map((value) => Math.max(0, value)) as [number, number, number],
+    damageType,
+    magicDamage: damageType === "magic" ? skillDamage.map((value) => Math.max(0, value)) as [number, number, number] : null,
+    owner: "ball",
+    ballCost: 0,
+  };
+}
+
+function syncExplicitPrimaryFields(saved: Partial<SkillConfig>, normalized: SkillConfig) {
+  const primary = normalized.traitConfigs[0];
+  if (!primary) return normalized;
+  if (Array.isArray(saved.skillDamage) && saved.skillDamage.length === 3) {
+    const damage = tuple3(saved.skillDamage, primary.damage).map((value) => Math.max(0, value)) as [number, number, number];
+    const damageType: SkillDamageType = saved.damageType === "physical" ? "physical" : saved.damageType === "magic" ? "magic" : primary.damageType;
+    primary.damage = damage;
+    primary.damageType = damageType;
+    normalized.skillDamage = [...damage];
+    normalized.damageType = damageType;
+    normalized.magicDamage = damageType === "magic" ? [...damage] : null;
+  }
+  return normalized;
+}
+
 export function normalizeSkillConfigs(saved: unknown): SkillConfig[] {
   const entries = Array.isArray(saved) ? saved : [];
-  return DEFAULT_SKILLS.map((base) => {
+  const builtins = DEFAULT_SKILLS.map((base) => {
     const savedSkill = entries.find((entry) => entry && typeof entry === "object" && "id" in entry && entry.id === base.id) as Partial<SkillConfig> | undefined;
     const values = Array.isArray(savedSkill?.levels) ? savedSkill.levels.map(Number) : [];
     const levels = values.length === 3 && values.every(Number.isFinite) ? values as [number, number, number] : base.levels;
@@ -311,8 +525,46 @@ export function normalizeSkillConfigs(saved: unknown): SkillConfig[] {
     const savedMagicDamage = Array.isArray(savedSkill?.magicDamage) && savedSkill.magicDamage.length === 3 && savedSkill.magicDamage.every((value) => Number.isFinite(Number(value)))
       ? savedSkill.magicDamage.map(Number) as [number, number, number]
       : base.magicDamage ? [...base.magicDamage] as [number, number, number] : null;
-    return { ...base, ...migrated, id: base.id, category: base.category, mechanic: base.mechanic, color: base.color, owner: "ball", ballCost: 0, evolution: base.evolution, magicDamage: savedMagicDamage, levels: base.id === "common-xp" || legacyReflectionTrigger ? base.levels : levels, cooldown: legacyReflectionTrigger ? base.cooldown : savedCooldown };
+    return syncExplicitPrimaryFields(savedSkill ?? {}, normalizeCommonSkillFields({ ...migrated, id: base.id, builtIn: true, category: base.category, mechanic: base.mechanic, color: base.color, evolution: base.evolution, magicDamage: savedMagicDamage, skillDamage: tuple3(savedSkill?.skillDamage, savedMagicDamage ?? base.skillDamage), levels: base.id === "common-xp" || legacyReflectionTrigger ? base.levels : levels, cooldown: legacyReflectionTrigger ? base.cooldown : savedCooldown }, base));
   });
+  const custom = entries.flatMap((entry): SkillConfig[] => {
+    if (!entry || typeof entry !== "object") return [];
+    const savedSkill = entry as Partial<SkillConfig>;
+    if (typeof savedSkill.id !== "string" || !savedSkill.id.startsWith("custom-")) return [];
+    const category = (["warrior", "archer", "mage", "common"] as SkillCategory[]).includes(savedSkill.category as SkillCategory) ? savedSkill.category! : "mage";
+    const mechanic = (["impact", "chain", "control", "summon", "defense", "passive"] as SkillMechanic[]).includes(savedSkill.mechanic as SkillMechanic) ? savedSkill.mechanic! : "impact";
+    const fallback: SkillConfig = {
+      id: savedSkill.id as CustomSkillId,
+      enabled: true,
+      builtIn: false,
+      name: typeof savedSkill.name === "string" && savedSkill.name.trim() ? savedSkill.name : "사용자 스킬",
+      category,
+      mechanic,
+      owner: "ball",
+      applicationScope: "per-ball",
+      trigger: "공별 쿨다운 완료 후 블록 타격",
+      triggerType: "brick-hit",
+      traits: ["direct-damage"],
+      traitConfigs: [{ kind: "direct-damage", values: [1, 2, 3], unit: "DMG", damageType: "magic", damage: [1, 2, 3] }],
+      effect: "선택한 특성 적용",
+      description: "Skill Lab에서 만든 사용자 스킬입니다.",
+      evolution: null,
+      color: typeof savedSkill.color === "string" ? savedSkill.color : "#d66bff",
+      unit: "DMG",
+      levels: [1, 2, 3],
+      magicDamage: [1, 2, 3],
+      skillDamage: [1, 2, 3],
+      damageType: "magic",
+      cooldown: [2, 1.8, 1.6],
+      direction: "up",
+    risk: Number.isFinite(riskValue) ? Math.max(0, Math.min(100, riskValue)) : base.risk,
+      ghost: false,
+      ballCost: 0,
+    };
+    const normalized = syncExplicitPrimaryFields(savedSkill, normalizeCommonSkillFields({ ...savedSkill, id: fallback.id, builtIn: false, category, mechanic }, fallback));
+    return [normalized];
+  });
+  return [...builtins, ...custom];
 }
 
 export function skillConfigMap(skills: SkillConfig[]) {
