@@ -5,8 +5,7 @@ import type { ClassSkillId, SkillConfig } from "./skill-config";
 // Renderer contract markers: these names document the visual invariants covered
 // by rendered-html tests after extraction from page.tsx. They intentionally keep
 // the contract searchable without coupling tests to orchestration internals.
-// hpText strokeText large outlined white text; const hpBaselineY = brick.y + brick.h / 2 + 6;
-// ctx.fillStyle = "#ffffff"; ctx.font = "900 18px monospace"; ctx.strokeText(hpText); ctx.font = "900 44px monospace";
+// Brick health is communicated visually through opacity, cracks, flashes, and bars; no remaining-HP text is rendered.
 // Brick traits: const traceBrickBody = (brick: Brick) => brick; ctx.roundRect(x, y, w, h, 8), reflectorLineY,
 // reflectorThreatened ? 4 : 3, HEAL PULSE // +1, EXPLOSIVE // BALL LAUNCHED.
 // const reflectorShieldPulse =; const reflectorThreatened = game.balls.some; const reflectorScan =;
@@ -163,9 +162,7 @@ export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor
       ctx.save(); ctx.globalAlpha = Math.min(.72, healthFlashRatio * .72); ctx.fillStyle = flashColor; trace(brick, 2); ctx.fill();
       ctx.globalAlpha = Math.min(1, healthFlashRatio * 1.2); ctx.strokeStyle = flashColor; ctx.shadowColor = flashColor; ctx.shadowBlur = brick.healthFlashKind === "heal" ? 20 : 13; ctx.lineWidth = brick.healthFlashKind === "heal" ? 3 : 2; trace(brick, -2 * healthFlashRatio); ctx.stroke(); ctx.restore();
     }
-    ctx.strokeStyle = "rgba(4,8,20,.95)"; ctx.lineWidth = brick.kind === "boss-core" ? 5 : 4; ctx.fillStyle = "#fff"; ctx.font = brick.kind === "boss-core" ? "900 18px monospace" : "900 18px monospace"; ctx.textAlign = "center";
-    if (brick.kind === "boss-core") { ctx.strokeText("BOSS CORE", brick.x + brick.w / 2, brick.y + brick.h / 2 - 13); ctx.fillText("BOSS CORE", brick.x + brick.w / 2, brick.y + brick.h / 2 - 13); ctx.font = "900 44px monospace"; const hp = String(Math.max(0, Math.ceil(brick.hp))); ctx.strokeText(hp, brick.x + brick.w / 2, brick.y + brick.h / 2 + 30); ctx.fillText(hp, brick.x + brick.w / 2, brick.y + brick.h / 2 + 30); }
-    else if (brick.trait !== "indestructible") { const hp = String(Math.max(0, Math.ceil(brick.hp))), y = brick.y + brick.h / 2 + 6; ctx.strokeText(hp, brick.x + brick.w / 2, y); ctx.fillText(hp, brick.x + brick.w / 2, y); }
+    if (brick.kind === "boss-core") { ctx.strokeStyle = "rgba(4,8,20,.95)"; ctx.lineWidth = 5; ctx.fillStyle = "#fff"; ctx.font = "900 18px monospace"; ctx.textAlign = "center"; ctx.strokeText("BOSS CORE", brick.x + brick.w / 2, brick.y + brick.h / 2 - 13); ctx.fillText("BOSS CORE", brick.x + brick.w / 2, brick.y + brick.h / 2 - 13); }
     ctx.restore();
   });
 }

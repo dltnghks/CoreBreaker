@@ -345,13 +345,12 @@ test("raises post-wave-5 density, brick health, and boss health", async () => {
   assert.match(balance, /echo-breaker-balance-v3/);
 });
 
-test("renders every destructible brick health as large outlined white text", async () => {
+test("does not render remaining brick health numbers", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /else if \(brick\.trait !== "indestructible"\)/);
-  assert.match(source, /ctx\.fillStyle = "#ffffff"/);
-  assert.match(source, /ctx\.font = "900 18px monospace"/);
-  assert.match(source, /ctx\.strokeText\(hpText/);
-  assert.match(source, /ctx\.font = "900 44px monospace"/);
+  const renderer = await readFile(new URL("../app/game-renderer.ts", import.meta.url), "utf8");
+  assert.match(renderer, /BOSS CORE/);
+  assert.doesNotMatch(renderer, /String\(Math\.max\(0, Math\.ceil\(brick\.hp\)\)\)/);
+  assert.doesNotMatch(renderer, /strokeText\(hp/);
 });
 
 test("propagates paddle debuffs and keeps barrier state accessible in the in-game HUD", async () => {
@@ -599,7 +598,7 @@ test("uses neutral common colors and highlights explicit skill values", async ()
   const lab = await readFile(new URL("../app/skill-lab/page.tsx", import.meta.url), "utf8");
   const labCss = await readFile(new URL("../app/skill-lab/skill-lab.module.css", import.meta.url), "utf8");
   const commonColors = [...config.matchAll(/"common-[^"]+": "(#[0-9a-f]+)"/g)].map((match) => match[1]);
-  assert.equal(commonColors.length, 12);
+  assert.equal(commonColors.length, 14);
   assert.ok(commonColors.every((color) => color === "#9aa3b2"));
   assert.match(source, /common: \{ tag: "COMMON", color: "#9aa3b2" \}/);
   assert.match(lab, /common: "#9aa3b2"/);

@@ -12,6 +12,7 @@ const policy = await load("/app/bot-policy.ts");
 const benchmark = await load("/app/benchmark-headless.ts");
 const waves = await load("/app/wave-config.ts");
 const skills = await load("/app/skill-config.ts");
+const projection = await load("/app/game-runtime-projection.ts");
 
 test("canonical interactive runs own skill, wave, reward, and resume phases", () => {
   const state = engine.createCanonicalState({ seed: 20260730, targetWave: 2, interactive: true });
@@ -46,6 +47,364 @@ test("canonical state serialization restores RNG and command state exactly", () 
   const right = engine.dispatchCanonicalCommand(restored, { type: "reroll-skills" });
   assert.deepEqual(left.outcome, right.outcome);
   assert.deepEqual(engine.canonicalSnapshot(restored), engine.canonicalSnapshot(state));
+});
+
+test("canonical combat preserves fractional damage through the HP boundary", () => {
+  assert.equal(engine.canonicalIntegerCombatAmount(0), 0);
+  assert.equal(engine.canonicalIntegerCombatAmount(0.4), 1);
+  assert.equal(engine.canonicalIntegerCombatAmount(1.49), 1);
+  assert.equal(engine.canonicalIntegerCombatAmount(1.5), 2);
+  assert.equal(engine.canonicalIntegerCombatAmount(Number.POSITIVE_INFINITY), 0);
+
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  definitions[0] = { ...definitions[0], pattern: [".....n......"] };
+  const configuredSkills = skills.DEFAULT_SKILLS.map((skill) => skill.id === "warrior-smash"
+    ? { ...skill, levels: [1.6, 1.6, 1.6], magicDamage: [1.6, 1.6, 1.6], traitConfigs: skill.traitConfigs.map((trait) => trait.kind === "smash" ? { ...trait, values: [1.6, 1.6, 1.6] } : trait) }
+    : skill);
+  const state = engine.createCanonicalState({ seed: 20260805, targetWave: 1, waves: definitions, skills: configuredSkills, startingSkills: ["warrior-smash"] });
+  const brick = state.bricks[0];
+  brick.hp = brick.maxHp = 20;
+  const ball = state.balls[0];
+  ball.attackPower = 1.6;
+  ball.x = brick.x + brick.w / 2;
+  ball.y = brick.y + brick.h + ball.radius - 1;
+  ball.vx = 0;
+  ball.vy = -320;
+
+  const result = engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  const damageEvents = result.events.filter((event) => event.type === "brick-damaged");
+  assert.deepEqual(damageEvents.map((event) => [event.damageType, event.damage]), [["physical", 1.6], ["magic", 1.6]]);
+  assert.ok(damageEvents.some((event) => !Number.isInteger(event.damage)));
+  assert.ok(Math.abs(brick.hp - 16.8) < 1e-9);
+  assert.equal(state.physicalDamage, 1.6);
+  assert.equal(state.magicDamage, 1.6);
+  assert.equal(state.totalDamage, 3.2);
+  assert.equal(state.skillMetrics["warrior-smash"].damage, 1.6);
+});
+
+test("Skill Lab custom skills persist trigger, traits, archive state, and integer damage channels", () => {
+  const custom = {
+    ...skills.DEFAULT_SKILLS.find((skill) => skill.id === "mage-fireball"),
+    id: "custom-test-strike",
+    name: "TEST STRIKE",
+    builtIn: false,
+    enabled: true,
+    triggerType: "brick-hit",
+    traits: ["direct-damage"],
+    damageType: "physical",
+    skillDamage: [3, 3, 3],
+    magicDamage: null,
+    cooldown: [0.2, 0.2, 0.2],
+  };
+  const normalized = skills.normalizeSkillConfigs([custom]);
+  const restored = normalized.find((skill) => skill.id === custom.id);
+  assert.ok(restored);
+  assert.deepEqual(restored.traits, ["direct-damage"]);
+  assert.equal(restored.triggerType, "brick-hit");
+  assert.equal(restored.damageType, "physical");
+
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  definitions[0] = { ...definitions[0], pattern: [".....s......"] };
+  const state = engine.createCanonicalState({ seed: 20260808, targetWave: 1, waves: definitions, skills: normalized, startingSkills: [custom.id] });
+  const brick = state.bricks[0];
+  brick.hp = brick.maxHp = 20;
+  const ball = state.balls[0];
+  ball.x = brick.x + brick.w / 2;
+  ball.y = brick.y + brick.h + ball.radius - 1;
+  ball.vx = 0;
+  ball.vy = -320;
+  const result = engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  assert.deepEqual(result.events.filter((event) => event.type === "brick-damaged").map((event) => [event.damageType, event.damage, event.source ?? null]), [
+    ["physical", 1, null],
+    ["physical", 3, custom.id],
+  ]);
+  assert.equal(state.physicalDamage, 4);
+  assert.equal(state.magicDamage, 0);
+
+  const archived = skills.normalizeSkillConfigs([{ ...custom, enabled: false }]);
+  const archivedState = engine.createCanonicalState({ seed: 20260808, interactive: true, skills: archived });
+  const outcome = engine.stepCanonicalEngine(archivedState, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS).outcome;
+  assert.equal(outcome.type, "start-skill");
+  assert.ok(outcome.choices.every((choice) => choice.upgrade.id !== custom.id));
+});
+
+test("custom break triggers apply selected magic splash only after destruction", () => {
+  const custom = {
+    ...skills.DEFAULT_SKILLS.find((skill) => skill.id === "warrior-shockwave"),
+    id: "custom-break-wave",
+    name: "BREAK WAVE",
+    builtIn: false,
+    enabled: true,
+    triggerType: "brick-break",
+    traits: ["splash"],
+    damageType: "magic",
+    skillDamage: [2, 2, 2],
+    magicDamage: [2, 2, 2],
+    cooldown: [0.2, 0.2, 0.2],
+  };
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  definitions[0] = { ...definitions[0], pattern: [".....ss....."] };
+  const state = engine.createCanonicalState({ seed: 20260809, targetWave: 1, waves: definitions, skills: skills.normalizeSkillConfigs([custom]), startingSkills: [custom.id] });
+  const [origin, neighbor] = state.bricks;
+  origin.hp = origin.maxHp = 1;
+  neighbor.hp = neighbor.maxHp = 10;
+  const ball = state.balls[0];
+  ball.x = origin.x + origin.w / 2;
+  ball.y = origin.y + origin.h + ball.radius - 1;
+  ball.vx = 0;
+  ball.vy = -320;
+  engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  assert.equal(origin.alive, false);
+  assert.equal(neighbor.hp, 8);
+  assert.equal(state.magicDamage, 2);
+});
+
+test("Skill Lab create-field effects use the shared active-effect pipeline", () => {
+  const base = skills.DEFAULT_SKILLS.find((skill) => skill.id === "mage-fireball");
+  const custom = {
+    ...base,
+    id: "custom-configured-field",
+    name: "CONFIGURED FIELD",
+    builtIn: false,
+    enabled: true,
+    triggerType: "brick-hit",
+    effects: [{
+      id: "field",
+      kind: "create-field",
+      trigger: "on-hit",
+      target: "area",
+      order: 40,
+      values: [1, 1, 1],
+      unit: "count",
+      damageType: "magic",
+      damage: [0, 0, 0],
+      damageSource: "configured",
+      interval: [1, 1, 1],
+      duration: [3, 3, 3],
+      radius: [100, 100, 100],
+      enabled: true,
+    }],
+    evolutionEffects: [{
+      id: "field-tick",
+      kind: "periodic-damage",
+      trigger: "while-active",
+      target: "area",
+      order: 70,
+      values: [0.5, 0.5, 0.5],
+      unit: "seconds",
+      damageType: "magic",
+      damage: [5, 5, 5],
+      damageSource: "configured",
+      interval: [0.5, 0.5, 0.5],
+      duration: [0, 0, 0],
+      radius: [0, 0, 0],
+      enabled: true,
+    }],
+  };
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [".....s......"] }));
+  const state = engine.createCanonicalState({ seed: 9411, targetWave: 1, waves: definitions, skills: skills.normalizeSkillConfigs([custom]), startingSkills: [...Array(4).fill(custom.id)] });
+  const brick = state.bricks[0]; brick.hp = brick.maxHp = 1000;
+  const ball = state.balls[0]; ball.x = brick.x + brick.w / 2; ball.y = brick.y + brick.h + ball.radius - 1; ball.vx = 0; ball.vy = -320;
+  engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  assert.equal(state.gravityWells.length, 1);
+  assert.equal(state.gravityWells[0].activeEffects[0].damage, 5);
+  const before = brick.hp;
+  for (let tick = 0; tick < 80; tick += 1) engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  assert.ok(brick.hp < before);
+});
+
+test("generic configured damage, status, and skill-source field effects execute", () => {
+  const base = skills.DEFAULT_SKILLS.find((skill) => skill.id === "mage-fireball");
+  const custom = skills.normalizeSkillConfigs([{
+    ...base,
+    id: "custom-generic-effects",
+    builtIn: false,
+    effects: [
+      { id: "damage", kind: "damage", trigger: "on-hit", target: "hit", order: 10, values: [1, 1, 1], unit: "damage", damageType: "magic", damage: [3, 3, 3], damageSource: "configured", interval: [1, 1, 1], duration: [0, 0, 0], radius: [0, 0, 0], enabled: true },
+      { id: "status", kind: "apply-status", trigger: "on-hit", target: "hit", order: 20, values: [2, 2, 2], unit: "seconds", damageType: "magic", damage: [1, 1, 1], damageSource: "configured", status: "freeze", interval: [1, 1, 1], duration: [0, 0, 0], radius: [0, 0, 0], enabled: true },
+    ],
+  }]).find((skill) => skill.id === "custom-generic-effects");
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [".....s......"] }));
+  const state = engine.createCanonicalState({ seed: 9412, targetWave: 1, waves: definitions, skills: [custom], startingSkills: [custom.id] });
+  const brick = state.bricks[0]; brick.hp = brick.maxHp = 20;
+  const ball = state.balls[0]; ball.x = brick.x + brick.w / 2; ball.y = brick.y + brick.h + ball.radius - 1; ball.vx = 0; ball.vy = -320;
+  engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  assert.ok(brick.hp < 20);
+  assert.ok(brick.traitLockTime > 0);
+});
+
+test("built-in skills keep their behavior when Skill Lab changes the damage channel", () => {
+  const smash = skills.DEFAULT_SKILLS.find((skill) => skill.id === "warrior-smash");
+  const configured = skills.normalizeSkillConfigs([{ ...smash, damageType: "physical", skillDamage: [3, 3, 3], magicDamage: null }]);
+  const state = engine.createCanonicalState({ seed: 20260810, targetWave: 1, skills: configured, startingSkills: ["warrior-smash"] });
+  assert.deepEqual(engine.canonicalSkillDamagePacket(state, "warrior-smash"), { amount: 3, damageType: "physical" });
+  assert.equal(engine.canonicalSkillMagicDamage(state, "warrior-smash"), 0);
+});
+
+test("Skill Lab stores independent values and damage channels for every skill trait", () => {
+  const expectedTraits = {
+    "warrior-smash": "smash",
+    "warrior-execute": "execute",
+    "warrior-crush": "crush",
+    "archer-focus": "focus",
+    "archer-weakpoint": "weakpoint",
+    "mage-mana-blast": "mana-seal",
+  };
+  for (const [id, trait] of Object.entries(expectedTraits)) {
+    const configured = skills.DEFAULT_SKILLS.find((skill) => skill.id === id);
+    assert.ok(configured.traits.includes(trait), `${id} should own ${trait}`);
+    assert.ok(configured.traitConfigs.some((entry) => entry.kind === trait), `${id} should configure ${trait}`);
+  }
+
+  const fireball = skills.DEFAULT_SKILLS.find((skill) => skill.id === "mage-fireball");
+  const edited = {
+    ...fireball,
+    traitConfigs: fireball.traitConfigs.map((trait) => trait.kind === "burn"
+      ? { ...trait, values: [7, 8, 9], damageType: "physical", damage: [4, 5, 6] }
+      : { ...trait, values: [...trait.values], damage: [...trait.damage] }),
+  };
+  const restored = skills.normalizeSkillConfigs([edited]).find((skill) => skill.id === "mage-fireball");
+  assert.deepEqual(restored.traitConfigs.find((trait) => trait.kind === "burn"), {
+    kind: "burn",
+    values: [7, 8, 9],
+    unit: "seconds",
+    damageType: "physical",
+    damage: [4, 5, 6],
+  });
+  assert.notDeepEqual(restored.traitConfigs.find((trait) => trait.kind === "splash").values, [7, 8, 9]);
+});
+
+test("Skill Lab exposes semantic effect types instead of legacy trait wrappers", () => {
+  const blackHole = skills.DEFAULT_SKILLS.find((skill) => skill.id === "mage-black-hole");
+  assert.ok(blackHole.effects.some((effect) => effect.kind === "black-hole"));
+  assert.ok(blackHole.effects.every((effect) => effect.kind !== "trait"));
+  const migrated = skills.normalizeSkillConfigs([{
+    ...blackHole,
+    effects: [{ ...blackHole.effects[0], id: "legacy", kind: "trait", trait: "black-hole" }],
+  }]).find((skill) => skill.id === "mage-black-hole");
+  assert.ok(migrated.effects.some((effect) => effect.kind === "black-hole"));
+  assert.ok(migrated.effects.every((effect) => effect.kind !== "trait"));
+});
+
+test("disabled semantic effects remain disabled after normalization and do not activate", () => {
+  const fireball = skills.DEFAULT_SKILLS.find((skill) => skill.id === "mage-fireball");
+  const edited = {
+    ...fireball,
+    effects: fireball.effects.map((effect) => effect.kind === "burn" ? { ...effect, enabled: false } : effect),
+  };
+  const restored = skills.normalizeSkillConfigs([edited]).find((skill) => skill.id === "mage-fireball");
+  assert.equal(restored.effects.find((effect) => effect.kind === "burn").enabled, false);
+
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  definitions[0] = { ...definitions[0], pattern: [".....s......"] };
+  const state = engine.createCanonicalState({ seed: 20260813, targetWave: 1, waves: definitions, skills: [restored], startingSkills: ["mage-fireball"] });
+  const brick = state.bricks[0];
+  const ball = state.balls[0];
+  ball.x = brick.x + brick.w / 2;
+  ball.y = brick.y + brick.h + ball.radius - 1;
+  ball.vx = 0;
+  ball.vy = -320;
+  engine.stepCanonicalEngine(state, { move: 0, aimX: engine.GAME_WIDTH / 2, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  assert.equal(brick.burnTime, 0);
+});
+
+test("semantic collision effects honor their configured trigger", () => {
+  const fireball = skills.DEFAULT_SKILLS.find((skill) => skill.id === "mage-fireball");
+  const configured = skills.normalizeSkillConfigs([{
+    ...fireball,
+    effects: fireball.effects.map((effect) => effect.kind === "burn" ? { ...effect, trigger: "while-active" } : effect),
+  }]).find((skill) => skill.id === "mage-fireball");
+  assert.equal(configured.effects.find((effect) => effect.kind === "burn").trigger, "while-active");
+
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  definitions[0] = { ...definitions[0], pattern: [".....s......"] };
+  const state = engine.createCanonicalState({ seed: 20260814, targetWave: 1, waves: definitions, skills: [configured], startingSkills: ["mage-fireball"] });
+  const brick = state.bricks[0];
+  const ball = state.balls[0];
+  ball.x = brick.x + brick.w / 2;
+  ball.y = brick.y + brick.h + ball.radius - 1;
+  ball.vx = 0;
+  ball.vy = -320;
+  engine.stepCanonicalEngine(state, { move: 0, aimX: engine.GAME_WIDTH / 2, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  assert.equal(brick.burnTime, 0);
+});
+
+test("Skill Lab trigger edits change when an existing skill activates", () => {
+  const smash = skills.DEFAULT_SKILLS.find((skill) => skill.id === "warrior-smash");
+  const configured = skills.normalizeSkillConfigs([{ ...smash, triggerType: "repeat-hit", trigger: "같은 블록 연속 타격" }]);
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  definitions[0] = { ...definitions[0], pattern: [".....s......"] };
+  const state = engine.createCanonicalState({ seed: 20260811, targetWave: 1, waves: definitions, skills: configured, startingSkills: ["warrior-smash"] });
+  const brick = state.bricks[0];
+  brick.hp = brick.maxHp = 20;
+  const collide = () => {
+    const ball = state.balls[0];
+    ball.x = brick.x + brick.w / 2;
+    ball.y = brick.y + brick.h + ball.radius - 1;
+    ball.vx = 0;
+    ball.vy = -320;
+    return engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  };
+  const first = collide();
+  assert.ok(first.events.every((event) => event.type !== "brick-damaged" || event.source !== "warrior-smash"));
+  const second = collide();
+  assert.ok(second.events.some((event) => event.type === "brick-damaged" && event.source === "warrior-smash"));
+});
+
+test("shared application scope prevents different balls from bypassing one skill cooldown", () => {
+  const custom = {
+    ...skills.DEFAULT_SKILLS.find((skill) => skill.id === "mage-fireball"),
+    id: "custom-shared-strike",
+    name: "SHARED STRIKE",
+    builtIn: false,
+    enabled: true,
+    applicationScope: "shared",
+    triggerType: "brick-hit",
+    traits: ["direct-damage"],
+    damageType: "magic",
+    skillDamage: [2, 2, 2],
+    magicDamage: [2, 2, 2],
+    cooldown: [3, 3, 3],
+  };
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  definitions[0] = { ...definitions[0], pattern: ["....s..s...."] };
+  const state = engine.createCanonicalState({ seed: 20260812, targetWave: 1, waves: definitions, skills: skills.normalizeSkillConfigs([custom]), startingSkills: [custom.id] });
+  const firstBall = state.balls[0];
+  const secondBall = { ...firstBall, x: 450, y: 700, cooldowns: {}, skillCharges: {}, payloads: { ...firstBall.payloads }, temporary: true, temporaryTime: 30, canTriggerSkills: true };
+  state.balls.push(secondBall);
+  const collide = (ball, brick) => {
+    ball.x = brick.x + brick.w / 2;
+    ball.y = brick.y + brick.h + ball.radius - 1;
+    ball.vx = 0;
+    ball.vy = -320;
+  };
+  collide(firstBall, state.bricks[0]);
+  engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  assert.ok(state.sharedSkillCooldowns[custom.id] > 0);
+  assert.equal(secondBall.cooldowns[custom.id], state.sharedSkillCooldowns[custom.id]);
+
+  firstBall.x = 450; firstBall.y = 700; firstBall.vx = 0; firstBall.vy = -320;
+  secondBall.cooldowns[custom.id] = 0;
+  collide(secondBall, state.bricks[1]);
+  const result = engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  assert.ok(result.events.every((event) => event.type !== "brick-damaged" || event.source !== custom.id));
+});
+
+test("restoring a legacy snapshot preserves fractional damage totals", () => {
+  const state = engine.createCanonicalState({ seed: 20260806, targetWave: 1 });
+  state.bricks[0].hp = 2.6;
+  state.bricks[0].maxHp = 4.4;
+  state.totalDamage = 10.6;
+  state.physicalDamage = 4.4;
+  state.magicDamage = 6.2;
+  state.skillMetrics["mage-fireball"] = { activations: 1, damage: 2.6, kills: 0 };
+  const restored = engine.restoreCanonicalState(engine.serializeCanonicalState(state));
+  assert.equal(restored.bricks[0].hp, 3);
+  assert.equal(restored.bricks[0].maxHp, 4);
+  assert.equal(restored.totalDamage, 10.6);
+  assert.equal(restored.physicalDamage, 4.4);
+  assert.equal(restored.magicDamage, 6.2);
+  assert.equal(restored.skillMetrics["mage-fireball"].damage, 2.6);
 });
 
 test("a boss wave ends when the boss core is destroyed even if reinforcements survive", () => {
@@ -323,6 +682,10 @@ test("headless benchmark is deterministic for a seed and persists parity version
   assert.equal(first.engineVersion, engine.ENGINE_VERSION);
   assert.equal(first.engineParity, engine.ENGINE_PARITY);
   assert.equal(first.seed, request.seed);
+  assert.ok(Number.isInteger(first.physicalDamage));
+  assert.ok(Number.isInteger(first.magicDamage));
+  assert.ok(Number.isInteger(first.finalSnapshot.totalDamage));
+  assert.ok(Object.values(first.skillMetrics).every((metric) => !metric || Number.isInteger(metric.damage)));
 });
 
 test("headless timeouts preserve a replayable forensic snapshot", () => {
@@ -860,6 +1223,20 @@ test("black-hole activations create independent seeded wells", () => {
   assert.notEqual(state.gravityWells[0].y, state.gravityWells[1].y);
 });
 
+test("Skill Lab black-hole evolution effects create configurable periodic damage", () => {
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [".....s......"] }));
+  const state = engine.createCanonicalState({ seed: 9410, targetWave: 1, waves: definitions, startingSkills: [...Array(4).fill("mage-black-hole")] });
+  const brick = state.bricks[0]; brick.hp = brick.maxHp = 1000;
+  const ball = state.balls[0]; ball.x = brick.x + brick.w / 2; ball.y = brick.y + brick.h + ball.radius - 1; ball.vx = 0; ball.vy = -320;
+  engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  const well = state.gravityWells[0];
+  assert.ok(well.activeEffects.some((effect) => effect.id === "black-hole-evolution-periodic-damage"));
+  assert.equal(well.activeEffects.find((effect) => effect.id === "black-hole-evolution-periodic-damage").interval, 0.5);
+  const before = brick.hp;
+  for (let tick = 0; tick < 80; tick += 1) engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  assert.ok(brick.hp < before, "the configured while-active effect must deal periodic damage");
+});
+
 test("boss rewards immediately update stateful common passives", () => {
   const state = engine.createCanonicalState({ seed: 9101, targetWave: 1, startingSkills: ["common-wide", "common-ball-size", "common-damage", "common-xp"] });
   const before = { width: state.paddleWidth, radius: state.balls[0].radius, attack: state.balls[0].attackPower, core: state.maxCoreHp };
@@ -871,6 +1248,25 @@ test("boss rewards immediately update stateful common passives", () => {
   assert.ok(state.balls[0].attackPower > before.attack);
   assert.ok(state.maxCoreHp > before.core);
   assert.equal(state.coreHp, state.maxCoreHp);
+});
+
+test("boss rewards evolve any owned skill directly to level three and record the fourth pick", () => {
+  const state = engine.createCanonicalState({ seed: 9102, targetWave: 1, startingSkills: ["mage-fireball"] });
+  assert.equal(state.upgrades.filter((id) => id === "mage-fireball").length, 1);
+
+  state.phase = "wave-cleared";
+  state.clearedBoss = true;
+  const reward = engine.dispatchCanonicalCommand(state, { type: "acknowledge-wave-clear" });
+  assert.equal(reward.outcome.type, "boss-reward");
+  assert.ok(reward.outcome.choices.includes("mage-fireball"));
+
+  const chosen = reward.outcome.choices[0];
+  const result = engine.dispatchCanonicalCommand(state, { type: "choose-boss-reward", skillId: chosen });
+  assert.equal(result.outcome.type, "ready-for-next-wave");
+  assert.equal(state.upgrades.filter((id) => id === chosen).length, 4);
+  assert.equal(state.skillHistory.at(-1).source, "boss");
+  assert.equal(state.skillHistory.at(-1).evolved, true);
+  assert.equal(state.bossEnhancements[chosen], undefined);
 });
 
 test("skill level stops at three and evolution is recorded on the fourth pick", () => {
@@ -908,7 +1304,7 @@ test("canonical paddle collision uses swept contact and legacy rebound semantics
 });
 
 test("the canonical skill catalog contains only normal and common skills", () => {
-  assert.equal(skills.DEFAULT_SKILLS.length, 27);
+  assert.equal(skills.DEFAULT_SKILLS.length, 29);
   assert.ok(skills.DEFAULT_SKILLS.every((entry) => entry.mechanic !== "ultimate"));
   assert.equal("ULTIMATE_SKILLS" in skills, false);
 });
@@ -960,7 +1356,8 @@ test("black-hole radius and evolved damage honor skill level, passive, and boss 
   assert.ok(normal.x >= 150 && normal.x <= engine.GAME_WIDTH - 150);
   assert.ok(normal.y >= 120 && normal.y <= 240);
   assert.ok(enhanced.radius > normal.radius, "boss enhancement must increase black-hole range");
-  assert.ok(enhanced.damagePerSecond >= normal.damagePerSecond, "passive/enhancement must not reduce black-hole damage");
+  const activeDamage = (well) => well.activeEffects.reduce((sum, effect) => sum + effect.damage, 0);
+  assert.ok(activeDamage(enhanced) >= activeDamage(normal), "passive/enhancement must not reduce black-hole damage");
 
   const ball = base.balls[0];
   ball.x = normal.x + normal.radius * 0.7; ball.y = normal.y; ball.vx = 0; ball.vy = 400;
@@ -1125,4 +1522,54 @@ test("core-loss respawn starts at base speed and recovers over five seconds", ()
   assert.equal(respawned.respawnRecoveryDuration, engine.RESPAWN_SPEED_RECOVERY_SECONDS);
   assert.ok(respawned.respawnRecoveryTime > 4.9);
   assert.ok(Math.abs(Math.hypot(respawned.vx, respawned.vy) - Math.hypot(engine.BASE_BALL_VX, engine.BASE_BALL_VY)) < 0.01);
+});
+
+test("temporary rapid-fire balls keep their extra-ball color after the main ball is removed", () => {
+  const state = engine.createCanonicalState({ seed: 20260815, targetWave: 1 });
+  const rapidBall = { ...state.balls[0], temporary: true, temporaryTime: 2, waveBonus: false };
+  state.balls = [rapidBall];
+  const view = {};
+  projection.projectCanonicalBallsIntoGameView(view, state);
+  assert.equal(view.balls.length, 1);
+  assert.equal(view.balls[0].color, "#9a8cff");
+});
+
+test("canonical player skill stats expose neutral defaults and common-skill modifiers", () => {
+  const base = engine.createCanonicalState({ seed: 20260816, targetWave: 1 });
+  const neutral = engine.canonicalCommonPassiveValues(base);
+  assert.equal(neutral.skillDamageMultiplier, 1);
+  assert.equal(neutral.skillRangeMultiplier, 1);
+  assert.equal(neutral.skillDurationMultiplier, 1);
+  assert.equal(neutral.skillCooldownMultiplier, 1);
+  assert.equal(neutral.chainBonus, 0);
+
+  const modified = engine.createCanonicalState({
+    seed: 20260817,
+    targetWave: 1,
+    startingSkills: ["common-skill-range", "common-chain", "common-cooldown"],
+  });
+  const stats = engine.canonicalCommonPassiveValues(modified);
+  assert.equal(stats.skillRangeMultiplier, 1.1);
+  assert.equal(stats.chainBonus, 1);
+  assert.equal(stats.skillCooldownMultiplier, 0.9);
+});
+
+test("common skill damage and duration passives affect canonical skill stats", () => {
+  const state = engine.createCanonicalState({ seed: 20260818, targetWave: 1, startingSkills: ["common-skill-damage", "common-skill-duration"] });
+  const stats = engine.canonicalCommonPassiveValues(state);
+  assert.equal(stats.skillDamageMultiplier, 1.1);
+  assert.equal(stats.skillDurationMultiplier, 1.1);
+});
+
+test("skill benchmark fingerprints change when behavior settings change", () => {
+  const skill = skills.DEFAULT_SKILLS.find((entry) => entry.id === "mage-fireball");
+  const original = skills.skillConfigSignature(skill);
+  const changed = skills.skillConfigSignature({ ...skill, cooldown: [9, 8, 7] });
+  assert.notEqual(original, changed);
+});
+
+test("legacy common upgrade aliases resolve to class skill ids without touching payload ids", () => {
+  assert.equal(skills.canonicalUpgradeId("wide"), "common-wide");
+  assert.equal(skills.canonicalUpgradeId("damage"), "common-damage");
+  assert.equal(skills.canonicalUpgradeId("pierce"), "pierce");
 });

@@ -49,7 +49,7 @@ export function resolveLegacyBrickCollisionsPure(game: GameState, previous: Map<
       if (!brick.alive || brick.trait === "indestructible") continue;
       const collision = circleRectangleCollision(ball, brick, prior.x, prior.y);
       if (!collision) continue;
-      const damage = Math.max(1, ball.attackPower);
+      const damage = Math.max(0, ball.attackPower);
       brick.hp -= damage;
       brick.lastHitPaddleId = ball.sourcePaddleId;
       onEvent?.({ type: brick.hp <= 0 ? "brick-destroyed" : "brick-hit", brick, damage });
