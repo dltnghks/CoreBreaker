@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Upgrade, UpgradeChoice } from "../../_types/game";
-import type { SkillConfig, UpgradeId } from "../../skill-config";
+import { SKILL_VALUE_UNIT_SUFFIX, type SkillConfig, type UpgradeId } from "../../skill-config";
 import { SkillIconArt } from "../SkillIconArt";
 
 const SKILL_VALUE_PARTS = /([+-]?\d+(?:\.\d+)?(?:\/[+-]?\d+(?:\.\d+)?)*(?:~[+-]?\d+(?:\.\d+)?)?(?:%|px|초|개|배|DMG|HP|회|발)?)/g;
@@ -68,7 +68,7 @@ export function SkillSelectionModal({
                 <div className="upgrade-level-values">
                   <span className="next">
                     <small>START</small>
-                    <b>{config.levels[0]}{config.unit}</b>
+                    <b>{config.levels[0]}{SKILL_VALUE_UNIT_SUFFIX[config.unit]}</b>
                     {config.cooldown[0] > 0 && <i>CD {config.cooldown[0]}s</i>}
                   </span>
                 </div>
@@ -116,7 +116,7 @@ export function SkillSelectionModal({
                     className={`${!evolutionChoice && currentLevel === levelIndex ? "next" : currentLevel > levelIndex ? "owned" : ""} ${evolutionChoice && levelIndex === 2 ? "evolution" : ""}`}
                   >
                     <small>LV{levelIndex + 1}</small>
-                    <b>{value}{config!.unit}</b>
+                    <b>{value}{SKILL_VALUE_UNIT_SUFFIX[config!.unit]}</b>
                     {config!.cooldown[levelIndex] > 0 && <i>CD {config!.cooldown[levelIndex]}s</i>}
                   </span>
                 ))}

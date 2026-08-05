@@ -52,7 +52,7 @@ function benchmarkSkillScore(state: CanonicalState, skill: { id: UpgradeId; cate
 
 export function chooseBenchmarkSkill(state: CanonicalState, policy: HeadlessBotPolicy) {
   const random = seededRandom(state.seed ^ 0x51ed270b ^ state.upgrades.length);
-  const available = state.skills.filter((skill) => pickCount(state.upgrades, skill.id) < (skill.evolution ? 4 : 3));
+  const available = state.skills.filter((skill) => pickCount(state.upgrades, skill.id) < (skill.evolutionEnabled ? 4 : 3));
   if (!available.length) return null;
   const offered = available
     .map((skill) => ({ skill, offerRoll: random() }))

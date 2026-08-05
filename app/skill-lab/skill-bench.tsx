@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { BALANCE_STORAGE_KEY, BOT_RESULTS_STORAGE_KEY, DEFAULT_BALANCE_CONFIG, DEFAULT_SKILL_BENCH_CONFIG, DEFAULT_SKILL_BENCH_PROGRESS, normalizeBalanceConfig, normalizeSkillBenchConfig, normalizeSkillBenchProgress, SKILL_BENCH_PROGRESS_KEY, SKILL_BENCH_STORAGE_KEY, type BalanceConfig, type SkillBenchConfig, type SkillBenchProgress } from "../balance-config";
-import { DEFAULT_SKILLS, normalizeSkillConfigs, SKILL_STORAGE_KEY, type SkillCategory, type SkillConfig, type UpgradeId } from "../skill-config";
+import { DEFAULT_SKILLS, normalizeSkillConfigs, skillConfigSignature, SKILL_BUILD_STORAGE_KEY, SKILL_STORAGE_KEY, type SkillCategory, type SkillConfig, type UpgradeId } from "../skill-config";
 import { BENCHMARK_STORAGE_KEY, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConfig, type BenchmarkConfig } from "../benchmark-config";
 import styles from "./skill-lab.module.css";
 import { appHref } from "../site-path";
@@ -10,7 +10,7 @@ import { appHref } from "../site-path";
 const CATEGORIES: SkillCategory[] = ["warrior", "archer", "mage", "common"];
 const CATEGORY_LABELS: Record<SkillCategory, string> = { warrior: "전사", archer: "궁수", mage: "법사", common: "공용" };
 
-type BenchVariant = { batchId?: string; environment?: SkillBenchConfig["environment"]; skillId: UpgradeId | "original"; level: 0 | 1 | 2 | 3; skillValues: [number, number, number]; seed: number };
+type BenchVariant = { batchId?: string; environment?: SkillBenchConfig["environment"]; skillId: UpgradeId | "original"; level: 0 | 1 | 2 | 3; skillValues: [number, number, number]; skillFingerprint?: string; seed: number };
 type BenchRun = { wave?: number; maxBalls?: number; coreHp?: number; score?: number; bricks?: number; maxCombo?: number; evaluationComplete?: boolean; balanceConfig?: BalanceConfig; benchmarkConfig?: BenchmarkConfig | null; skillBench?: BenchVariant | null };
 type GroupStats = { level: 0 | 1 | 2 | 3; count: number; averageWave: number; completionRate: number; averageMaxBalls: number; averageCoreHp: number; averageScore: number; averageBricks: number; averageCombo: number };
 
@@ -56,6 +56,7 @@ export default function SkillBench() {
   const [balance, setBalance] = useState<BalanceConfig>(DEFAULT_BALANCE_CONFIG);
   const [runs, setRuns] = useState<BenchRun[]>([]);
   const [benchmark, setBenchmark] = useState<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
+  const [savedBuild, setSavedBuild] = useState<Array<{ skillId: string; level: 1 | 2 | 3 }>>([]);
   const [message, setMessage] = useState("단일 스킬 또는 여러 스킬을 같은 시드로 비교할 수 있습니다.");
 
   useEffect(() => {
@@ -63,6 +64,13 @@ export default function SkillBench() {
     try { setConfig(normalizeSkillBenchConfig(JSON.parse(localStorage.getItem(SKILL_BENCH_STORAGE_KEY) ?? "null"))); } catch { setConfig(DEFAULT_SKILL_BENCH_CONFIG); }
     try { setBalance(normalizeBalanceConfig(JSON.parse(localStorage.getItem(BALANCE_STORAGE_KEY) ?? "null"))); } catch { setBalance(DEFAULT_BALANCE_CONFIG); }
     try { setBenchmark(normalizeBenchmarkConfig(JSON.parse(localStorage.getItem(BENCHMARK_STORAGE_KEY) ?? "null"))); } catch { setBenchmark(DEFAULT_BENCHMARK_CONFIG); }
+    try {
+      const rawBuild = JSON.parse(localStorage.getItem(SKILL_BUILD_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
+      setSavedBuild(Object.entries(rawBuild).flatMap(([skillId, value]) => {
+        const level = Number(value);
+        return level === 1 || level === 2 || level === 3 ? [{ skillId, level: level as 1 | 2 | 3 }] : [];
+      }));
+    } catch { setSavedBuild([]); }
   }, []);
 
   useEffect(() => {
@@ -96,6 +104,7 @@ export default function SkillBench() {
     const levelKey = JSON.stringify(skill.levels);
     return batchRuns.filter((run) => run.skillBench?.skillId === skill.id
       && JSON.stringify(run.skillBench.skillValues) === levelKey
+      && run.skillBench.skillFingerprint === skillConfigSignature(skill)
       && run.balanceConfig
       && configSignature(normalizeBalanceConfig(run.balanceConfig)) === balanceKey);
   };
@@ -115,7 +124,8 @@ export default function SkillBench() {
   const applyBench = () => {
     if (config.environment !== "original" && selectedIds.length === 0) { setMessage("테스트할 스킬을 하나 이상 선택하세요."); return; }
     const batchId = `bench-${Date.now()}`;
-    const next = { ...config, enabled: true, skillId: selectedSkill.id, skillIds: selectedIds, batchId };
+    const startingBuild = config.environment === "ecosystem" && config.mode === "single" ? savedBuild : [];
+    const next = { ...config, enabled: true, skillId: selectedSkill.id, skillIds: selectedIds, batchId, startingBuild };
     const totalRuns = next.environment === "original" ? next.runsPerVariant : selectedIds.length * next.runsPerVariant * 4;
     const idle = { ...DEFAULT_SKILL_BENCH_PROGRESS, batchId, totalRuns, updatedAt: Date.now() };
     setConfig(next);

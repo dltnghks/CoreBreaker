@@ -1,6 +1,9 @@
 import type { Ball, GameState, PayloadId, DropItem, GravityWell, SkillRunMetric } from "./_types/game";
 import { PLAYER_LINE_Y, type CanonicalBall, type CanonicalState } from "./canonical-engine";
 
+const PLAYER_BALL_COLOR = "#ffffff";
+const EXTRA_BALL_COLOR = "#9a8cff";
+
 /** Numeric values cross the canonical/React boundary at runtime, where a
  * malformed skill/config payload must never turn the HUD into `NaN`. */
 export function finiteNumber(value: unknown, fallback = 0): number {
@@ -35,7 +38,11 @@ export function projectCanonicalBallIntoView(target: Ball, source: CanonicalBall
 
 /** Project canonical simulation fields into the mutable presentation model. */
 export function projectCanonicalBallsIntoGameView(target: GameState, source: CanonicalState) {
-  target.balls = source.balls.map((ball, index) => projectCanonicalBall(ball, { owner: "player", sourcePaddleId: "player", color: index === 0 ? "#ffffff" : "#9a8cff" }));
+  target.balls = source.balls.map((ball) => projectCanonicalBall(ball, {
+    owner: "player",
+    sourcePaddleId: "player",
+    color: ball.temporary || ball.waveBonus ? EXTRA_BALL_COLOR : PLAYER_BALL_COLOR,
+  }));
   target.paddleX = source.paddleX;
   target.paddleWidth = source.paddleWidth;
   target.elapsed = source.elapsed;

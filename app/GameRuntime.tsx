@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GameAudio } from "./game-audio";
-import { DEFAULT_SKILLS, levelValue, NORMAL_SKILLS, normalizeSkillConfigs, SKILL_COLORS, SKILL_MECHANIC_LABELS, SKILL_STORAGE_KEY, skillConfigMap, type ClassSkillId, type SkillCategory, type SkillConfig, type UpgradeId } from "./skill-config";
+import { canonicalUpgradeId, DEFAULT_SKILLS, levelValue, NORMAL_SKILLS, normalizeSkillConfigs, SKILL_BUILD_STORAGE_KEY, SKILL_COLORS, SKILL_MECHANIC_LABELS, SKILL_STORAGE_KEY, skillConfigMap, skillConfigSignature, type ClassSkillId, type SkillCategory, type SkillConfig, type UpgradeId } from "./skill-config";
 import { BALANCE_STORAGE_KEY, BOT_LIVE_STORAGE_KEY, BOT_RESULTS_STORAGE_KEY, DEFAULT_BALANCE_CONFIG, DEFAULT_SKILL_BENCH_CONFIG, DEFAULT_SKILL_BENCH_PROGRESS, normalizeBalanceConfig, normalizeSkillBenchConfig, normalizeSkillBenchProgress, SKILL_BENCH_PROGRESS_KEY, SKILL_BENCH_STORAGE_KEY, type BalanceConfig, type BotWaveSample, type SkillBenchConfig, type SkillBenchProgress } from "./balance-config";
 import { BENCHMARK_STORAGE_KEY, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConfig, type BenchmarkConfig } from "./benchmark-config";
 import { getActiveWaveDefinitions, MAX_WAVE, waveDefinition } from "./wave-config";
@@ -178,23 +178,6 @@ function activePresentationSkill(id: string) {
   return activeSkillMap[id as UpgradeId];
 }
 
-function enhancedSkillValue(id: UpgradeId, level: number, enhancement = 0) {
-  const base = skillValue(id, level);
-  if (!base || enhancement <= 0) return base;
-  const config = activeSkillMap[id];
-  if (!config) return base;
-  const step = Math.max(config.direction === "down" ? 0.2 : 1, Math.abs(config.levels[2] - config.levels[1]));
-  return config.direction === "down" ? Math.max(0.2, base - enhancement * step) : base + enhancement * step;
-}
-
-function formatSkillNumber(value: number) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
-}
-
-function formatSkillDelta(value: number, unit: string) {
-  return `${value >= 0 ? "+" : ""}${formatSkillNumber(value)}${unit}`;
-}
-
 function classSkillColor(id: ClassSkillId) {
   return activeSkillMap[id]?.color ?? (id in SKILL_COLORS ? SKILL_COLORS[id as keyof typeof SKILL_COLORS] : "#d66bff");
 }
@@ -204,7 +187,7 @@ function ghostPaddleY() {
 }
 
 function ghostPaddleWidth(ghost: GhostRecord) {
-  return Math.min(260, 92 + skillValue("wide", upgradeLevel(ghost.upgrades, "wide")));
+  return Math.min(260, 92 + skillValue("common-wide", upgradeLevel(ghost.upgrades.map(canonicalUpgradeId), "common-wide")));
 }
 
 function upgradeLevel(upgrades: UpgradeId[], id: UpgradeId) {
@@ -218,7 +201,7 @@ function skillPickCount(upgrades: UpgradeId[], id: UpgradeId) {
 }
 
 function isSkillEvolved(upgrades: UpgradeId[], id: UpgradeId) {
-  return Boolean(activeSkillMap[id]?.evolution) && skillPickCount(upgrades, id) >= 4;
+  return Boolean(activeSkillMap[id]?.evolutionEnabled) && skillPickCount(upgrades, id) >= 4;
 }
 
 function ballBodyColor(ball: Pick<Ball, "waveBonus" | "temporaryTime" | "visualSkill">) {
@@ -513,7 +496,7 @@ function recordBotWaveSample(game: GameState) {
 function pickUpgradeChoices(existing: UpgradeId[], catalog: Upgrade[], excluded: UpgradeId[] = []) {
   const weighted = catalog
     .filter((upgrade) => !excluded.includes(upgrade.id))
-    .filter((upgrade) => skillPickCount(existing, upgrade.id) < (activeSkillMap[upgrade.id]?.evolution ? 4 : 3))
+    .filter((upgrade) => skillPickCount(existing, upgrade.id) < (activeSkillMap[upgrade.id]?.evolutionEnabled ? 4 : 3))
     .map((upgrade) => ({ upgrade, offerRoll: decisionRandom() }))
     .sort((a, b) => a.offerRoll - b.offerRoll || a.upgrade.id.localeCompare(b.upgrade.id))
     .map(({ upgrade }) => upgrade);
@@ -1245,12 +1228,29 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     configureRunRandom(runSeed);
     if (asBot) botPolicyStateRef.current = createBotPolicyState(runSeed ^ 0x9e3779b9);
     const game = initialGame(activeGhosts, balanceConfigRef.current);
+    if (!asBot && typeof window !== "undefined") {
+      try {
+        const savedBuild = JSON.parse(localStorage.getItem(SKILL_BUILD_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
+        const playtestBuild = Object.entries(savedBuild).flatMap(([id, level]) => {
+          const config = activeSkillMap[id as UpgradeId];
+          const maximum = config?.evolutionEnabled ? 4 : 3;
+          const count = Math.max(0, Math.min(maximum, Math.floor(Number(level) || 0)));
+          return config && count > 0 ? Array.from({ length: count }, () => id as UpgradeId) : [];
+        });
+        game.upgrades = playtestBuild;
+      } catch {
+        // Ignore malformed Skill Lab builds and start with an empty build.
+      }
+    }
     if (asBot && botSkillBenchActiveRef.current) {
       const skillIndex = Math.floor(botCompletedRunsRef.current / perSkillRuns);
       const level = (bench.environment === "original" ? 0 : Math.min(3, Math.floor(withinSkillRun / bench.runsPerVariant))) as 0 | 1 | 2 | 3;
       const skillId = benchQueue[skillIndex] as UpgradeId | "original";
-      botSkillBenchVariantRef.current = { batchId: bench.batchId, environment: bench.environment, skillId, level, skillValues: skillId === "original" ? [0, 0, 0] : [...activeSkillMap[skillId]!.levels], seed: benchSeed! };
-      game.upgrades = skillId === "original" ? [] : Array.from({ length: level }, () => skillId);
+      botSkillBenchVariantRef.current = { batchId: bench.batchId, environment: bench.environment, skillId, level, skillValues: skillId === "original" ? [0, 0, 0] : [...activeSkillMap[skillId]!.levels], skillFingerprint: skillId === "original" ? "original-v1" : skillConfigSignature(activeSkillMap[skillId]!), seed: benchSeed! };
+      const ecosystemBuild = bench.environment === "ecosystem" && bench.mode === "single" && bench.startingBuild.length > 0
+        ? bench.startingBuild.flatMap(({ skillId: buildSkillId, level: buildLevel }) => Array.from({ length: buildLevel }, () => buildSkillId as UpgradeId))
+        : null;
+      game.upgrades = ecosystemBuild ?? (skillId === "original" ? [] : Array.from({ length: level }, () => skillId));
       game.balls.forEach((ball) => syncBallPayloadDisplay(ball, game.upgrades));
       const benchSkill = skillId === "original" ? undefined : activeSkillMap[skillId];
       game.flashes.push({ text: skillId === "original" ? "ORIGINAL // NO SKILLS" : `SKILL BENCH // ${level === 0 ? "BASELINE" : `${benchSkill?.name ?? skillId} LV${level}`}`, x: W / 2, y: H / 2, life: 1.8, color: level === 0 || !benchSkill ? "#8492a9" : benchSkill.color });
@@ -1666,26 +1666,20 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const bossEnhancementCatalog = bossRewardChoices.map((id) => {
     const skill = activeSkillMap[id];
     if (!skill) return null;
-    const game = gameRef.current;
-    const currentEnhancement = game?.bossEnhancements?.[id] ?? 0;
-    const currentLevel = upgradeLevel(game?.upgrades ?? [], id);
-    const currentValue = enhancedSkillValue(id, currentLevel, currentEnhancement);
-    const nextValue = enhancedSkillValue(id, currentLevel, currentEnhancement + 1);
+    const currentLevel = upgradeLevel(gameRef.current?.upgrades ?? [], id);
     return {
       id,
       name: skill.name,
       category: skill.category,
       mechanic: skill.mechanic,
-      tag: `${CLASS_META[skill.category].tag} 쨌 SKILL BOOST`,
+      tag: `${CLASS_META[skill.category].tag} · SKILL EVOLUTION`,
       description: skill.description,
       color: skill.color,
-      enhancement: currentEnhancement + 1,
       currentLevel,
-      currentValue,
-      delta: nextValue - currentValue,
       unit: skill.unit,
+      evolution: skill.evolution ?? "",
     };
-  }).filter((entry): entry is Upgrade & { enhancement: number; currentLevel: number; currentValue: number; delta: number; unit: string } => entry !== null);
+  }).filter((entry): entry is Upgrade & { currentLevel: number; unit: string; evolution: string } => entry !== null);
   const visibleBotResults = benchmarkMode ? botResults.filter((item) => item.benchmarkRuleset === BENCHMARK_RULESET) : botResults;
   const botAverageSurvival = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.elapsed, 0) / visibleBotResults.length : 0;
   const botAverageWave = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.wave, 0) / visibleBotResults.length : 0;
@@ -1843,11 +1837,11 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                       <span className="upgrade-icon" aria-hidden="true"><SkillIconArt id={reward.id} /></span>
                       <strong>{reward.name}</strong>
                       <div className="upgrade-level-values">
-                        <span className="owned"><small>현재 LV{reward.currentLevel}</small><b>{formatSkillNumber(reward.currentValue)}{reward.unit}</b></span>
-                        <span className="next"><small>보스 강화</small><b>{formatSkillDelta(reward.delta, reward.unit)}</b></span>
+                        <span className="owned"><small>CURRENT LV{reward.currentLevel}</small><b>READY</b></span>
+                        <span className="next"><small>BOSS REWARD</small><b>EVOLVE</b></span>
                       </div>
-                      <p><SkillDescriptionText text={reward.description} /> <strong className="skill-value-accent">({formatSkillDelta(reward.delta, reward.unit)})</strong></p>
-                      <em>SKILL BOOST +{reward.enhancement}</em>
+                      <p><SkillDescriptionText text={reward.description} /> <strong className="skill-value-accent">{reward.evolution}</strong></p>
+                      <em>SKILL EVOLUTION</em>
                     </button>
                   ))}
                 </div>

@@ -1,3 +1,4 @@
+import { canonicalUpgradeId } from "./skill-config";
 import type { ClassSkillId, SkillConfig, UpgradeId } from "./skill-config";
 import type { GameState, GhostRecord, ItemKind } from "./_types/game";
 import { beginGameCanvasFrame, endGameCanvasFrame, renderBalls, renderBricks, renderHud, renderPaddles, renderTransientFeedback, renderWorldOverlays } from "./game-renderer";
@@ -103,7 +104,8 @@ const { ctx } = frame;
 renderBricks({ ctx, game, width: W, height: H, playerLineY: PLAYER_LINE_Y, traitColors: BRICK_TRAIT_COLORS, itemData: ITEM_DATA, classSkillColor });
 const magnetLinks: Array<{ x: number; y: number; itemX: number; itemY: number; alpha: number; color: string }> = [];
 const addMagnetLinks = (x: number, y: number, width: number, upgrades: UpgradeId[]) => {
-  const rangeBonus = Math.max(skillValue("magnet", upgradeLevel(upgrades, "magnet")), skillValue("common-magnet", upgradeLevel(upgrades, "common-magnet")));
+  const normalizedUpgrades = upgrades.map(canonicalUpgradeId);
+  const rangeBonus = skillValue("common-magnet", upgradeLevel(normalizedUpgrades, "common-magnet"));
   if (rangeBonus <= 0) return;
   const range = width / 2 + rangeBonus;
   game.items.forEach((item) => { if (item.y > y + 12 || item.y < y - range || Math.abs(item.x - x) > range) return; magnetLinks.push({ x, y, itemX: item.x, itemY: item.y, alpha: .18 + .28 * (1 - Math.min(1, Math.abs(item.y - y) / range)), color: classSkillColor("common-magnet") }); });

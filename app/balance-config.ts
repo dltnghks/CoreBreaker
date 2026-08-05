@@ -34,6 +34,7 @@ export type SkillBenchConfig = {
   category: string;
   runsPerVariant: 3 | 5 | 10;
   batchId: string;
+  startingBuild: Array<{ skillId: string; level: 1 | 2 | 3 }>;
 };
 
 export type SkillBenchProgress = {
@@ -63,6 +64,7 @@ export const DEFAULT_SKILL_BENCH_CONFIG: SkillBenchConfig = {
   category: "frame",
   runsPerVariant: 5,
   batchId: "",
+  startingBuild: [],
 };
 
 export const DEFAULT_SKILL_BENCH_PROGRESS: SkillBenchProgress = {
@@ -121,6 +123,16 @@ export function normalizeSkillBenchConfig(saved: unknown): SkillBenchConfig {
   const runs = Number(source.runsPerVariant);
   const skillId = typeof source.skillId === "string" && source.skillId ? source.skillId : DEFAULT_SKILL_BENCH_CONFIG.skillId;
   const skillIds = Array.isArray(source.skillIds) ? [...new Set(source.skillIds.filter((id): id is string => typeof id === "string" && id.length > 0))] : [skillId];
+  const startingBuild = Array.isArray(source.startingBuild)
+    ? source.startingBuild.flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const id = (entry as { skillId?: unknown }).skillId;
+      const level = Number((entry as { level?: unknown }).level);
+      return typeof id === "string" && id.length > 0 && (level === 1 || level === 2 || level === 3)
+        ? [{ skillId: id, level: level as 1 | 2 | 3 }]
+        : [];
+    })
+    : [];
   return {
     enabled: source.enabled === true,
     environment: source.environment === "isolated" || source.environment === "ecosystem" ? source.environment : "original",
@@ -131,6 +143,7 @@ export function normalizeSkillBenchConfig(saved: unknown): SkillBenchConfig {
     category: typeof source.category === "string" && source.category ? source.category : DEFAULT_SKILL_BENCH_CONFIG.category,
     runsPerVariant: runs === 3 || runs === 10 ? runs : 5,
     batchId: typeof source.batchId === "string" ? source.batchId : "",
+    startingBuild,
   };
 }
 
