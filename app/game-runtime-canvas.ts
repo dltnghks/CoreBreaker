@@ -1,4 +1,4 @@
-import { canonicalUpgradeId } from "./skill-config";
+import { SKILL_VFX_CONFIG, canonicalUpgradeId } from "./skill-config";
 import type { ClassSkillId, SkillConfig, UpgradeId } from "./skill-config";
 import type { GameState, GhostRecord, ItemKind } from "./_types/game";
 import { beginGameCanvasFrame, endGameCanvasFrame, renderBalls, renderBricks, renderHud, renderPaddles, renderTransientFeedback, renderWorldOverlays } from "./game-renderer";
@@ -27,23 +27,6 @@ const RADIAL_LIGHTNING_FRAME_SIZE = 64;
 const RADIAL_LIGHTNING_FRAMES = 8;
 const SKILL_SHEET_COLUMNS = 8;
 const SKILL_SHEET_ROWS = 5;
-const SKILL_EFFECT_SCALE: Partial<Record<ClassSkillId, number>> = {
-  "warrior-smash": 0.82,
-  "warrior-shockwave": 0.72,
-  "warrior-execute": 0.86,
-  "warrior-crush": 0.76,
-  "warrior-guard": 0.68,
-  "archer-rapid": 0.66,
-  "archer-pierce": 1.12,
-  "archer-ricochet": 0.82,
-  "archer-focus": 0.72,
-  "archer-weakpoint": 0.76,
-  "mage-fireball": 0.76,
-  "mage-lightning": 0.82,
-  "mage-freeze": 0.72,
-  "mage-black-hole": 0.92,
-  "mage-mana-blast": 0.76,
-};
 
 const ITEM_DATA: Record<ItemKind, { label: string; symbol: string; color: string }> = {
   multiball: { label: "MULTI BALL", symbol: "+", color: "#ffcf4a" },
@@ -214,6 +197,7 @@ game.effects.forEach((effect) => {
   ctx.shadowBlur = 18;
   if (effect.kind === "skill") {
     const effectSkillId = effect.skillId;
+    const skillVfx = effectSkillId ? SKILL_VFX_CONFIG[effectSkillId] : undefined;
     const spriteRow = effectSkillId?.startsWith("warrior-")
       ? { sheet: 0, row: ["warrior-smash", "warrior-shockwave", "warrior-execute", "warrior-crush", "warrior-guard"].indexOf(effectSkillId) }
       : effectSkillId?.startsWith("archer-")
@@ -226,14 +210,16 @@ game.effects.forEach((effect) => {
       const frame = Math.min(SKILL_SHEET_COLUMNS - 1, Math.floor(progress * SKILL_SHEET_COLUMNS));
       const frameWidth = spriteImage.naturalWidth / SKILL_SHEET_COLUMNS;
       const frameHeight = spriteImage.naturalHeight / SKILL_SHEET_ROWS;
-      const skillScale = effectSkillId ? (SKILL_EFFECT_SCALE[effectSkillId] ?? 1) : 1;
+      const skillScale = skillVfx?.scale ?? 1;
       const spriteSize = effect.size * skillScale * (0.9 + progress * 0.28);
       const frameAspect = frameWidth / Math.max(1, frameHeight);
       const drawWidth = spriteSize * frameAspect;
       ctx.save();
       ctx.translate(effect.x, effect.y);
-      if (effectSkillId?.startsWith("archer-") && (effect.x2 !== effect.x || effect.y2 !== effect.y)) {
+      if (skillVfx?.rotation === "direction" && (effect.x2 !== effect.x || effect.y2 !== effect.y)) {
         ctx.rotate(Math.atan2(effect.y2 - effect.y, effect.x2 - effect.x));
+      } else if (skillVfx?.rotation === "spin") {
+        ctx.rotate(progress * Math.PI * 2);
       }
       ctx.globalAlpha = Math.min(1, remaining * 1.85);
       ctx.imageSmoothingEnabled = false;
@@ -400,7 +386,7 @@ game.effects.forEach((effect) => {
     ctx.shadowBlur = 16;
     ctx.lineCap = "round";
     const effectSkillId = effect.skillId;
-    const skillScale = effectSkillId ? (SKILL_EFFECT_SCALE[effectSkillId] ?? 1) : 1;
+    const skillScale = SKILL_VFX_CONFIG[effectSkillId as keyof typeof SKILL_VFX_CONFIG]?.scale ?? 1;
     const spriteRow = effectSkillId?.startsWith("warrior-")
       ? { sheet: 0, row: ["warrior-smash", "warrior-shockwave", "warrior-execute", "warrior-crush", "warrior-guard"].indexOf(effectSkillId) }
       : effectSkillId?.startsWith("archer-")

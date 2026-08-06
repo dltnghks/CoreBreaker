@@ -1,5 +1,5 @@
 import { DEFAULT_BALANCE_CONFIG, type BalanceConfig, type BotWaveSample } from "./balance-config";
-import { DEFAULT_SKILLS, normalizeSkillConfigs, SKILL_MECHANIC_LABELS, SKILL_TRAIT_PRIORITY, type LegacyUpgradeId, type SkillConfig, type SkillDamageType, type SkillEffectConfig, type SkillTrait, type UpgradeId } from "./skill-config";
+import { DEFAULT_SKILLS, normalizeSkillConfigs, SKILL_MECHANIC_LABELS, SKILL_TRAIT_PRIORITY, SKILL_VFX_CONFIG, type LegacyUpgradeId, type SkillConfig, type SkillDamageType, type SkillEffectConfig, type SkillTrait, type UpgradeId } from "./skill-config";
 import { WAVE_DEFINITIONS, waveDefinitionFrom, type WaveDefinition } from "./wave-config";
 import { circleRectangleCollision, sweptPaddleContact } from "./collision-physics";
 import type { GameEvent } from "./game-events";
@@ -1229,7 +1229,7 @@ function triggerCollisionSkills(state: CanonicalState, ball: CanonicalBall, hit:
       const damagePacket = traitDamagePacket(state, config.id, "black-hole");
       const next = { x: Math.max(150, Math.min(GAME_WIDTH - 150, ball.x)), y: 145 + canonicalRandom(state, "world") * 80, radius, life: skillDuration(state, 4), damagePerSecond: 0, damageType: damagePacket.damageType, damageTick: 1, sourceSkillId: config.id, activeEffects: createActiveEffects(state, config, damagePacket.amount) };
       state.gravityWells.push(next);
-      emitCanonicalVisual(state, { kind: "skill", skillId: config.id, x: next.x, y: next.y, radius: radius * 0.7, duration: 0.7, color: config.color });
+      emitCanonicalVisual(state, { kind: "skill", skillId: config.id, x: next.x, y: next.y, radius: radius * 0.7, duration: SKILL_VFX_CONFIG[config.id]?.duration ?? 0.7, color: config.color });
       visualEmitted = true;
       resultApplied = true;
     } else if (config.id === "warrior-shockwave" && hasTrait(state, config, "splash", effectTrigger)) {
@@ -1248,6 +1248,7 @@ function triggerCollisionSkills(state: CanonicalState, ball: CanonicalBall, hit:
     if (!visualEmitted) {
       const centerX = hit.x + hit.w / 2;
       const centerY = hit.y + hit.h / 2;
+      const vfx = SKILL_VFX_CONFIG[config.id];
       const isArcher = config.category === "archer";
       const isMage = config.category === "mage";
       const visualRadius = config.id === "warrior-shockwave"
@@ -1267,7 +1268,7 @@ function triggerCollisionSkills(state: CanonicalState, ball: CanonicalBall, hit:
                     : isMage
                       ? 64
                       : 66;
-      const visualDuration = config.id === "warrior-shockwave"
+      const visualDuration = vfx?.duration ?? (config.id === "warrior-shockwave"
         ? 0.62
         : config.id === "mage-fireball"
           ? 0.72
@@ -1282,17 +1283,19 @@ function triggerCollisionSkills(state: CanonicalState, ball: CanonicalBall, hit:
                   : isArcher
                     ? 0.45
                     : isMage
-                      ? 0.55
-                      : 0.5;
-      const visualX = config.id === "warrior-guard" ? GAME_WIDTH / 2 : centerX;
-      const visualY = config.id === "warrior-guard" ? PLAYER_LINE_Y : centerY;
+                    ? 0.55
+                    : 0.5);
+      const visualX = vfx?.anchor === "paddle" ? GAME_WIDTH / 2 : centerX;
+      const visualY = vfx?.anchor === "paddle" ? PLAYER_LINE_Y : centerY;
+      const isDirectional = vfx?.anchor === "trajectory";
+      const isPaddle = vfx?.anchor === "paddle";
       emitCanonicalVisual(state, {
         kind: "skill",
         skillId: config.id,
         x: visualX,
         y: visualY,
-        x2: config.id === "warrior-guard" ? GAME_WIDTH - 24 : isArcher ? centerX + ball.vx * 0.08 : visualX,
-        y2: config.id === "warrior-guard" ? PLAYER_LINE_Y : isArcher ? centerY + ball.vy * 0.08 : visualY,
+        x2: isPaddle ? GAME_WIDTH - 24 : isDirectional ? centerX + ball.vx * 0.08 : visualX,
+        y2: isPaddle ? PLAYER_LINE_Y : isDirectional ? centerY + ball.vy * 0.08 : visualY,
         radius: visualRadius,
         duration: visualDuration,
         color: config.color,
@@ -1454,13 +1457,14 @@ function emitDirectSkillActivations(state: CanonicalState, context: DirectHitCon
   for (const activation of context.skillActivations) {
     const config = skill(state, activation.id);
     if (!config) continue;
+    const vfx = SKILL_VFX_CONFIG[activation.id as keyof typeof SKILL_VFX_CONFIG];
     emitCanonicalVisual(state, {
       kind: "skill",
       skillId: activation.id,
       x: context.brick.x + context.brick.w / 2,
       y: context.brick.y + context.brick.h / 2,
       radius: config.category === "warrior" ? 66 : 58,
-      duration: 0.45,
+      duration: vfx?.duration ?? 0.45,
       color: config.color,
       text: config.name,
     });

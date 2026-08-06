@@ -191,6 +191,34 @@ export type BuiltinClassSkillId =
 export type CustomSkillId = `custom-${string}`;
 export type ClassSkillId = BuiltinClassSkillId | CustomSkillId;
 
+export type SkillVfxAnchor = "brick" | "trajectory" | "field" | "paddle";
+export type SkillVfxRotation = "none" | "direction" | "spin";
+export type SkillVfxConfig = {
+  scale: number;
+  duration: number;
+  anchor: SkillVfxAnchor;
+  rotation: SkillVfxRotation;
+};
+
+/** Presentation tuning shared by the canonical event producer and canvas renderer. */
+export const SKILL_VFX_CONFIG: Partial<Record<ClassSkillId, SkillVfxConfig>> = {
+  "warrior-smash": { scale: 0.92, duration: 0.42, anchor: "brick", rotation: "none" },
+  "warrior-shockwave": { scale: 1.1, duration: 0.62, anchor: "brick", rotation: "none" },
+  "warrior-execute": { scale: 0.95, duration: 0.45, anchor: "brick", rotation: "none" },
+  "warrior-crush": { scale: 1, duration: 0.48, anchor: "brick", rotation: "none" },
+  "warrior-guard": { scale: 0.9, duration: 0.75, anchor: "paddle", rotation: "none" },
+  "archer-rapid": { scale: 0.82, duration: 0.5, anchor: "trajectory", rotation: "direction" },
+  "archer-pierce": { scale: 1.15, duration: 0.42, anchor: "trajectory", rotation: "direction" },
+  "archer-ricochet": { scale: 0.95, duration: 0.52, anchor: "trajectory", rotation: "direction" },
+  "archer-focus": { scale: 0.9, duration: 0.45, anchor: "brick", rotation: "none" },
+  "archer-weakpoint": { scale: 0.92, duration: 0.45, anchor: "brick", rotation: "spin" },
+  "mage-fireball": { scale: 1, duration: 0.72, anchor: "brick", rotation: "none" },
+  "mage-lightning": { scale: 1.05, duration: 0.48, anchor: "trajectory", rotation: "none" },
+  "mage-freeze": { scale: 1, duration: 0.55, anchor: "brick", rotation: "none" },
+  "mage-black-hole": { scale: 1.15, duration: 0.7, anchor: "field", rotation: "spin" },
+  "mage-mana-blast": { scale: 1, duration: 0.5, anchor: "brick", rotation: "none" },
+};
+
 export type LegacyUpgradeId =
   | "pierce" | "blast" | "glass" | "link" | "speed" | "wide" | "magnet" | "chain" | "fever"
   | "echo-split" | "double-drop" | "missile-mode" | "safety-block" | "gravity-well"
@@ -731,8 +759,8 @@ function normalizeCommonSkillFields(saved: Partial<SkillConfig>, base: SkillConf
   const traits = effectTraitKinds.length > 0
     ? effectTraitKinds
     : Array.isArray(saved.traits)
-    ? [...new Set(saved.traits.filter((trait): trait is SkillTrait => TRAITS.has(trait as SkillTrait)).map((trait) => migrateTraitKind(base.id, trait)))]
-    : [...base.traits];
+      ? [...new Set(saved.traits.filter((trait): trait is SkillTrait => TRAITS.has(trait as SkillTrait)).map((trait) => migrateTraitKind(base.id, trait)))]
+      : [...base.traits];
   const normalizedTraits = traits.length ? traits : (hasExplicitEffects ? [] : [...base.traits]);
   const effectTraitConfigs = hasExplicitEffects && !legacyEffectConflict ? effectTraitEntries : [];
   const traitConfigs = normalizeTraitConfigs({ ...saved, traitConfigs: effectTraitConfigs.length > 0 ? effectTraitConfigs : saved.traitConfigs }, base, normalizedTraits).map((trait) => {
@@ -830,7 +858,7 @@ export function normalizeSkillConfigs(saved: unknown): SkillConfig[] {
     const legacyAlwaysOnTrigger = base.category !== "common" && /상시 적용|자동 발동/.test(savedSkill?.trigger ?? "");
     const migrated = base.id === "common-xp" ? base
       : legacyTimeFreeze || legacyDestructionTrigger || formulaDescription || refreshedCommonSpec || legacyReflectionTrigger || legacyAlwaysOnTrigger ? { ...savedSkill, name: base.name, trigger: base.trigger, effect: base.effect, description: base.description, levels: base.levels, unit: base.unit, direction: base.direction }
-      : savedSkill;
+        : savedSkill;
     const savedCooldown = Array.isArray(savedSkill?.cooldown) && savedSkill.cooldown.length === 3 && savedSkill.cooldown.every((value) => Number.isFinite(Number(value)))
       ? savedSkill.cooldown.map(Number) as [number, number, number]
       : base.cooldown;
