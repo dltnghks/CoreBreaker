@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { GameAudio } from "./game-audio";
 import { canonicalUpgradeId, DEFAULT_SKILLS, levelValue, NORMAL_SKILLS, normalizeSkillConfigs, SKILL_BUILD_STORAGE_KEY, SKILL_COLORS, SKILL_MECHANIC_LABELS, SKILL_STORAGE_KEY, skillConfigMap, skillConfigSignature, type ClassSkillId, type SkillCategory, type SkillConfig, type UpgradeId } from "./skill-config";
 import { BALANCE_STORAGE_KEY, BOT_LIVE_STORAGE_KEY, BOT_RESULTS_STORAGE_KEY, DEFAULT_BALANCE_CONFIG, DEFAULT_SKILL_BENCH_CONFIG, DEFAULT_SKILL_BENCH_PROGRESS, normalizeBalanceConfig, normalizeSkillBenchConfig, normalizeSkillBenchProgress, SKILL_BENCH_PROGRESS_KEY, SKILL_BENCH_STORAGE_KEY, type BalanceConfig, type BotWaveSample, type SkillBenchConfig, type SkillBenchProgress } from "./balance-config";
@@ -87,7 +87,7 @@ function paddleAimDirection(fromX: number, fromY: number, targetX: number, targe
   };
 }
 const RING_EXPLOSION_ASSET = "/assets/vfx/ring-explosion.png";
-const TITLE_LOGO_ASSET = "/assets/ui/forged-core/core-breaker-title.webp";
+const TITLE_LOGO_ASSET = "/assets/ui/forged-core/core-breaker-title-v2.png";
 const HIT_SPARK_ASSETS = ["/assets/vfx/hit-spark-a.png", "/assets/vfx/hit-spark-b.png"] as const;
 const RADIAL_LIGHTNING_ASSET = "/assets/vfx/radial-lightning.png";
 const MAGE_SPELL_ASSETS = ["/assets/vfx/mage-fireball.png", "/assets/vfx/mage-sparks.png"] as const;
@@ -440,6 +440,9 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     items: [],
     safetyBlocks: [],
     gravityWells: [],
+    bossBarriers: [],
+    bossWalls: [],
+    bossShield: { active: false, life: 0, maxLife: 0, runeIds: [] },
     paddleBarriers: {},
     itemBarrierTime: 0,
     paddleCounters: Object.fromEntries(["player", ...activeGhosts.map((_, index) => `ghost-${index}`)].map((id) => [id, newPaddleCounter()])),
@@ -630,6 +633,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const levelUpRef = useRef(false);
   const resetLoopClockRef = useRef<() => void>(() => undefined);
   const startRunRef = useRef<(asBot?: boolean) => void>(() => undefined);
+  const titleStartLockedRef = useRef(false);
   const upgradeCatalogRef = useRef<Upgrade[]>(DEFAULT_UPGRADES);
   const audioRef = useRef<GameAudio | null>(null);
   const botActiveRef = useRef(false);
@@ -693,7 +697,20 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const [result, setResult] = useState<GameState | null>(null);
   const [, setSavedMessage] = useState("");
   const [upgradeCatalog, setUpgradeCatalog] = useState<Upgrade[]>(DEFAULT_UPGRADES);
-  const { soundEnabled, toggleSound } = useRuntimeSettings(audioRef);
+  const { soundEnabled, sfxVolume, musicVolume, setSfxVolume, setMusicVolume, toggleSound } = useRuntimeSettings(audioRef);
+  const playUiSound = useCallback((sound: Parameters<GameAudio["play"]>[0], intensity = 1) => {
+    audioRef.current?.play(sound, intensity);
+  }, [audioRef]);
+  const handleUiPointerOver = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (!(event.target instanceof Element)) return;
+    const control = event.target.closest("button, a");
+    const from = event.relatedTarget;
+    if (control && (!(from instanceof Node) || !control.contains(from))) playUiSound("ui-hover", 0.45);
+  }, [playUiSound]);
+  const handleUiClick = useCallback((event: ReactMouseEvent<HTMLElement>) => {
+    if (!(event.target instanceof Element)) return;
+    if (event.target.closest("button, a")) playUiSound("ui-click", 0.7);
+  }, [playUiSound]);
   const { createWorkers, stopWorkers } = useBenchmarkSession();
 
   const [botPolicy, setBotPolicy] = useState<BotPolicy>("balanced");
@@ -958,6 +975,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     if (!state || !game) return false;
     const ready = dispatchCanonicalCommand(state, { type: "start-next-wave" });
     if (ready.outcome.type !== "running") return false;
+    playUiSound("wave-start");
     ready.events.forEach((event) => emitGameEvent(gameEventsRef.current, event));
     gameRef.current = projectCanonicalStateIntoGameView(game, state);
     levelUpRef.current = false;
@@ -975,12 +993,13 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
       transitionTimersRef.current = [];
     }, botActiveRef.current ? 0 : 700)];
     return true;
-  }, [rewardOpeningRef, setClearedWave, setMode, setTransitionWave, transitionTimersRef]);
+  }, [playUiSound, rewardOpeningRef, setClearedWave, setMode, setTransitionWave, transitionTimersRef]);
 
   const applyUpgrade = useCallback((upgrade: Upgrade, ballCost: 0 | 1 | 2 = 0, source: Exclude<SkillSelectionSource, "boss"> = "wave") => {
     const game = gameRef.current;
     const canonical = canonicalStateRef.current;
     if (!game || !canonical) return;
+    playUiSound("skill-select");
     const result = dispatchCanonicalCommand(canonical, source === "start"
       ? { type: "choose-start-skill", skillId: upgrade.id, ballCost }
       : { type: "choose-wave-skill", skillId: upgrade.id, ballCost });
@@ -996,19 +1015,20 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
       return;
     }
     if (result.outcome.type === "ready-for-next-wave") startCanonicalNextWave();
-  }, [setHud, setMode, startCanonicalNextWave]);
+  }, [playUiSound, setHud, setMode, startCanonicalNextWave]);
 
   const applyBossReward = useCallback((rewardId: BossRewardId) => {
     const game = gameRef.current;
     const canonical = canonicalStateRef.current;
     if (!game || !canonical) return;
+    playUiSound("reward-select");
     const result = dispatchCanonicalCommand(canonical, { type: "choose-boss-reward", skillId: rewardId });
     result.events.forEach((event) => emitGameEvent(gameEventsRef.current, event));
     const projected = projectCanonicalStateIntoGameView(game, canonical);
     gameRef.current = projected;
     setHud(hudFromGame(projected));
     if (result.outcome.type === "ready-for-next-wave") startCanonicalNextWave();
-  }, [setHud, startCanonicalNextWave]);
+  }, [playUiSound, setHud, startCanonicalNextWave]);
 
   const finishRun = useCallback(() => {
     runningRef.current = false;
@@ -1101,11 +1121,11 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
       if (result.outcome.type === "start-skill" || result.outcome.type === "wave-skill") {
         setChoices(result.outcome.choices);
         setRerollsLeft(result.outcome.rerollsLeft);
-        audioRef.current?.play("item", 1.2);
+        playUiSound("skill-reroll", 1.2);
         return;
       }
     }
-  }, [rerollsLeft]);
+  }, [playUiSound, rerollsLeft]);
 
   const selectInitialSkill = useCallback((upgrade: Upgrade) => {
     applyUpgrade(upgrade, 0, "start");
@@ -1265,6 +1285,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     audioRef.current = audio;
     audio.setMuted(!soundEnabled);
     void audio.unlock().then(() => audio.play("start"));
+    void audio.startMusic();
     const activeGhosts: GhostRecord[] = [];
     activeGhostsRef.current = activeGhosts;
     const bench = skillBenchConfigRef.current;
@@ -1360,7 +1381,13 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
       runningRef.current = false;
       startLoop();
       levelUpRef.current = true;
-      setMode("initialskills");
+      setTransitionWave(1);
+      setMode("transition");
+      transitionTimersRef.current = [window.setTimeout(() => {
+        setTransitionWave(null);
+        setMode("initialskills");
+        transitionTimersRef.current = [];
+      }, 700)];
     } else {
       runningRef.current = true;
       startLoop();
@@ -1369,6 +1396,28 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     }
   };
   startRunRef.current = startRun;
+
+  const triggerTitleStart = useCallback(() => {
+    if (benchmarkMode || titleStartLockedRef.current) return;
+    titleStartLockedRef.current = true;
+    startRunRef.current(false);
+  }, [benchmarkMode]);
+
+  useEffect(() => {
+    if (mode !== "lobby" || benchmarkMode) return;
+    const onTitleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Tab" || event.key === "Shift" || event.key === "Control" || event.key === "Alt" || event.metaKey || event.ctrlKey) return;
+      triggerTitleStart();
+    };
+    window.addEventListener("keydown", onTitleKeyDown);
+    return () => window.removeEventListener("keydown", onTitleKeyDown);
+  }, [benchmarkMode, mode, triggerTitleStart]);
+
+  useEffect(() => {
+    if (mode === "lobby") {
+      titleStartLockedRef.current = false;
+    }
+  }, [mode]);
 
   const startParallelBenchmarkSession = () => {
     const targetRuns = benchmarkConfigRef.current.runs;
@@ -1804,7 +1853,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   };
 
   return (
-    <main data-replay-mode={replayRecorderRef.current?.log.mode ?? "idle"} data-replay-json={replayJson} className={`app-shell mode-${mode} ${benchmarkMode ? "benchmark-shell" : "gameplay-shell"}`}>
+    <main onPointerOver={handleUiPointerOver} onClick={handleUiClick} data-replay-mode={replayRecorderRef.current?.log.mode ?? "idle"} data-replay-json={replayJson} className={`app-shell mode-${mode} ${mode === "transition" && transitionWave === 1 ? "first-game-entry" : ""} ${benchmarkMode ? "benchmark-shell" : "gameplay-shell"}`}>
       <header className="topbar">
         <div className="brand-block">
           <span className="brand-mark">CB</span>
@@ -1814,6 +1863,10 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
         <a className="lab-link" href={benchmarkMode ? appHref("/") : appHref("/benchmark")}>{benchmarkMode ? "GAMEPLAY" : "BENCHMARK"}</a>
         <a className="lab-link" href={appHref("/skill-lab")}>SKILL LAB</a>
         <a className="lab-link" href={appHref("/stage-lab")}>STAGE LAB</a>
+        <div className="audio-mixer" aria-label="Audio mixer">
+          <label><span>SFX</span><input aria-label="Effects volume" type="range" min="0" max="1" step="0.01" value={sfxVolume} onChange={(event) => setSfxVolume(Number(event.target.value))} /><output>{Math.round(sfxVolume * 100)}%</output></label>
+          <label><span>BGM</span><input aria-label="Music volume" type="range" min="0" max="1" step="0.01" value={musicVolume} onChange={(event) => setMusicVolume(Number(event.target.value))} /><output>{Math.round(musicVolume * 100)}%</output></label>
+        </div>
         <button className="sound-toggle" type="button" aria-pressed={!soundEnabled} onClick={toggleSound}>{soundEnabled ? "SOUND ON" : "SOUND OFF"}</button>
         <div className="session-status"><span className={mode === "playing" ? "live-dot active" : "live-dot"} />{mode === "playing" ? "SESSION LIVE" : "SYSTEM READY"}</div>
       </header>
@@ -1830,12 +1883,16 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                   const category = skill?.category ?? "common";
                   const playerBall = gameRef.current?.balls.find((ball) => ball.owner === "player");
                   const cooldownTotal = Math.max(0, Number(skill?.cooldown?.[Math.max(0, Math.min(2, level - 1))] ?? 0));
-                  const cooldownRemaining = Math.max(0, Number(playerBall?.skillCooldowns[id as ClassSkillId] ?? 0));
+                  const cooldownRemaining = Math.max(0, Number(playerBall?.skillCooldowns[id as ClassSkillId] ?? gameRef.current?.paddleCounters?.player?.skillCooldowns[id as ClassSkillId] ?? 0));
+                  const cooldownRatio = cooldownTotal > 0 ? Math.max(0, Math.min(1, cooldownRemaining / cooldownTotal)) : 0;
                   return <div key={`side-${id}`} className={`in-game-skill-row class-${category}${evolved ? " evolved" : ""}`} tabIndex={0} aria-label={`${skill?.name ?? id} LEVEL ${level}`}>
                     <span className="in-game-skill-tooltip" role="tooltip"><strong>{skill?.name ?? id}</strong><small>LEVEL {level}{enhancement > 0 ? ` 쨌 +${enhancement}` : ""}</small><p><SkillDescriptionText text={skill?.description ?? ""} /></p></span>
-                    <span className="in-game-skill-icon"><SkillIconArt id={id} /></span>
+                    <span className="in-game-skill-icon">
+                      <SkillIconArt id={id} />
+                      {cooldownTotal > 0 && <span className={`in-game-skill-cooldown${cooldownRemaining > 0 ? " is-cooling" : ""}`} style={{ height: cooldownRemaining > 0 ? `${Math.max(8, cooldownRatio * 100)}%` : "0%" }} aria-label={cooldownRemaining > 0 ? `COOLDOWN ${cooldownRemaining.toFixed(1)}s` : "READY"} />}
+                      {cooldownRemaining > 0 && <span className="in-game-skill-cooldown-label" aria-hidden="true">{cooldownRemaining.toFixed(1)}</span>}
+                    </span>
                     <span className="in-game-skill-level" aria-label={`LEVEL ${level}`}>{level}</span>
-                    {cooldownTotal > 0 && <span className={`in-game-skill-cooldown${cooldownRemaining > 0 ? " is-cooling" : ""}`} style={{ "--cooldown-remaining": cooldownRemaining / cooldownTotal } as React.CSSProperties} aria-label={cooldownRemaining > 0 ? `COOLDOWN ${cooldownRemaining.toFixed(1)}s` : "READY"} />}
                     <span className="in-game-skill-copy"><strong>{skill?.name ?? id}</strong><small>LEVEL {level}{enhancement > 0 ? ` · +${enhancement}` : ""}</small></span>
                   </div>;
                 })}
@@ -1862,14 +1919,17 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
             )}
 
             {mode === "lobby" && (
-              <div className="overlay lobby-overlay">
-                {!benchmarkMode && <img className="lobby-core-glow" src="/assets/ui/forged-core/title-core-glow.webp" alt="" aria-hidden="true" />}
-                {!benchmarkMode && <img className="lobby-title-logo" src={TITLE_LOGO_ASSET} alt="CORE BREAKER" />}
+              <div className="overlay lobby-overlay" onClick={() => !benchmarkMode && triggerTitleStart()}>
+                {!benchmarkMode && <span className="title-atmosphere" aria-hidden="true" />}
+                {!benchmarkMode && (
+                  <div className="lobby-logo-stage" aria-label="CORE BREAKER">
+                    <img className="lobby-title-logo" src={TITLE_LOGO_ASSET} alt="CORE BREAKER" />
+                  </div>
+                )}
                 {benchmarkMode && <p className="overlay-kicker">{benchmarkRunMode === "watch" ? `WATCH RUN · REAL PHYSICS · ${botSpeed}×` : `HEADLESS · W1–W20 · ${benchmarkConfig.runs} RUNS`}</p>}
                 <h2>{benchmarkMode ? benchmarkRunMode === "watch" ? <>실제 플레이를<br />관찰합니다.</> : <>실제 게임 규칙을<br />병렬 테스트합니다.</> : <>패턴을 돌파하고<br />코어를 지키세요.</>}</h2>
                 {benchmarkMode && <p>{benchmarkRunMode === "watch" ? "봇이 실제 캔버스에서 패들을 조작합니다. 블록 타격마다 적용되는 스킬 효과와 공 손실을 화면으로 확인하세요." : "웨이브 패턴, 블록 체력, 보스와 Skill LAB 수치를 헤드리스 Worker가 동시에 시뮬레이션합니다."}</p>}
-                {!benchmarkMode && <button className="primary-button" onClick={() => startRun(false)}>게임 시작</button>}
-                <small>{benchmarkMode ? benchmarkRunMode === "watch" ? "오른쪽에서 관찰 배속과 봇 정책을 선택하세요." : "오른쪽에서 반복 횟수와 봇 정책을 선택하세요." : "A/D로 이동하고 마우스 또는 좌우 방향키로 반사 방향을 조준하세요."}</small>
+                <small className="title-start-hint">{benchmarkMode ? benchmarkRunMode === "watch" ? "오른쪽에서 관찰 배속과 봇 정책을 선택하세요." : "오른쪽에서 반복 횟수와 봇 정책을 선택하세요." : "PRESS ANY KEY  ·  CLICK TO START"}</small>
               </div>
             )}
 
@@ -1922,7 +1982,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
             {mode === "transition" && transitionWave !== null && (
               <div className="wave-transition-overlay" aria-live="polite" aria-label={`웨이브 ${transitionWave} 전환 중`}>
                 <div className="wave-transition-copy">
-                  <span>NEXT SECTOR</span>
+                  <span>{transitionWave === 1 ? "RUN INITIALIZED" : "NEXT SECTOR"}</span>
                   <strong>WAVE {transitionWave}</strong>
                   <i aria-hidden="true" />
                 </div>

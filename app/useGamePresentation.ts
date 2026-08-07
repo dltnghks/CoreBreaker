@@ -76,6 +76,11 @@ export function useGamePresentation(options: PresentationAdapters) {
   const advancePresentation = useCallback((dt: number) => {
     const game = gameRef.current;
     if (!game) return;
+    const bossActive = game.bossActive || game.bossStage > 0;
+    audioRef.current?.setMusicState({
+      active: !game.failed,
+      boss: bossActive,
+    });
     game.shakeTime = Math.max(0, (game.shakeTime ?? 0) - dt);
     if (game.shakeTime <= 0) game.shakeStrength = 0;
     game.screenFlashTime = Math.max(0, (game.screenFlashTime ?? 0) - dt);
@@ -95,7 +100,7 @@ export function useGamePresentation(options: PresentationAdapters) {
     });
     game.effects.forEach((effect) => { effect.life -= dt; });
     game.effects = game.effects.filter((effect) => effect.life > 0);
-  }, [gameRef, maxFlashes]);
+  }, [audioRef, gameRef, maxFlashes]);
 
   const consumePresentationEvents = useCallback(() => {
     const game = gameRef.current;
@@ -257,7 +262,7 @@ export function useGamePresentation(options: PresentationAdapters) {
         pushEffect(game, { kind: "ring", x: event.x, y: event.y, x2: event.x, y2: event.y, size: 74, life: 0.65, maxLife: 0.65, color: "#65dcff", variant: 0, skillId: null });
         game.flashes.push({ text: event.chargesRemaining < 0 ? "AUTO BARRIER // REFLECT" : event.chargesRemaining > 0 ? `AUTO BARRIER // ${event.chargesRemaining} LEFT` : "BARRIER // REFLECT", x: event.x, y: event.y - 14, life: 0.7, color: "#65dcff" });
       } else if (event.type === "wave-cleared") {
-        playAudio(event.boss ? "boss-clear" : "skill", event.boss ? 1.4 : 0.8);
+        playAudio(event.boss ? "boss-clear" : "wave-clear", event.boss ? 1.4 : 1);
       } else if (event.type === "game-over") {
         playAudio("game-over");
       } else if (event.type === "effect") {
