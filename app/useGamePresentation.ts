@@ -79,6 +79,7 @@ export function useGamePresentation(options: PresentationAdapters) {
     const bossActive = game.bossActive || game.bossStage > 0;
     audioRef.current?.setMusicState({
       active: !game.failed,
+      title: false,
       boss: bossActive,
     });
     game.shakeTime = Math.max(0, (game.shakeTime ?? 0) - dt);

@@ -1284,6 +1284,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     const audio = audioRef.current ?? new GameAudio();
     audioRef.current = audio;
     audio.setMuted(!soundEnabled);
+    audio.setMusicState({ active: true, title: false, boss: false });
     void audio.unlock().then(() => audio.play("start"));
     void audio.startMusic();
     const activeGhosts: GhostRecord[] = [];

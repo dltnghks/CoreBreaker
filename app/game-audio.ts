@@ -1,4 +1,57 @@
-export type GameSound = "start" | "paddle" | "brick-hit" | "brick-break" | "explosion" | "item" | "level-up" | "skill" | "skill-impact" | "critical" | "boss" | "boss-clear" | "barrier" | "core-damage" | "game-over";
+import { appHref } from "./site-path";
+
+export type GameSound = "start" | "paddle" | "brick-hit" | "brick-break" | "explosion" | "item" | "level-up" | "skill" | "skill-impact" | "critical" | "boss" | "boss-clear" | "barrier" | "core-damage" | "game-over" | "ui-hover" | "ui-click" | "start-confirm" | "skill-select" | "skill-reroll" | "wave-start" | "wave-clear" | "reward-select" | "countdown" | "pause" | "danger-warning" | "core-danger" | "time-warning" | "menu-transition" | "save-complete";
+
+export type MusicLayer = "title" | "normal" | "boss";
+
+export type AdaptiveMusicState = {
+  active: boolean;
+  title: boolean;
+  boss: boolean;
+};
+
+const MUSIC_FILES: Record<MusicLayer, string> = {
+  title: appHref("/audio/Music_Title.mp3"),
+  normal: appHref("/audio/Music_Loop.mp3"),
+  boss: appHref("/audio/Boss_Loop.m4a"),
+};
+const SFX_FILES: Record<GameSound, string> = {
+  start: appHref("/audio/sfx/start-confirm.wav"),
+  paddle: appHref("/audio/sfx/paddle-reflect.wav"),
+  "brick-hit": appHref("/audio/sfx/brick-hit.wav"),
+  "brick-break": appHref("/audio/sfx/brick-break.wav"),
+  explosion: appHref("/audio/sfx/explosion.wav"),
+  item: appHref("/audio/sfx/item-pickup.wav"),
+  "level-up": appHref("/audio/sfx/level-up.wav"),
+  skill: appHref("/audio/sfx/skill-cast.wav"),
+  "skill-impact": appHref("/audio/sfx/skill-impact.wav"),
+  critical: appHref("/audio/sfx/critical-hit.wav"),
+  boss: appHref("/audio/sfx/boss-arrival.wav"),
+  "boss-clear": appHref("/audio/sfx/boss-defeat.wav"),
+  barrier: appHref("/audio/sfx/barrier-reflect.wav"),
+  "core-damage": appHref("/audio/sfx/boss-core-hit.wav"),
+  "game-over": appHref("/audio/sfx/game-over.wav"),
+  "ui-hover": appHref("/audio/sfx/ui-hover.wav"),
+  "ui-click": appHref("/audio/sfx/ui-click.wav"),
+  "start-confirm": appHref("/audio/sfx/start-confirm.wav"),
+  "skill-select": appHref("/audio/sfx/skill-select.wav"),
+  "skill-reroll": appHref("/audio/sfx/skill-reroll.wav"),
+  "wave-start": appHref("/audio/sfx/wave-start.wav"),
+  "wave-clear": appHref("/audio/sfx/wave-clear.wav"),
+  "reward-select": appHref("/audio/sfx/reward-select.wav"),
+  countdown: appHref("/audio/sfx/countdown.wav"),
+  pause: appHref("/audio/sfx/pause.wav"),
+  "danger-warning": appHref("/audio/sfx/danger-warning.wav"),
+  "core-danger": appHref("/audio/sfx/core-danger.wav"),
+  "time-warning": appHref("/audio/sfx/time-warning.wav"),
+  "menu-transition": appHref("/audio/sfx/menu-transition.wav"),
+  "save-complete": appHref("/audio/sfx/save-complete.wav"),
+};
+const MUSIC_CROSSFADE_SECONDS = 2;
+const BOSS_MUSIC_LEVEL = 0.63; // approximately -4 dB relative to normal BGM
+
+type MusicSource = { source: AudioBufferSourceNode; gain: GainNode };
+type MusicLayerRuntime = { gain: GainNode; sources: Set<MusicSource>; timer: number | null };
 
 export class GameAudio {
   private context: AudioContext | null = null;
@@ -6,6 +59,16 @@ export class GameAudio {
   private compressor: DynamicsCompressorNode | null = null;
   private muted = false;
   private lastPlayed: Partial<Record<GameSound, number>> = {};
+  private musicMaster: GainNode | null = null;
+  private musicLayers: Partial<Record<MusicLayer, MusicLayerRuntime>> = {};
+  private musicBuffers: Partial<Record<MusicLayer, AudioBuffer>> = {};
+  private musicLoadPromise: Promise<void> | null = null;
+  private sfxBuffers: Partial<Record<GameSound, AudioBuffer>> = {};
+  private sfxLoadPromise: Promise<void> | null = null;
+  private musicStarted = false;
+  private musicState: AdaptiveMusicState = { active: false, title: false, boss: false };
+  private sfxVolume = 0.28;
+  private musicVolume = 0.24;
 
   async unlock() {
     if (!this.context) {
@@ -17,17 +80,65 @@ export class GameAudio {
       this.compressor.ratio.value = 7;
       this.compressor.attack.value = 0.003;
       this.compressor.release.value = 0.18;
-      this.master.gain.value = this.muted ? 0 : 0.28;
+      this.master.gain.value = this.muted ? 0 : this.sfxVolume;
       this.master.connect(this.compressor);
       this.compressor.connect(this.context.destination);
+      this.musicMaster = this.context.createGain();
+      this.musicMaster.gain.value = this.muted ? 0 : this.musicVolume;
+      this.musicMaster.connect(this.compressor);
     }
+    if (!this.sfxLoadPromise) this.sfxLoadPromise = this.loadSfxBuffers();
     if (this.context.state === "suspended") await this.context.resume();
+  }
+
+  async startMusic() {
+    await this.unlock();
+    if (!this.context || !this.musicMaster || this.musicStarted) return;
+    if (!this.musicLoadPromise) this.musicLoadPromise = this.loadMusicBuffers();
+    await this.musicLoadPromise;
+    if (!this.context || !this.musicMaster || this.musicStarted) return;
+
+    const startAt = this.context.currentTime + 0.12;
+    // Mark the transport as active before scheduling loop timers. The
+    // scheduler intentionally refuses to create follow-up sources after
+    // close(), so this flag must be set before the first schedule call.
+    this.musicStarted = true;
+    (Object.keys(MUSIC_FILES) as MusicLayer[]).forEach((layer) => {
+      const buffer = this.musicBuffers[layer];
+      if (!buffer) return;
+      const gain = this.context!.createGain();
+      gain.connect(this.musicMaster!);
+      gain.gain.value = 0.0001;
+      this.musicLayers[layer] = { gain, sources: new Set(), timer: null };
+      this.createMusicSource(layer, startAt, 0.25);
+      this.scheduleMusicLoop(layer, startAt);
+    });
+    this.applyMusicState();
+  }
+
+  setMusicState(state: AdaptiveMusicState) {
+    this.musicState = {
+      active: state.active,
+      boss: state.boss,
+    };
+    this.applyMusicState();
+  }
+
+  setSfxVolume(volume: number) {
+    this.sfxVolume = Math.max(0, Math.min(1, volume));
+    if (this.master && this.context && !this.muted) this.master.gain.setTargetAtTime(this.sfxVolume, this.context.currentTime, 0.02);
+  }
+
+  setMusicVolume(volume: number) {
+    this.musicVolume = Math.max(0, Math.min(1, volume));
+    if (this.musicMaster && this.context && !this.muted) this.musicMaster.gain.setTargetAtTime(this.musicVolume, this.context.currentTime, 0.02);
   }
 
   setMuted(muted: boolean) {
     this.muted = muted;
     if (this.master && this.context) {
-      this.master.gain.setTargetAtTime(muted ? 0 : 0.28, this.context.currentTime, 0.015);
+      this.master.gain.setTargetAtTime(muted ? 0 : this.sfxVolume, this.context.currentTime, 0.015);
+      this.musicMaster?.gain.setTargetAtTime(muted ? 0 : this.musicVolume, this.context.currentTime, 0.015);
     }
   }
 
@@ -40,6 +151,13 @@ export class GameAudio {
     this.lastPlayed[sound] = nowMs;
 
     const power = Math.max(0.5, Math.min(2, intensity));
+    // These two cues are intentionally kept procedural: their very high
+    // repetition rate feels tighter and less fatiguing than the rendered WAVs.
+    const sample = sound === "paddle" || sound === "brick-break" ? undefined : this.sfxBuffers[sound];
+    if (sample) {
+      this.playSample(sample, power);
+      return;
+    }
     switch (sound) {
       case "start":
         this.tone(180, 0.08, "square", 0.07, 1.45);
@@ -113,10 +231,118 @@ export class GameAudio {
   }
 
   close() {
+    Object.values(this.musicLayers).forEach((layer) => {
+      if (!layer) return;
+      if (layer.timer !== null) window.clearTimeout(layer.timer);
+      layer.sources.forEach(({ source }) => {
+        try { source.stop(); } catch { /* already ended */ }
+      });
+    });
+    this.musicLayers = {};
+    this.musicStarted = false;
     void this.context?.close();
     this.context = null;
     this.master = null;
     this.compressor = null;
+    this.musicMaster = null;
+  }
+
+  private async loadMusicBuffers() {
+    if (!this.context) return;
+    await Promise.all((Object.entries(MUSIC_FILES) as [MusicLayer, string][]).map(async ([layer, url]) => {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        this.musicBuffers[layer] = await this.context!.decodeAudioData(await response.arrayBuffer());
+      } catch (error) {
+        console.warn(`[music] unable to load ${url}`, error);
+      }
+    }));
+  }
+
+  private async loadSfxBuffers() {
+    if (!this.context) return;
+    await Promise.all((Object.entries(SFX_FILES) as [GameSound, string][]).map(async ([sound, url]) => {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        this.sfxBuffers[sound] = await this.context!.decodeAudioData(await response.arrayBuffer());
+      } catch (error) {
+        console.warn(`[sfx] unable to load ${url}`, error);
+      }
+    }));
+  }
+
+  private applyMusicState() {
+    if (!this.context || !this.musicStarted) return;
+    const { active, title, boss } = this.musicState;
+    const targets: Record<MusicLayer, number> = {
+      title: active && title ? 1 : 0.0001,
+      normal: active && !title && !boss ? 1 : 0.0001,
+      boss: active && boss ? BOSS_MUSIC_LEVEL : 0.0001,
+    };
+    const now = this.context.currentTime;
+    (Object.keys(targets) as MusicLayer[]).forEach((layer) => {
+      const node = this.musicLayers[layer]?.gain;
+      if (!node) return;
+      node.gain.cancelScheduledValues(now);
+      node.gain.setTargetAtTime(targets[layer], now, MUSIC_CROSSFADE_SECONDS / 3);
+    });
+  }
+
+  private createMusicSource(layer: MusicLayer, startAt: number, fadeInSeconds: number) {
+    const context = this.context;
+    const buffer = this.musicBuffers[layer];
+    const runtime = this.musicLayers[layer];
+    if (!context || !buffer || !runtime) return null;
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    source.connect(gain);
+    gain.connect(runtime.gain);
+    gain.gain.setValueAtTime(0.0001, startAt);
+    gain.gain.linearRampToValueAtTime(1, startAt + fadeInSeconds);
+    const entry = { source, gain };
+    runtime.sources.add(entry);
+    source.addEventListener("ended", () => runtime.sources.delete(entry), { once: true });
+    source.start(startAt);
+    return entry;
+  }
+
+  private scheduleMusicLoop(layer: MusicLayer, startAt: number) {
+    const context = this.context;
+    const buffer = this.musicBuffers[layer];
+    const runtime = this.musicLayers[layer];
+    if (!context || !buffer || !runtime || !this.musicStarted) return;
+    const nextAt = startAt + Math.max(0.1, buffer.duration - MUSIC_CROSSFADE_SECONDS);
+    const delay = Math.max(50, (nextAt - context.currentTime) * 1000 - 250);
+    runtime.timer = window.setTimeout(() => {
+      if (!this.musicStarted || !this.context) return;
+      const next = this.createMusicSource(layer, nextAt, MUSIC_CROSSFADE_SECONDS);
+      if (!next) return;
+      runtime.sources.forEach((entry) => {
+        if (entry === next) return;
+        entry.gain.gain.setValueAtTime(1, nextAt);
+        entry.gain.gain.linearRampToValueAtTime(0.0001, nextAt + MUSIC_CROSSFADE_SECONDS);
+        try { entry.source.stop(nextAt + MUSIC_CROSSFADE_SECONDS + 0.05); } catch { /* already ended */ }
+      });
+      this.scheduleMusicLoop(layer, nextAt);
+    }, delay);
+  }
+
+  private playSample(buffer: AudioBuffer, intensity: number) {
+    if (!this.context || !this.master || this.muted || this.context.state !== "running") return;
+    const source = this.context.createBufferSource();
+    const gain = this.context.createGain();
+    const start = this.context.currentTime;
+    source.buffer = buffer;
+    source.detune.value = (Math.random() - 0.5) * 24;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(Math.min(0.72, 0.38 * intensity), start + 0.004);
+    gain.gain.setTargetAtTime(0.0001, start + Math.min(0.018, buffer.duration * 0.08), Math.max(0.055, Math.min(0.24, buffer.duration * 0.24)));
+    source.connect(gain);
+    gain.connect(this.master);
+    source.start(start);
   }
 
   private tone(frequency: number, duration: number, type: OscillatorType, volume: number, sweep = 1, delay = 0) {
