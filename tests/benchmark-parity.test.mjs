@@ -407,7 +407,7 @@ test("restoring a legacy snapshot preserves fractional damage totals", () => {
   assert.equal(restored.skillMetrics["mage-fireball"].damage, 2.6);
 });
 
-test("a boss wave ends when the boss core is destroyed even if reinforcements survive", () => {
+test("a boss wave ends when the boss core HP reaches zero even if reinforcements survive", () => {
   const bossWaves = waves.WAVE_DEFINITIONS.map((definition, index) => index === 0
     ? { ...definition, name: "BOSS CONTRACT", boss: "early", pattern: [] }
     : { ...definition, pattern: [...definition.pattern] });
@@ -416,12 +416,75 @@ test("a boss wave ends when the boss core is destroyed even if reinforcements su
   const core = state.bricks.find((brick) => brick.kind === "boss-core");
   assert.ok(core);
   state.bricks.push({ ...core, id: state.nextBrickId++, kind: "boss-minion", trait: "guard", guardReady: true, alive: true, hp: 2, maxHp: 2, y: 230, h: 24 });
+  core.hp = 0;
   core.alive = false;
   state.bossAttackTimer = 999;
 
   const result = engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 120 }, engine.FIXED_STEP_SECONDS);
   assert.deepEqual(result.outcome, { type: "wave-clear", wave: 1, boss: true });
   assert.ok(state.bricks.some((brick) => brick.alive && brick.kind === "boss-minion"), "reinforcements are not part of the boss-clear gate");
+});
+
+test("boss intro locks player launch and gameplay timers until the entrance finishes", () => {
+  const bossWaves = waves.WAVE_DEFINITIONS.map((definition, index) => index === 0
+    ? { ...definition, name: "BOSS INTRO LOCK", boss: "early", pattern: [] }
+    : { ...definition, pattern: [...definition.pattern] });
+  const state = engine.createCanonicalState({ seed: 20260808, targetWave: 1, waves: bossWaves, interactive: true, startingSkills: ["common-damage"] });
+  const ball = state.balls[0];
+  const initialPaddleX = state.paddleX;
+  const initialWait = ball.launchWaitTime;
+  const initialBallY = ball.y;
+
+  engine.dispatchCanonicalCommand(state, { type: "launch-ball", aimX: 820, aimY: 120 });
+  assert.equal(ball.awaitingLaunch, true, "launch input is ignored during the boss entrance");
+
+  engine.stepCanonicalEngine(state, { move: 1, aimX: 820, aimY: 120 }, engine.FIXED_STEP_SECONDS);
+  assert.equal(state.paddleX, initialPaddleX, "the paddle remains still during the entrance");
+  assert.equal(ball.launchWaitTime, initialWait, "the launch countdown is paused during the entrance");
+  assert.equal(ball.y, initialBallY, "the held ball does not begin gameplay movement");
+  assert.ok(state.bossIntroTimer < 3 && state.bossIntroTimer > 0, "the visual intro clock still advances");
+
+  state.bossIntroTimer = 0;
+  engine.dispatchCanonicalCommand(state, { type: "launch-ball", aimX: 820, aimY: 120 });
+  assert.equal(ball.awaitingLaunch, false, "launch input works after the entrance finishes");
+});
+
+test("boss patterns follow stage order and keep surviving pattern objects when the next pattern starts", () => {
+  const definitions = waves.WAVE_DEFINITIONS.map((definition, index) => index === 0
+    ? { ...definition, boss: "final", pattern: [] }
+    : { ...definition, pattern: [...definition.pattern] });
+  const state = engine.createCanonicalState({ seed: 20260821, targetWave: 1, waves: definitions, startingSkills: ["common-damage"] });
+  state.bossIntroTimer = 0;
+  state.bossAttackTimer = 0;
+  const triggerPattern = () => {
+    state.bossAttackTimer = 0;
+    engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  };
+
+  triggerPattern();
+  assert.equal(state.bossBarriers.length, 2, "the first final-boss barrier pattern should create two barriers");
+  triggerPattern();
+  assert.equal(state.bossWalls.length, 3, "the second final-boss pattern should create three walls");
+  triggerPattern();
+  assert.equal(state.gravityWells.filter((well) => well.sourceSkillId === "gravity-well").length, 1, "the third pattern should create a boss gravity rune");
+  triggerPattern();
+  assert.equal(state.bossShield.active, true, "the fourth pattern should activate the core shield");
+  assert.equal(state.bossShield.runeIds.length, 4, "the core shield should create four runes");
+  assert.equal(state.bossBarriers.length, 2, "surviving barriers must remain when later patterns start");
+  assert.equal(state.bossWalls.length, 3, "surviving walls must remain when later patterns start");
+});
+
+test("repeated barrier patterns append instead of replacing active barriers", () => {
+  const definitions = waves.WAVE_DEFINITIONS.map((definition, index) => index === 0
+    ? { ...definition, boss: "early", pattern: [] }
+    : { ...definition, pattern: [...definition.pattern] });
+  const state = engine.createCanonicalState({ seed: 20260822, targetWave: 1, waves: definitions, startingSkills: ["common-damage"] });
+  state.bossIntroTimer = 0;
+  state.bossAttackTimer = 0;
+  engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  state.bossAttackTimer = 0;
+  engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  assert.equal(state.bossBarriers.length, 2, "a repeated barrier pattern must preserve the previous barrier");
 });
 
 test("canonical overdrive accelerates balls and resets for every wave", () => {
@@ -1192,6 +1255,33 @@ test("evolved pierce, freeze, and mana seal modify subsequent direct hits", () =
   const beforeSealed = healer.hp;
   collide(healer);
   assert.ok(beforeSealed - healer.hp >= 2, "an evolved mana seal must add one to the next direct hit");
+});
+
+test("evolved pierce bypasses guard and reflector protection on the collision that prepares the charges", () => {
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  definitions[0] = { ...definitions[0], pattern: ["sgr........."] };
+  const state = engine.createCanonicalState({
+    seed: 94051, targetWave: 1, waves: definitions,
+    startingSkills: Array(4).fill("archer-pierce"),
+  });
+  state.bricks.forEach((brick) => { brick.hp = brick.maxHp = 30; });
+  const collide = (brick) => {
+    const ball = state.balls[0];
+    ball.x = brick.x + brick.w / 2; ball.y = brick.y + brick.h + ball.radius - 1; ball.vx = 0; ball.vy = -320;
+    engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  };
+
+  const guard = state.bricks[1];
+  const reflector = state.bricks[2];
+  const guardHp = guard.hp;
+  const reflectorHp = reflector.hp;
+  collide(guard);
+  assert.equal(guard.guardReady, false, "pierce evolution must break through a guard instead of stopping at it");
+  assert.ok(guard.hp < guardHp, "pierce evolution must apply damage to a guarded block");
+
+  collide(reflector);
+  assert.ok(reflector.hp < reflectorHp, "pierce evolution must damage a reflector from below");
+  assert.equal(state.reflectorBlockedHits, 0, "pierce evolution must not trigger reflector protection");
 });
 
 test("ricochet and lightning share one chain path while evolved chains continue after kills", () => {
