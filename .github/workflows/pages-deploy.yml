@@ -66,6 +66,11 @@ jobs:
       - name: Add game under /game
         run: cp -R game-source/dist/client _site/game
 
+      - name: Expose game assets for absolute asset URLs
+        run: |
+          mkdir -p _site/assets
+          cp -R game-source/dist/client/assets/. _site/assets/
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
