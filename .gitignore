@@ -43,3 +43,6 @@ next-env.d.ts
 /.npm-cache/
 /dev.stdout.log
 /dev.stderr.log
+/dev-title-ui.log
+/tmp/
+/tsconfig.tsbuildinfo
