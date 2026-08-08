@@ -1,6 +1,6 @@
 import { SKILL_VFX_CONFIG, canonicalUpgradeId } from "./skill-config";
 import type { ClassSkillId, SkillConfig, UpgradeId } from "./skill-config";
-import type { GameState, GhostRecord, ItemKind } from "./_types/game";
+import type { GameState, ItemKind } from "./_types/game";
 import { beginGameCanvasFrame, endGameCanvasFrame, renderBalls, renderBricks, renderHud, renderPaddles, renderTransientFeedback, renderWorldOverlays } from "./game-renderer";
 
 const W = 900;
@@ -14,7 +14,6 @@ const AIM_LINE_LENGTH = 170;
 const MAX_PADDLE_REBOUND_RATIO = 0.84;
 const PLAYER_BALL_COLOR = "#fffaf0";
 const PIXEL_FONT = '"Neo둥근모", monospace';
-const GHOST_COLORS = ["#9b8cff", "#58d5ff", "#ff78b7"];
 const RING_EXPLOSION_COLUMNS = 10;
 const RING_EXPLOSION_FRAME_SIZE = 100;
 const RING_EXPLOSION_FRAMES = 56;
@@ -57,7 +56,6 @@ function paddleAimDirection(fromX: number, fromY: number, targetX: number, targe
 export type GameRuntimeCanvasOptions = {
   canvas: HTMLCanvasElement;
   game: GameState;
-  activeGhosts: GhostRecord[];
   botActive: boolean;
   pointerX: number;
   pointerY: number;
@@ -77,14 +75,11 @@ export type GameRuntimeCanvasOptions = {
   upgradeLevel: (upgrades: UpgradeId[], id: UpgradeId) => number;
   classSkillColor: (id: ClassSkillId) => string;
   getSkill: (id: string) => SkillConfig | undefined;
-  ghostPaddleY: () => number;
-  ghostPaddleWidth: (ghost: GhostRecord) => number;
 };
 
 export function renderGameRuntimeCanvas({
   canvas,
   game,
-  activeGhosts,
   botActive,
   pointerX,
   pointerY,
@@ -104,8 +99,6 @@ export function renderGameRuntimeCanvas({
   upgradeLevel,
   classSkillColor,
   getSkill,
-  ghostPaddleY,
-  ghostPaddleWidth,
 }: GameRuntimeCanvasOptions) {
   const frame = beginGameCanvasFrame(canvas, game, W, H);
   if (!frame) return;
@@ -121,7 +114,6 @@ export function renderGameRuntimeCanvas({
     game.items.forEach((item) => { if (item.y > y + 12 || item.y < y - range || Math.abs(item.x - x) > range) return; magnetLinks.push({ x, y, itemX: item.x, itemY: item.y, alpha: .18 + .28 * (1 - Math.min(1, Math.abs(item.y - y) / range)), color: classSkillColor("common-magnet") }); });
   };
   addMagnetLinks(game.paddleX, PLAYER_PADDLE_Y, game.paddleWidth, game.upgrades);
-  activeGhosts.forEach((ghost, index) => addMagnetLinks(game.ghostPaddles[index], ghostPaddleY(), ghostPaddleWidth(ghost), ghost.upgrades));
 renderWorldOverlays({ ctx, elapsed: game.elapsed, gravityWells: game.gravityWells, bossBarriers: game.bossBarriers, bossWalls: game.bossWalls, bossShield: game.bossShield, bossArmorReformTimer: game.bossArmorReformTimer, bossArmorReformCells: game.bossArmorReformCells, bossIntroTimer: game.bossIntroTimer, bossReinforcementTelegraph: game.bossReinforcementTelegraph, bossReinforcementCount: game.bossReinforcementCount, bricks: game.bricks, skillSheets, skillSheetReady, itemBarrierTime: game.itemBarrierTime, itemBarrierY: ITEM_BARRIER_Y, width: W, barrierColor: ITEM_DATA["auto-barrier"].color, magnetLinks });
   renderPaddles({
     ctx,
@@ -129,7 +121,6 @@ renderWorldOverlays({ ctx, elapsed: game.elapsed, gravityWells: game.gravityWell
     playerY: PLAYER_PADDLE_Y,
     playerWidth: Math.min(280, game.paddleWidth),
     playerColor: PLAYER_BALL_COLOR,
-    ghostPaddles: activeGhosts.map((ghost, index) => ({ x: game.ghostPaddles[index], y: ghostPaddleY(), width: ghostPaddleWidth(ghost), color: GHOST_COLORS[index % GHOST_COLORS.length], name: ghost.name })),
     safetyBlocks: game.safetyBlocks,
     playerCharge: game.paddleCounters?.player?.chargePulse && game.paddleCounters.player.chargePulse > 0
       ? {
@@ -153,7 +144,7 @@ renderWorldOverlays({ ctx, elapsed: game.elapsed, gravityWells: game.gravityWell
     })() : undefined,
   });
 
-  const heldBall = game.balls.find((ball) => ball.owner === "player" && ball.awaitingLaunch);
+  const heldBall = game.balls.find((ball) => ball.awaitingLaunch);
   if (heldBall) {
     const seconds = Math.max(0, heldBall.launchWaitTime ?? 0);
     ctx.save();

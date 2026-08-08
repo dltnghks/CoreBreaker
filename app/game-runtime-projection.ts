@@ -16,11 +16,11 @@ export function finiteNumber(value: unknown, fallback = 0): number {
  * renderer. Simulation-only fields are preserved rather than reconstructed
  * from position/velocity, so attack and payload upgrades survive sync.
  */
-export function projectCanonicalBall(ball: CanonicalBall, overrides: Partial<Pick<Ball, "owner" | "color" | "sourcePaddleId">> = {}): Ball {
+export function projectCanonicalBall(ball: CanonicalBall, overrides: Partial<Pick<Ball, "color">> = {}): Ball {
   const payloads = { ...ball.payloads } as Partial<Record<PayloadId, number>>;
   return {
     x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy, radius: ball.radius,
-    owner: overrides.owner ?? "player", color: overrides.color ?? "#ffffff", sourcePaddleId: overrides.sourcePaddleId ?? "player",
+    color: overrides.color ?? "#ffffff",
     pierce: ball.pierce, maxPierce: ball.maxPierce, blast: payloads.blast ?? 0,
     payload: (ball.payload as PayloadId | null) ?? null, payloadLevel: ball.payloadLevel, payloads,
     attackPower: ball.attackPower, missileTime: finiteNumber(ball.missileTime), missileHitCooldown: 0, gravityRescueCooldown: 0,
@@ -34,14 +34,12 @@ export function projectCanonicalBall(ball: CanonicalBall, overrides: Partial<Pic
 
 /** Apply canonical ball fields in-place without clobbering legacy-only metadata. */
 export function projectCanonicalBallIntoView(target: Ball, source: CanonicalBall) {
-  Object.assign(target, projectCanonicalBall(source, { owner: target.owner, color: target.color, sourcePaddleId: target.sourcePaddleId }));
+  Object.assign(target, projectCanonicalBall(source, { color: target.color }));
 }
 
 /** Project canonical simulation fields into the mutable presentation model. */
 export function projectCanonicalBallsIntoGameView(target: GameState, source: CanonicalState) {
   target.balls = source.balls.map((ball) => projectCanonicalBall(ball, {
-    owner: "player",
-    sourcePaddleId: "player",
     color: ball.temporary || ball.waveBonus ? EXTRA_BALL_COLOR : PLAYER_BALL_COLOR,
   }));
   target.paddleX = source.paddleX;
@@ -78,8 +76,8 @@ function applyCanonicalStateProjection(target: GameState, source: CanonicalState
   // ball cooldowns, so the renderer must not be left with stale empty arrays.
   if (source.barrierCharges > 0 || source.barrierTime > 0 || source.itemBarrierTime > 0) {
     target.safetyBlocks = source.safetyBlocks.length
-      ? source.safetyBlocks.map((block) => ({ ownerPaddleId: "player", ...block }))
-      : [{ ownerPaddleId: "player", x: source.paddleX, y: PLAYER_LINE_Y, width: Math.min(150, source.paddleWidth * 0.9), color: "#55d6ff" }];
+      ? source.safetyBlocks.map((block) => ({ ...block }))
+      : [{ x: source.paddleX, y: PLAYER_LINE_Y, width: Math.min(150, source.paddleWidth * 0.9), color: "#55d6ff" }];
   } else {
     target.safetyBlocks = [];
   }
@@ -97,7 +95,6 @@ function applyCanonicalStateProjection(target: GameState, source: CanonicalState
   playerCounter.chargePulse = Math.max(0, finiteNumber(baseBall?.visualSkillTime));
   playerCounter.chargeColor = baseBall?.visualSkill ? "#c18cff" : "#ffffff";
   target.paddleCounters.player = playerCounter;
-  target.ghostPaddles = source.ghostPaddles.length ? [...source.ghostPaddles] : target.ghostPaddles;
   target.bossSkillTimer = source.bossAttackTimer;
   target.bossAttackPattern = source.bossPattern;
   target.bossTimeRemaining = source.bossAttackTimer;
@@ -131,11 +128,10 @@ function applyCanonicalStateProjection(target: GameState, source: CanonicalState
       alive: canonicalBrick.alive, kind: "normal" as const, drop: canonicalBrick.drop,
       trait: canonicalBrick.trait, guardReady: canonicalBrick.guardReady,
       healTimer: canonicalBrick.healTimer, healBlockTime: canonicalBrick.healBlockTime,
-      poisonTime: 0, poisonTick: 0, poisonSourcePaddleId: null,
-      burnTime: canonicalBrick.burnTime, burnTick: canonicalBrick.burnTick, burnLevel: 0, burnSourcePaddleId: null,
-      blastVulnerability: 1, blastVulnerabilitySourcePaddleId: null,
+      poisonTime: 0, poisonTick: 0,
+      burnTime: canonicalBrick.burnTime, burnTick: canonicalBrick.burnTick, burnLevel: 0,
+      blastVulnerability: 1,
       frostVulnerability: canonicalBrick.frostVulnerability, traitLockTime: canonicalBrick.traitLockTime,
-      lastHitPaddleId: null,
       healthFlashTime: 0, healthFlashDuration: 0, healthFlashKind: null,
       bossRow: canonicalBrick.bossRow, bossCol: canonicalBrick.bossCol,
     };
@@ -175,7 +171,7 @@ function applyCanonicalStateProjection(target: GameState, source: CanonicalState
     kind: item.kind,
   }));
   target.gravityWells = source.gravityWells.map((well): GravityWell => ({
-    ownerPaddleId: "player", x: well.x, y: well.y, radius: well.radius,
+    x: well.x, y: well.y, radius: well.radius,
     life: well.life, maxLife: Math.max(well.life, 1), color: "#a77bff",
     damagePerSecond: well.damagePerSecond, damageTick: well.damageTick, sourceSkillId: well.sourceSkillId,
   }));

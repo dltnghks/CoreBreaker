@@ -41,7 +41,6 @@ import type {
   Brick,
   BrickTrait,
   GameState,
-  GhostRecord,
   ItemKind,
   PaddleCounter,
   PayloadId,
@@ -55,7 +54,6 @@ const W = 900;
 const H = 600;
 const BENCHMARK_RULESET: BenchmarkRuleset = PARALLEL_BENCHMARK_RULESET;
 const PLAYER_PADDLE_Y = H - 70;
-const GHOST_PADDLE_Y = H - 42;
 const BRICK_ROW_Y = 74;
 const STARTING_WAVE_ELAPSED = 0;
 const MAX_CORE_HP = 8;
@@ -102,9 +100,12 @@ const ITEM_ICON_ASSETS: Record<ItemKind, string> = {
   "cooldown-reset": "/assets/gameplay/items/cooldown-reset.png",
 };
 const STATUS_ICON_ASSETS = {
-  wave: "/assets/ui/core-breaker/status/wave.png",
-  time: "/assets/ui/core-breaker/status/time.png",
-  core: "/assets/ui/core-breaker/status/core.png",
+  wave: "/assets/ui/core-breaker/status/wave-v2.png",
+  time: "/assets/ui/core-breaker/status/time-v2.png",
+  core: "/assets/ui/core-breaker/status/core-v2.png",
+  boss: "/assets/ui/core-breaker/status/boss-v2.png",
+  break: "/assets/ui/core-breaker/status/break-v2.png",
+  bestTime: "/assets/ui/core-breaker/status/best-time-v2.png",
 } as const;
 const MAX_ACTIVE_FLASHES = 120;
 const PLAYER_BALL_COLOR = "#fffaf0";
@@ -197,14 +198,6 @@ function classSkillColor(id: ClassSkillId) {
   return activeSkillMap[id]?.color ?? (id in SKILL_COLORS ? SKILL_COLORS[id as keyof typeof SKILL_COLORS] : "#d66bff");
 }
 
-function ghostPaddleY() {
-  return GHOST_PADDLE_Y;
-}
-
-function ghostPaddleWidth(ghost: GhostRecord) {
-  return Math.min(260, 92 + skillValue("common-wide", upgradeLevel(ghost.upgrades.map(canonicalUpgradeId), "common-wide")));
-}
-
 function upgradeLevel(upgrades: UpgradeId[], id: UpgradeId) {
   if (!Array.isArray(upgrades)) return 0;
   return Math.min(3, upgrades.filter((upgrade) => upgrade === id).length);
@@ -252,7 +245,7 @@ function hasScheduledMultiball(wave: number) {
 }
 
 function brickRuntimeState(trait: BrickTrait = "standard") {
-  return { trait, guardReady: trait === "guard", healTimer: 3, poisonTime: 0, poisonTick: 0, poisonSourcePaddleId: null, burnTime: 0, burnTick: 0, burnLevel: 0, burnSourcePaddleId: null, healBlockTime: 0, blastVulnerability: 1, blastVulnerabilitySourcePaddleId: null, frostVulnerability: 0, traitLockTime: 0, lastHitPaddleId: null };
+  return { trait, guardReady: trait === "guard", healTimer: 3, poisonTime: 0, poisonTick: 0, burnTime: 0, burnTick: 0, burnLevel: 0, healBlockTime: 0, blastVulnerability: 1, frostVulnerability: 0, traitLockTime: 0 };
 }
 
 function lateWaveHpMultiplier(waveNumber: number) {
@@ -344,7 +337,7 @@ function newPaddleCounter(): PaddleCounter {
 
 function makeWaveBricks(waveNumber: number, balance = DEFAULT_BALANCE_CONFIG): Brick[] {
   const definition = waveDefinition(waveNumber);
-  if (definition.boss) return makeBossBricks(definition.boss === "final" ? 4 : definition.boss === "late" ? 3 : definition.boss === "mid" ? 2 : 1, 0, balance, definition.hpMultiplier);
+  if (definition.boss) return makeBossBricks(definition.boss === "final" ? 4 : definition.boss === "late" ? 3 : definition.boss === "mid" ? 2 : 1, balance, definition.hpMultiplier);
   const blocks = definition.blocks ?? blocksFromPattern(definition.pattern);
   const gridX = (W - WAVE_COLUMNS * WAVE_CELL_SIZE) / 2;
   const baseHp = 1 + Math.floor((waveNumber - 1) / Math.max(1, Math.round(balance.baseHpWaveStep)));
@@ -371,7 +364,7 @@ function makeWaveBricks(waveNumber: number, balance = DEFAULT_BALANCE_CONFIG): B
   });
 }
 
-function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfig, waveHpMultiplier = 1): Brick[] {
+function makeBossBricks(stage: number, balance: BalanceConfig, waveHpMultiplier = 1): Brick[] {
   const cols = 4;
   const rows = 3;
   const cellWidth = 104;
@@ -382,7 +375,7 @@ function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfi
   const startY = 94;
   const bossHpMultiplier = [1, 0.85, 0.95, 1.05, 1.2][Math.min(4, stage)] ?? 0.85;
   const earlyBossHealthScale = stage <= 2 ? 0.4 : 1;
-  const coreHp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage * 0.55 + ghostCount * 10) * bossHpMultiplier * waveHpMultiplier * 0.5 * earlyBossHealthScale);
+  const coreHp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage * 0.55) * bossHpMultiplier * waveHpMultiplier * 0.5 * earlyBossHealthScale);
   return [{
     x: startX, y: startY, w: width, h: height,
     hp: coreHp, maxHp: coreHp,
@@ -392,26 +385,25 @@ function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfi
   }];
 }
 
-function makeInitialBricks(ghostCount: number, balance: BalanceConfig): Brick[] {
+function makeInitialBricks(balance: BalanceConfig): Brick[] {
   return makeWaveBricks(1, balance);
 }
 
 function makePlayerBall(upgrades: UpgradeId[], x = W / 2): Ball {
   const speed = 1 + upgrades.filter((u) => u === "speed").length * 0.12;
-  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8, owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, gravityBaseSpeed: null, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0, canTriggerSkills: true, skillGeneration: 0, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false, respawnRecoveryTime: 0, respawnRecoveryDuration: 0, respawnRecoveryBaseSpeed: 0 };
+  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8, pierce: 0, maxPierce: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, gravityBaseSpeed: null, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0, canTriggerSkills: true, skillGeneration: 0, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false, respawnRecoveryTime: 0, respawnRecoveryDuration: 0, respawnRecoveryBaseSpeed: 0 };
   syncBallPayloadDisplay(ball, upgrades);
   return ball;
 }
 
-function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameState {
+function initialGame(balance: BalanceConfig): GameState {
   const balls: Ball[] = [makePlayerBall([])];
   const rowInterval = 0;
   return {
     balls,
-    bricks: makeInitialBricks(activeGhosts.length, balance),
+    bricks: makeInitialBricks(balance),
     paddleX: W / 2,
     paddleWidth: 128,
-    ghostPaddles: activeGhosts.map((_, index) => W * (index + 0.5) / activeGhosts.length),
     elapsed: 0,
     score: 0,
     level: 1,
@@ -430,7 +422,7 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     particles: [],
     particlePool: [],
     particlePoolCursor: 0,
-    flashes: activeGhosts.length > 0 ? [{ text: `ECHO PRESSURE +${activeGhosts.length * 12}%`, x: W / 2, y: H / 2, life: 1.5, color: "#ff6b87" }] : [],
+    flashes: [],
     effects: [],
     effectPool: [],
     effectPoolCursor: 0,
@@ -449,7 +441,7 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     bossReinforcementCount: 0,
     paddleBarriers: {},
     itemBarrierTime: 0,
-    paddleCounters: Object.fromEntries(["player", ...activeGhosts.map((_, index) => `ghost-${index}`)].map((id) => [id, newPaddleCounter()])),
+    paddleCounters: { player: newPaddleCounter() },
     coreHp: MAX_CORE_HP,
     maxCoreHp: MAX_CORE_HP,
     bossActive: false,
@@ -504,7 +496,7 @@ function recordBotWaveSample(game: GameState) {
   const sample: BotWaveSample = {
     wave: game.wave,
     elapsed: game.elapsed,
-    balls: game.balls.filter((ball) => ball.owner === "player").length,
+    balls: game.balls.length,
     coreHp: game.coreHp,
     aliveBricks: game.bricks.filter((brick) => brick.alive).length,
     brickHp: game.bricks.reduce((sum, brick) => sum + (brick.alive ? Math.max(0, brick.hp) : 0), 0),
@@ -620,7 +612,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   }, []);
   // Populated when the caller explicitly opts into canonical simulation.
   const canonicalStateRef = useRef<CanonicalState | null>(null);
-  const activeGhostsRef = useRef<GhostRecord[]>([]);
   const { pointerXRef, pointerYRef, aimInputModeRef, keyboardAimRef, keyboardRef, onPointerMove } = useGameInput({
     canvasRef,
     gameRef,
@@ -677,9 +668,9 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     rewardOpeningRef,
   } = useGameRuntimeController();
 
-  const [ghosts, setGhosts] = useState<GhostRecord[]>([]);
   const [, setSelectedIds] = useState<string[]>([]);
   const [hud, setHudState] = useState<HudSnapshot>({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, barriers: 0, overdriveLevel: 0, overdriveMultiplier: 1, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0, skillLevels: [] });
+  const [ownedSkillPage, setOwnedSkillPage] = useState(0);
   const lastHudSnapshotRef = useRef<HudSnapshot | null>(null);
   const setHud = useCallback((next: HudSnapshot) => {
     if (hudSnapshotsEqual(lastHudSnapshotRef.current, next)) return;
@@ -924,22 +915,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      try {
-        const saved = localStorage.getItem("echo-breaker-ghosts-v1");
-        if (saved) setGhosts(JSON.parse(saved));
-      } catch {
-        setGhosts([]);
-      }
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem("echo-breaker-ghosts-v1", JSON.stringify(ghosts));
-  }, [ghosts]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1280,7 +1255,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     renderGameRuntimeCanvas({
       canvas,
       game,
-      activeGhosts: activeGhostsRef.current,
       botActive: botActiveRef.current,
       pointerX: pointerXRef.current,
       pointerY: pointerYRef.current,
@@ -1300,8 +1274,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
       upgradeLevel,
       classSkillColor,
       getSkill: activePresentationSkill,
-      ghostPaddleY,
-      ghostPaddleWidth,
     });
   }, [advancePresentation, consumePresentationEvents, pointerXRef, pointerYRef]);
 
@@ -1329,8 +1301,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     audio.setMusicState({ active: true, state: "transition" });
     void audio.unlock().then(() => audio.play("start"));
     void audio.startMusic();
-    const activeGhosts: GhostRecord[] = [];
-    activeGhostsRef.current = activeGhosts;
     const bench = skillBenchConfigRef.current;
     const benchQueue = bench.environment === "original" ? ["original"] : (bench.mode === "batch" ? bench.skillIds : [bench.skillId]).filter((id) => activeSkillMap[id as UpgradeId]);
     const variantsPerSkill = bench.environment === "original" ? 1 : 4;
@@ -1340,7 +1310,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     const runSeed = benchSeed ?? createRunSeed();
     configureRunRandom(runSeed);
     if (asBot) botPolicyStateRef.current = createBotPolicyState(runSeed ^ 0x9e3779b9);
-    const game = initialGame(activeGhosts, balanceConfigRef.current);
+    const game = initialGame(balanceConfigRef.current);
     if (!asBot && typeof window !== "undefined") {
       try {
         const savedBuild = JSON.parse(localStorage.getItem(SKILL_BUILD_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
@@ -1758,7 +1728,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     canonicalStateRef.current = null;
     setResult(null);
     setMode("lobby");
-    activeGhostsRef.current = [];
   };
 
   const stopBotSession = () => {
@@ -1887,6 +1856,13 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     };
   }).filter((skill) => skill.picks > 0).sort((a, b) => b.picks - a.picks || b.clearRate - a.clearRate);
   const showSkillBenchmark = !benchmarkMode && skillBenchConfig.enabled;
+  const upcomingBossWave = getActiveWaveDefinitions().find((definition) => definition.wave > hud.wave && Boolean(definition.boss))?.wave ?? null;
+  const ownedSkillPages = Math.max(1, Math.ceil(hud.skillLevels.length / 12));
+  const safeOwnedSkillPage = Math.min(ownedSkillPage, ownedSkillPages - 1);
+  const visibleOwnedSkills = hud.skillLevels.slice(safeOwnedSkillPage * 12, safeOwnedSkillPage * 12 + 12);
+  useEffect(() => {
+    setOwnedSkillPage((page) => Math.min(page, Math.max(0, ownedSkillPages - 1)));
+  }, [ownedSkillPages]);
   const updateBenchmarkRuns = (runs: BenchmarkConfig["runs"]) => {
     const next = { ...benchmarkConfigRef.current, runs };
     benchmarkConfigRef.current = next;
@@ -1920,15 +1896,15 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
             <aside className="in-game-side-panel in-game-skill-panel" aria-label="OWNED SKILLS">
               <h2>OWNED SKILLS</h2>
               <div className="in-game-skill-list">
-                {hud.skillLevels.map(({ id, level, enhancement = 0 }) => {
+                {visibleOwnedSkills.map(({ id, level, enhancement = 0 }) => {
                   const skill = upgradeCatalog.find((entry) => entry.id === id);
                   const skillConfig = activeSkillMap[id];
                   const evolved = isSkillEvolved(gameRef.current?.upgrades ?? [], id);
                   const category = skill?.category ?? "common";
                   const currentCooldown = skillConfig?.cooldown[Math.max(0, Math.min(2, level - 1))] ?? 0;
-                  const playerBall = gameRef.current?.balls.find((ball) => ball.owner === "player");
+                  const playerBall = gameRef.current?.balls[0];
                   const cooldownRemaining = Math.max(0, Number(playerBall?.skillCooldowns[id as ClassSkillId] ?? gameRef.current?.paddleCounters?.player?.skillCooldowns[id as ClassSkillId] ?? 0));
-                  const description = skillConfig ? [resolveSkillSummary(skillConfig, level), skillConfig.evolution ? `${evolved ? "EVOLVED" : "EVOLUTION"}: ${skillConfig.evolution}` : ""].filter(Boolean).join(" ") : "";
+                  const description = skillConfig ? [resolveSkillSummary(skillConfig, level), skillConfig.evolution && evolved ? `EVOLVED: ${skillConfig.evolution}` : ""].filter(Boolean).join(" ") : "";
                   const cooldownText = currentCooldown > 0 ? `CD ${currentCooldown}s` : "CD 없음";
                   const hasInlineCooldown = Boolean(skillConfig?.description.includes("{cooldown}"));
                   return <div key={`side-${id}`} className={`in-game-skill-row class-${category}${evolved ? " evolved" : ""}`} tabIndex={0} aria-label={`${skill?.name ?? id} LEVEL ${level}`}>
@@ -1944,6 +1920,13 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                 })}
               </div>
               <div className="in-game-locked-slot" aria-label="LOCKED SKILL SLOT">▣</div>
+              {ownedSkillPages > 1 && (
+                <div className="owned-skills-pagination" aria-label="OWNED SKILLS PAGES">
+                  <button type="button" onClick={() => setOwnedSkillPage((page) => Math.max(0, page - 1))} disabled={safeOwnedSkillPage === 0} aria-label="Previous skills">‹</button>
+                  <span>{safeOwnedSkillPage + 1} / {ownedSkillPages}</span>
+                  <button type="button" onClick={() => setOwnedSkillPage((page) => Math.min(ownedSkillPages - 1, page + 1))} disabled={safeOwnedSkillPage === ownedSkillPages - 1} aria-label="Next skills">›</button>
+                </div>
+              )}
             </aside>
 
             <div className="game-frame">
@@ -2050,12 +2033,27 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                 </div>
               </div>
             )}
+            <div className="in-game-core-hud" aria-label={`CORE ${hud.coreHp}/${hud.maxCoreHp}`}>
+              <div className="core-pip-list" role="img" aria-label={`CORE ${hud.coreHp}/${hud.maxCoreHp}`}>
+                {Array.from({ length: Math.max(8, Math.ceil(hud.maxCoreHp)) }, (_, index) => {
+                  const filled = index < Math.ceil(Math.max(0, hud.coreHp) / Math.max(1, hud.maxCoreHp) * Math.max(8, Math.ceil(hud.maxCoreHp)));
+                  return <img key={index} className={`core-pip${filled ? " is-filled" : ""}`} src={STATUS_ICON_ASSETS.core} alt="" aria-hidden="true" />;
+                })}
+              </div>
+            </div>
             </div>
 
             <div className="right-rail-stack">
             <aside className="in-game-side-panel in-game-stat-panel" aria-label="RUN STATUS">
-              <div className="in-game-stat-card in-game-wave-card"><span>WAVE</span><div className="in-game-stat-value"><img className="in-game-stat-icon" src={STATUS_ICON_ASSETS.wave} alt="" aria-hidden="true" /><strong>{hud.wave}</strong></div></div>
-              <div className="in-game-stat-card in-game-time-card"><span>TIME</span><div className="in-game-stat-value"><img className="in-game-stat-icon" src={STATUS_ICON_ASSETS.time} alt="" aria-hidden="true" /><strong>{String(Math.floor(hud.time / 60)).padStart(2, "0")}:{String(Math.floor(hud.time % 60)).padStart(2, "0")}</strong></div></div>
+              <h2>RUN INFO</h2>
+              <span className="run-info-divider" aria-hidden="true" />
+              <div className="in-game-stat-card in-game-wave-card"><div className="in-game-stat-main"><img className="in-game-stat-icon" src={STATUS_ICON_ASSETS.wave} alt="" aria-hidden="true" /><span>WAVE</span></div><strong>{hud.wave}</strong></div>
+              <div className="in-game-stat-card in-game-time-card"><div className="in-game-stat-main"><img className="in-game-stat-icon" src={STATUS_ICON_ASSETS.time} alt="" aria-hidden="true" /><span>TIME</span></div><strong>{String(Math.floor(hud.time / 60)).padStart(2, "0")}:{String(Math.floor(hud.time % 60)).padStart(2, "0")}</strong></div>
+              <div className={`in-game-next-boss${hud.bossActive ? " is-active" : ""}${upcomingBossWave !== null && upcomingBossWave - hud.wave <= 2 ? " is-near" : ""}`}>
+                <span className="in-game-next-boss-icon"><img src={STATUS_ICON_ASSETS.boss} alt="" aria-hidden="true" /></span>
+                <span><small>{hud.bossActive ? "BOSS WAVE" : "NEXT BOSS"}</small><strong>{hud.bossActive ? "NOW" : upcomingBossWave === null ? "—" : `${upcomingBossWave - hud.wave} WAVE`}</strong></span>
+              </div>
+              <div className="in-game-stat-card in-game-break-card"><div className="in-game-stat-main"><img className="in-game-stat-icon" src={STATUS_ICON_ASSETS.break} alt="" aria-hidden="true" /><span>BREAK</span></div><strong>{hud.bricks}</strong></div>
               <div className="in-game-stat-card in-game-core-card">
                 <div className="core-pip-list" role="img" aria-label={`코어 ${hud.coreHp}/${hud.maxCoreHp}`}>
                   {(() => {
@@ -2105,7 +2103,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
           </div>
         </div>
 
-        {benchmarkMode && <aside className="ghost-panel">
+        {benchmarkMode && <aside className="benchmark-panel">
           <section className="bot-panel" aria-label="플레이테스트 봇 설정 및 결과">
             <div className="panel-heading">
               <div><p className="eyebrow">{benchmarkRunMode === "watch" ? `VISIBLE PHYSICS · ${botSpeed}× · TARGET W${benchmarkConfig.targetWave}` : `PARALLEL HEADLESS · ${parallelWorkerCount || "AUTO"} WORKERS · TARGET W${benchmarkConfig.targetWave}`}</p><h2>벤치마크 러너</h2></div>

@@ -31,7 +31,6 @@ export function stepLegacyPure(game: GameState, input: LegacyStepInput, dt: numb
 /** Ball-only movement phase. Brick/paddle collision remains in the live loop. */
 export function advanceLegacyBallsPure(game: GameState, dt: number, width = 900, top = 0) {
   for (const ball of game.balls) {
-    if (ball.owner !== "player") continue;
     ball.x += ball.vx * dt;
     ball.y += ball.vy * dt;
     if (ball.x - ball.radius < 0) { ball.x = ball.radius; ball.vx = Math.abs(ball.vx); ensureMinimumVerticalAngle(ball); }
@@ -43,7 +42,6 @@ export function advanceLegacyBallsPure(game: GameState, dt: number, width = 900,
 
 export function resolveLegacyBrickCollisionsPure(game: GameState, previous: Map<Ball, { x: number; y: number }>, onEvent?: (event: { type: "brick-hit" | "brick-destroyed"; brick: Brick; damage: number }) => void) {
   for (const ball of game.balls) {
-    if (ball.owner !== "player") continue;
     const prior = previous.get(ball) ?? { x: ball.x, y: ball.y };
     for (const brick of game.bricks) {
       if (!brick.alive || brick.trait === "indestructible") continue;
@@ -51,7 +49,6 @@ export function resolveLegacyBrickCollisionsPure(game: GameState, previous: Map<
       if (!collision) continue;
       const damage = Math.max(0, ball.attackPower);
       brick.hp -= damage;
-      brick.lastHitPaddleId = ball.sourcePaddleId;
       onEvent?.({ type: brick.hp <= 0 ? "brick-destroyed" : "brick-hit", brick, damage });
       if (brick.hp <= 0) { brick.hp = 0; brick.alive = false; game.bricksBroken += 1; }
       if (collision.normalX) ball.vx = collision.normalX * Math.abs(ball.vx); else ball.vy = collision.normalY * Math.abs(ball.vy);
@@ -64,7 +61,7 @@ export function resolveLegacyBrickCollisionsPure(game: GameState, previous: Map<
 export function resolveLegacyPaddleCollisionPure(game: GameState, previous: Map<Ball, { x: number; y: number }>, input: LegacyStepInput, options: { paddleY: number; paddleSpeed?: number; slop?: number; sideDepth?: number; forgiveness?: number; width?: number } = { paddleY: 530, width: 900 }) {
   const width = options.width ?? 900;
   for (const ball of game.balls) {
-    if (ball.owner !== "player" || ball.vy <= 0) continue;
+    if (ball.vy <= 0) continue;
     const prior = previous.get(ball) ?? { x: ball.x, y: ball.y };
     const contact = sweptPaddleContact(ball, prior.x, prior.y, { x: game.paddleX, previousX: game.paddleX, y: options.paddleY, width: game.paddleWidth }, options.slop ?? 4, options.sideDepth ?? 18, options.forgiveness ?? 10);
     if (!contact) continue;

@@ -189,6 +189,7 @@ export type GameState = {
   bossReinforcementTimer: number;
   bossReinforcementTelegraph: number;
   bossReinforcementCount: number;
+  paddleBarriers: Record<string, number>;
   itemBarrierTime: number;
   paddleCounters: Record<string, PaddleCounter>;
   coreHp: number;

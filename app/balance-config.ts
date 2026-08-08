@@ -8,7 +8,6 @@ export type BalanceConfig = {
   guardChanceGrowth: number;
   bossBaseHp: number;
   bossHpPerStage: number;
-  bossTimeLimit: number;
   bossAttackInterval: number;
   bossAttackAcceleration: number;
 };
@@ -88,7 +87,6 @@ export const DEFAULT_BALANCE_CONFIG: BalanceConfig = {
   guardChanceGrowth: 0.005,
   bossBaseHp: 280,
   bossHpPerStage: 160,
-  bossTimeLimit: 45,
   bossAttackInterval: 3.8,
   bossAttackAcceleration: 0.45,
 };
@@ -103,7 +101,6 @@ const LIMITS: Record<keyof BalanceConfig, [number, number]> = {
   guardChanceGrowth: [0, 0.012],
   bossBaseHp: [40, 500],
   bossHpPerStage: [0, 240],
-  bossTimeLimit: [20, 90],
   bossAttackInterval: [2.5, 10],
   bossAttackAcceleration: [0, 0.8],
 };

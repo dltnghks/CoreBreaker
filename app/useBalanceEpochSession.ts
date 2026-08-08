@@ -27,7 +27,7 @@ function cloneSkills(skills: SkillConfig[]) {
 }
 
 function cloneWaves(waves: WaveDefinition[]) {
-  return waves.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  return waves.map((wave) => ({ ...wave, pattern: [...wave.pattern], blocks: wave.blocks?.map((block) => ({ ...block })) }));
 }
 
 function bestCandidate(candidates: BalanceCandidate[]) {

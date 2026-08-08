@@ -630,7 +630,9 @@ function buildWave(state: CanonicalState, wave: number) {
     const bonus = cell === "h" ? 1 + Math.floor((wave - 1) / 8) : cell === "c" ? 2 : 0;
     const hp = Math.ceil((baseHp + bonus) * lateWaveHpMultiplier(wave) * definition.hpMultiplier);
     const drop = dropCell === block ? "multiball" : canonicalRandom(state, "world") < 0.055 ? (["auto-barrier", "core-repair", "cooldown-reset"] as CanonicalItemKind[])[Math.floor(canonicalRandom(state, "world") * 3)] : null;
-    const inset = 2;
+    // Keep the collision footprint aligned with the visible sprite while
+    // leaving a 2px gap between adjacent 2x1 blocks.
+    const inset = 1;
     return makeBrick(state, gridX + block.x * WAVE_CELL_SIZE + inset, gridY + block.y * WAVE_CELL_SIZE + inset, block.width * WAVE_CELL_SIZE - inset * 2, block.height * WAVE_CELL_SIZE - inset * 2, hp, traitFor(cell), "normal", drop);
   });
 }
@@ -1652,7 +1654,7 @@ function maybeStartBossArmorReform(state: CanonicalState) {
   const core = state.bricks.find((brick) => brick.kind === "boss-core");
   if (!core || !core.alive) return;
   const ratio = core.hp / Math.max(1, core.maxHp);
-  const thresholds = [0.75, 0.5, 0.25];
+  const thresholds = bossStage(state) <= 2 ? [0.5] : [0.75, 0.5, 0.25];
   const thresholdIndex = thresholds.findIndex((threshold, index) => ratio <= threshold && !state.bossArmorReformThresholds[index]);
   if (thresholdIndex < 0) return;
   state.bossArmorReformThresholds[thresholdIndex] = true;
@@ -1688,21 +1690,22 @@ const BOSS_REINFORCEMENT_TRAITS: CanonicalTrait[] = ["standard", "guard", "explo
 
 function spawnBossReinforcements(state: CanonicalState) {
   const count = Math.max(1, state.wave);
-  const margin = 36;
-  const gap = 7;
-  const columns = 10;
+  const columns = Math.floor(WAVE_COLUMNS / 2);
   const rows = 6;
-  const width = (GAME_WIDTH - margin * 2 - gap * (columns - 1)) / columns;
-  const height = 24;
-  const minY = 220;
+  const gridWidth = columns * WAVE_CELL_SIZE * 2;
+  const gridX = (GAME_WIDTH - gridWidth) / 2;
+  const gridY = 220;
+  const inset = 1;
+  const width = WAVE_CELL_SIZE * 2 - inset * 2;
+  const height = WAVE_CELL_SIZE - inset * 2;
   const cells = Array.from({ length: columns * rows }, (_, index) => index);
   for (let index = cells.length - 1; index > 0; index -= 1) {
     const target = Math.floor(canonicalRandom(state, "world") * (index + 1));
     [cells[index], cells[target]] = [cells[target], cells[index]];
   }
   const positions = cells.slice(0, Math.min(count, cells.length)).map((cell) => ({
-    x: margin + (cell % columns) * (width + gap),
-    y: minY + Math.floor(cell / columns) * (height + gap),
+    x: gridX + (cell % columns) * WAVE_CELL_SIZE * 2 + inset,
+    y: gridY + Math.floor(cell / columns) * WAVE_CELL_SIZE + inset,
   }));
   const ids: number[] = [];
   for (let index = 0; index < count; index += 1) {
@@ -1716,7 +1719,7 @@ function spawnBossReinforcements(state: CanonicalState) {
   state.bossReinforcementIds = ids;
   state.bossReinforcementTimer = 0;
   state.bossReinforcementTelegraph = 0;
-  emitCanonicalVisual(state, { kind: "skill", skillId: "original" as UpgradeId, x: GAME_WIDTH / 2, y: minY + ((height + gap) * rows - gap) / 2, radius: 250, duration: 0.7, color: "#ffcf4a" });
+  emitCanonicalVisual(state, { kind: "skill", skillId: "original" as UpgradeId, x: GAME_WIDTH / 2, y: gridY + (WAVE_CELL_SIZE * rows) / 2, radius: 250, duration: 0.7, color: "#ffcf4a" });
 }
 
 function updateBossReinforcements(state: CanonicalState, step: number) {
@@ -1841,7 +1844,7 @@ export function createCanonicalState(options: { seed: number; targetWave?: numbe
   const state: CanonicalState = {
     bossIntroTimer: 0,
     seed: options.seed, rng: { world: options.seed >>> 0 || 1, reward: (options.seed ^ 0x9e3779b9) >>> 0 || 1 }, runConfig, tick: 0, eventSequence: 0, phase: interactive ? "awaiting-start-skill" : "running", interactive, pendingChoices: [], pendingBossChoices: [], rerollsLeft: 1, pendingWave: null, clearedWave: null, clearedBoss: false, gameOverReason: null, stepEvents: [], balance: runConfig.balance, skills: runConfig.skills, waves: runConfig.waves, targetWave: runConfig.targetWave,
-    wave: 1, waveElapsed: 0, elapsed: 0, rowTimer: 0, itemBarrierTime: 0, overdriveLevel: 0, paddleX: GAME_WIDTH / 2, paddleWidth: BASE_PADDLE_WIDTH, lastMove: 0, moveBoostTime: 0, balls: [], bricks: [], items: [], gravityWells: [], bossBarriers: [], bossWalls: [], bossShield: { active: false, life: 0, maxLife: 0, runeIds: [] }, bossArmorHp: 0, bossArmorReformThresholds: [false, false, false], bossArmorReformTimer: 0, bossArmorReformCells: [], bossReinforcementIds: [], bossReinforcementTimer: 0, bossReinforcementTelegraph: 0, upgrades: [], bossEnhancements: {}, legacyEnchantments: { ...(options.legacyEnchantments ?? {}) }, echoSplitReflections: 0, safetyBlocks: [], ghostPaddles: [], skillHistory: [], skillMetrics: {}, sharedSkillCooldowns: {}, combatStats: { physicalPower: 1, magicPower: 1, skillDamageMultiplier: 1, skillRangeMultiplier: 1, skillDurationMultiplier: 1, skillCooldownMultiplier: 1, chainBonus: 0 }, waveMetrics: [], coreHp: 8, maxCoreHp: 8, score: 0, bricksBroken: 0, combo: 0, maxCombo: 0, maxBalls: 1, ballLosses: 0, totalDamage: 0, physicalDamage: 0, magicDamage: 0, lastDamageElapsed: 0, reflectorBlockedHits: 0, barrierTime: 0, barrierCharges: 0, bossAttackTimer: 0, bossPattern: 0, lastShotTimer: 0, nextBrickId: 1, complete: false, gameOver: false,
+    wave: 1, waveElapsed: 0, elapsed: 0, rowTimer: 0, itemBarrierTime: 0, overdriveLevel: 0, paddleX: GAME_WIDTH / 2, paddleWidth: BASE_PADDLE_WIDTH, lastMove: 0, moveBoostTime: 0, balls: [], bricks: [], items: [], gravityWells: [], bossBarriers: [], bossWalls: [], bossShield: { active: false, life: 0, maxLife: 0, runeIds: [] }, bossArmorHp: 0, bossArmorReformThresholds: [false, false, false], bossArmorReformTimer: 0, bossArmorReformCells: [], bossReinforcementIds: [], bossReinforcementTimer: 0, bossReinforcementTelegraph: 0, upgrades: [], bossEnhancements: {}, legacyEnchantments: { ...(options.legacyEnchantments ?? {}) }, echoSplitReflections: 0, safetyBlocks: [], skillHistory: [], skillMetrics: {}, sharedSkillCooldowns: {}, combatStats: { physicalPower: 1, magicPower: 1, skillDamageMultiplier: 1, skillRangeMultiplier: 1, skillDurationMultiplier: 1, skillCooldownMultiplier: 1, chainBonus: 0 }, waveMetrics: [], coreHp: 8, maxCoreHp: 8, score: 0, bricksBroken: 0, combo: 0, maxCombo: 0, maxBalls: 1, ballLosses: 0, totalDamage: 0, physicalDamage: 0, magicDamage: 0, lastDamageElapsed: 0, reflectorBlockedHits: 0, barrierTime: 0, barrierCharges: 0, bossAttackTimer: 0, bossPattern: 0, lastShotTimer: 0, nextBrickId: 1, complete: false, gameOver: false,
   };
   buildWave(state, 1);
   state.balls = [makeBall(state)];
@@ -2010,22 +2013,6 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
   const reversalBoost = state.moveBoostTime > 0 ? 1.4 : 1;
   const previousPaddleX = state.paddleX;
   state.paddleX = Math.max(state.paddleWidth / 2, Math.min(GAME_WIDTH - state.paddleWidth / 2, state.paddleX + controls.move * PADDLE_SPEED * moveMultiplier * reversalBoost * step));
-  // Ghost paddles occupy independent horizontal zones and follow the lowest
-  // descending ball, matching the legacy activeGhosts controller.
-  const ghostCount = state.ghostPaddles.length;
-  if (ghostCount > 0) {
-    const tracked = [...state.balls].filter((ball) => ball.vy > 0).sort((a, b) => b.y - a.y)[0];
-    for (let index = 0; index < ghostCount; index += 1) {
-      if (state.ghostPaddleActive && state.ghostPaddleActive[index] === false) continue;
-      const zoneWidth = GAME_WIDTH / ghostCount;
-      const zoneStart = zoneWidth * index;
-      const width = state.ghostPaddleWidths?.[index] ?? 92;
-      const speed = state.ghostPaddleSpeeds?.[index] ?? Math.max(125, 210 - (state.wave - 1) * 6);
-      const target = tracked?.x ?? zoneStart + zoneWidth / 2;
-      const clamped = Math.max(zoneStart + width / 2, Math.min(zoneStart + zoneWidth - width / 2, target));
-      state.ghostPaddles[index] += Math.max(-speed * step, Math.min(speed * step, clamped - state.ghostPaddles[index]));
-    }
-  }
   for (const brick of state.bricks) {
     if (!brick.alive) continue;
     brick.healBlockTime = Math.max(0, brick.healBlockTime - step);
@@ -2316,24 +2303,6 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
         }
       }
     }
-    if (ball.vy > 0 && state.ghostPaddles.length > 0) {
-      for (let index = 0; index < state.ghostPaddles.length; index += 1) {
-        if (state.ghostPaddleActive && state.ghostPaddleActive[index] === false) continue;
-        const width = state.ghostPaddleWidths?.[index] ?? 92;
-        const contact = sweptPaddleContact(ball, previousBallX, previousBallY, {
-          x: state.ghostPaddles[index], previousX: state.ghostPaddles[index], y: GAME_HEIGHT - 42, width,
-        }, 4, 18, 10);
-        if (!contact) continue;
-        const speed = Math.max(300, Math.hypot(ball.vx, ball.vy));
-        const ratio = Math.max(-0.84, Math.min(0.84, contact.hitRatio * 0.74));
-        ball.x = contact.contactX;
-        ball.y = GAME_HEIGHT - 42 - ball.radius - 0.1;
-        ball.vx = ratio * speed;
-        ball.vy = -Math.sqrt(Math.max(1, speed * speed - ball.vx * ball.vx));
-        normalizeBallAngle(ball);
-        break;
-      }
-    }
     for (const brick of state.bricks) {
       if (!brick.alive) continue;
       const collision = circleRect(ball, brick);
@@ -2455,7 +2424,7 @@ export function canonicalSnapshot(state: CanonicalState) {
     balls: state.balls.map((ball) => ({ x: Number(ball.x.toFixed(4)), y: Number(ball.y.toFixed(4)), vx: Number(ball.vx.toFixed(4)), vy: Number(ball.vy.toFixed(4)), attackPower: ball.attackPower, pierce: ball.pierce, maxPierce: ball.maxPierce, payload: ball.payload, payloadLevel: ball.payloadLevel, payloads: { ...ball.payloads }, skillCharges: { ...ball.skillCharges }, cooldowns: { ...ball.cooldowns }, lastHitBrickId: ball.lastHitBrickId, explosionBaseSpeed: ball.explosionBaseSpeed === null ? null : Number(ball.explosionBaseSpeed.toFixed(4)), explosionBoostRatio: Number(ball.explosionBoostRatio.toFixed(6)), explosionBoostTime: Number(ball.explosionBoostTime.toFixed(6)) })),
     bricks: state.bricks.filter((brick) => brick.alive).map((brick) => [brick.id, Number(brick.hp.toFixed(3)), brick.guardReady, Number(brick.traitLockTime.toFixed(3)), Number(brick.frostVulnerability.toFixed(3))]),
     upgrades: [...state.upgrades], skillHistory: state.skillHistory.map((event) => ({ ...event })), sharedSkillCooldowns: { ...state.sharedSkillCooldowns }, complete: state.complete, gameOver: state.gameOver, combatStats: { ...state.combatStats }, totalDamage: Number(state.totalDamage.toFixed(3)), physicalDamage: Number(state.physicalDamage.toFixed(3)), magicDamage: Number(state.magicDamage.toFixed(3)), lastDamageElapsed: Number(state.lastDamageElapsed.toFixed(3)), reflectorBlockedHits: state.reflectorBlockedHits, barrierTime: Number(state.barrierTime.toFixed(3)), barrierCharges: state.barrierCharges, echoSplitReflections: state.echoSplitReflections,
-    safetyBlocks: state.safetyBlocks.map((block) => ({ ...block })), ghostPaddles: [...state.ghostPaddles],
+    safetyBlocks: state.safetyBlocks.map((block) => ({ ...block })),
   };
 }
 

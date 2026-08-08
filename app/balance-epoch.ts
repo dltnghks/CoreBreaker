@@ -25,7 +25,7 @@ export function tuningParameterStep(skill: SkillConfig, parameter: BalanceTuning
   if (["DMG", "개", "회", "HP"].includes(skill.unit)) return 1;
   if (skill.unit === "초") return 0.25;
   if (skill.unit === "배") return 0.25;
-  if (skill.unit === "px") return skill.id === "common-ball-size" ? 1 : 5;
+  if (skill.unit === "px") return 5;
   if (skill.unit === "%") return 1;
   return 0.1;
 }
@@ -104,7 +104,7 @@ export function createEpochCandidates(options: {
       skills,
       balance: { ...baseConfig.balance },
       benchmark: { ...baseConfig.benchmark },
-      waves: baseConfig.waves.map((wave) => ({ ...wave, pattern: [...wave.pattern] })),
+      waves: baseConfig.waves.map((wave) => ({ ...wave, pattern: [...wave.pattern], blocks: wave.blocks?.map((block) => ({ ...block })) })),
     };
     const configHash = candidateFingerprint(config);
     return {

@@ -38,10 +38,10 @@ export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>) {
     audioRef.current = audio;
     // Try immediately for browsers that allow autoplay. Browsers that block
     // it keep the decoded transport ready and resume it on the first gesture.
-    audio.setMusicState({ active: true, title: true, boss: false });
+    audio.setMusicState({ active: true, state: "title" });
     void audio.startMusic().catch(() => undefined);
     const unlockTitleMusic = () => {
-      audio.setMusicState({ active: true, title: true, boss: false });
+      audio.setMusicState({ active: true, state: "title" });
       void audio.startMusic().catch(() => undefined);
     };
     window.addEventListener("pointerdown", unlockTitleMusic, { once: true });
@@ -67,7 +67,7 @@ export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>) {
     audioRef.current = audio;
     audio.setMuted(!next);
     if (next) {
-      audio.setMusicState({ active: true, title: true, boss: false });
+      audio.setMusicState({ active: true, state: "title" });
       void audio.startMusic().then(() => audio.play("item"));
     }
   }, [audioRef, soundEnabled]);

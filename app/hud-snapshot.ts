@@ -27,7 +27,7 @@ export function hudSnapshotFromGame(game: GameState, options: HudSnapshotOptions
   }));
   return Object.freeze({
     score: finiteNumber(game.score), time: finiteNumber(game.elapsed), level: finiteNumber(game.level, 1), combo: finiteNumber(game.combo),
-    bricks: finiteNumber(game.bricksBroken), balls: game.balls.filter((ball) => ball.owner === "player").length,
+    bricks: finiteNumber(game.bricksBroken), balls: game.balls.length,
     wave: finiteNumber(game.wave, 1), nextRow: Math.max(0, finiteNumber(game.rowTimer)), coreHp: finiteNumber(game.coreHp), maxCoreHp: finiteNumber(game.maxCoreHp),
     barriers: finiteNumber(game.paddleBarriers.player), overdriveLevel: finiteNumber(game.overdriveLevel),
     overdriveMultiplier: finiteNumber(options.overdriveMultiplier, 1), bossActive: game.bossActive, bossPending: game.bossPending,
