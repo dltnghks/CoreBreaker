@@ -783,7 +783,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [, setSavedMessage] = useState("");
   const [upgradeCatalog, setUpgradeCatalog] = useState<Upgrade[]>(DEFAULT_UPGRADES);
-  const { soundEnabled, sfxVolume, musicVolume, setSfxVolume, setMusicVolume, toggleSound } = useRuntimeSettings(audioRef);
+  const { soundEnabled, sfxVolume, musicVolume, setSfxVolume, setMusicVolume, toggleSound } = useRuntimeSettings(audioRef, artReady);
   useEffect(() => {
     const boss = hud.bossActive || (gameRef.current?.bossStage ?? 0) > 0;
     let state: MusicState;
@@ -2041,6 +2041,15 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
               )}
             </aside>
 
+            {mode === "lobby" && (
+              <div className="title-controls title-controls-left" aria-label="이동 조작">
+                <span className="title-controls-kicker">조작 안내</span>
+                <strong>이동</strong>
+                <div className="title-key-row"><kbd>A</kbd><kbd>D</kbd></div>
+                <small>방향키 사용</small>
+              </div>
+            )}
+
             <div className="game-frame">
             <canvas
               ref={canvasRef}
@@ -2215,6 +2224,16 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                 </RightRailPanel>
               )}
             </div>
+
+            {mode === "lobby" && (
+              <div className="title-controls title-controls-right" aria-label="조준 조작">
+                <span className="title-controls-kicker">입력 방식</span>
+                <strong>조준</strong>
+                <small>마우스</small>
+                <strong>발사</strong>
+                <small>클릭하여 시작</small>
+              </div>
+            )}
           </div>
 
           {mode !== "lobby" && <div className="build-tray">

@@ -6295,6 +6295,71 @@ html {
    box-sizing: border-box;
 }
 
+/* The title screen uses its otherwise empty side rails as a compact control legend. */
+.gameplay-shell.mode-lobby .gameplay-stage {
+   position: relative;
+}
+
+.gameplay-shell.mode-lobby .title-controls {
+   position: absolute;
+   top: 50%;
+   z-index: 4;
+   display: grid;
+   justify-items: center;
+   gap: 8px;
+   padding: 14px 10px;
+   color: #d8d4c7;
+   border: 1px solid rgba(226, 196, 119, .24);
+   background: linear-gradient(180deg, rgba(10, 14, 24, .82), rgba(5, 8, 16, .62));
+   box-shadow: inset 0 1px rgba(255, 255, 255, .04), 0 10px 24px rgba(0, 0, 0, .18);
+   text-align: center;
+   transform: translateY(-50%);
+   pointer-events: none;
+}
+
+.gameplay-shell.mode-lobby .title-controls-left {
+   left: 0;
+   width: var(--pc-left-rail);
+}
+
+.gameplay-shell.mode-lobby .title-controls-right {
+   right: 0;
+   width: var(--pc-right-rail);
+}
+
+.gameplay-shell.mode-lobby .title-controls-kicker {
+   color: #e2c477;
+   font: 900 9px/1 var(--pixel-font);
+   letter-spacing: .12em;
+}
+
+.gameplay-shell.mode-lobby .title-controls strong {
+   color: #f1eadc;
+   font: 900 15px/1 var(--pixel-font);
+   letter-spacing: .08em;
+}
+
+.gameplay-shell.mode-lobby .title-controls small {
+   color: #8793a8;
+   font: 800 8px/1.4 var(--pixel-font);
+   letter-spacing: .04em;
+}
+
+.gameplay-shell.mode-lobby .title-key-row {
+   display: flex;
+   gap: 6px;
+}
+
+.gameplay-shell.mode-lobby .title-controls kbd {
+   min-width: 28px;
+   padding: 6px 5px 5px;
+   color: #07101b;
+   border: 1px solid #d6b566;
+   background: linear-gradient(180deg, #f0d58c, #b58e42);
+   box-shadow: 0 3px 0 rgba(0, 0, 0, .36);
+   font: 900 12px/1 var(--pixel-font);
+}
+
 @media (max-width: 1231px) {
    .gameplay-shell {
       --pc-left-rail: 140px;

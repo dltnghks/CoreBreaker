@@ -7,7 +7,7 @@ const SFX_VOLUME_STORAGE_KEY = "echo-breaker-sfx-volume-v1";
 const MUSIC_VOLUME_STORAGE_KEY = "echo-breaker-music-volume-v1";
 
 /** Owns browser-backed runtime settings that are applied before a run starts. */
-export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>) {
+export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>, ready = true) {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [sfxVolume, setSfxVolumeState] = useState(1);
   const [musicVolume, setMusicVolumeState] = useState(1);
@@ -26,6 +26,7 @@ export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>) {
   }, []);
 
   useEffect(() => {
+    if (!ready) return;
     const enabled = localStorage.getItem(SOUND_STORAGE_KEY) !== "off";
     const storedSfx = Number(localStorage.getItem(SFX_VOLUME_STORAGE_KEY));
     const storedMusic = Number(localStorage.getItem(MUSIC_VOLUME_STORAGE_KEY));
@@ -57,7 +58,7 @@ export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>) {
       window.removeEventListener("keydown", unlockTitleMusic);
       audio.close();
     };
-  }, [audioRef]);
+  }, [audioRef, ready]);
 
   const toggleSound = useCallback(() => {
     const next = !soundEnabled;
