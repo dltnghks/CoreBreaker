@@ -65,27 +65,12 @@ export type Upgrade = {
 
 export type UpgradeChoice = { upgrade: Upgrade; ballCost: 0 | 1 | 2 };
 
-export type GhostRecord = {
-  id: string;
-  name: string;
-  score: number;
-  bricks: number;
-  maxCombo: number;
-  upgrades: UpgradeId[];
-  skillHistory: SkillSelectionEvent[];
-  skillMetrics: Partial<Record<UpgradeId, SkillRunMetric>>;
-  paddleTrack: number[];
-  createdAt: number;
-};
-
 export type Ball = {
   x: number;
   y: number;
   vx: number;
   vy: number;
   radius: number;
-  owner: "player" | "ghost";
-  ghostIndex?: number;
   pierce: number;
   maxPierce: number;
   blast: number;
@@ -94,7 +79,6 @@ export type Ball = {
   payloads: Partial<Record<PayloadId, number>>;
   attackPower: number;
   color: string;
-  sourcePaddleId: string;
   missileTime: number;
   missileHitCooldown: number;
   gravityRescueCooldown: number;
@@ -109,6 +93,8 @@ export type Ball = {
   visualSkill: ClassSkillId | null;
   temporaryTime: number;
   waveBonus: boolean;
+  awaitingLaunch?: boolean;
+  launchWaitTime?: number;
   respawnRecoveryTime: number;
   respawnRecoveryDuration: number;
   respawnRecoveryBaseSpeed: number;
@@ -130,20 +116,18 @@ export type Brick = {
   healTimer: number;
   poisonTime: number;
   poisonTick: number;
-  poisonSourcePaddleId: string | null;
   burnTime: number;
   burnTick: number;
   burnLevel: number;
-  burnSourcePaddleId: string | null;
   healBlockTime: number;
   blastVulnerability: number;
-  blastVulnerabilitySourcePaddleId: string | null;
   frostVulnerability: number;
   traitLockTime: number;
-  lastHitPaddleId: string | null;
   healthFlashTime?: number;
   healthFlashDuration?: number;
   healthFlashKind?: "damage" | "heal" | null;
+  bossRow?: number;
+  bossCol?: number;
 };
 
 export type DropItem = {
@@ -155,8 +139,11 @@ export type DropItem = {
   kind: ItemKind;
 };
 
-export type SafetyBlock = { ownerPaddleId: string; x: number; y: number; width: number; color: string };
-export type GravityWell = { ownerPaddleId: string; x: number; y: number; radius: number; life: number; maxLife: number; color: string; damagePerSecond: number; damageTick: number };
+export type SafetyBlock = { x: number; y: number; width: number; color: string };
+export type GravityWell = { x: number; y: number; radius: number; life: number; maxLife: number; color: string; damagePerSecond: number; damageTick: number; sourceSkillId?: UpgradeId };
+export type BossBarrier = { x: number; y: number; w: number; h: number; life: number; maxLife: number; telegraph: number; hitCount: number; maxHits: number };
+export type BossWall = { id: number; x: number; y: number; w: number; h: number; baseX: number; baseY: number; life: number; maxLife: number; telegraph: number; hp: number; maxHp: number };
+export type BossShield = { active: boolean; life: number; maxLife: number; runeIds: number[] };
 export type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
 export type Flash = { text: string; x: number; y: number; life: number; color: string; emphasis?: "damage" | "heal" };
 export type GameEffect = { kind: "ring" | "beam" | "blast" | "drop" | "spark" | "lightning" | "skill"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string; variant: number; skillId: ClassSkillId | null };
@@ -167,7 +154,6 @@ export type GameState = {
   bricks: Brick[];
   paddleX: number;
   paddleWidth: number;
-  ghostPaddles: number[];
   elapsed: number;
   score: number;
   level: number;
@@ -193,7 +179,16 @@ export type GameState = {
   items: DropItem[];
   safetyBlocks: SafetyBlock[];
   gravityWells: GravityWell[];
-  paddleBarriers: Record<string, number>;
+  bossBarriers: BossBarrier[];
+  bossWalls: BossWall[];
+  bossShield: BossShield;
+  bossArmorReformTimer: number;
+  bossArmorReformCells: Array<{ row: number; col: number }>;
+  bossIntroTimer: number;
+  bossStatus: "ARMOR ACTIVE" | "CORE EXPOSED" | "SHIELD ACTIVE" | "ARMOR REFORMING" | null;
+  bossReinforcementTimer: number;
+  bossReinforcementTelegraph: number;
+  bossReinforcementCount: number;
   itemBarrierTime: number;
   paddleCounters: Record<string, PaddleCounter>;
   coreHp: number;

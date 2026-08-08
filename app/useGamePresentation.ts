@@ -76,12 +76,6 @@ export function useGamePresentation(options: PresentationAdapters) {
   const advancePresentation = useCallback((dt: number) => {
     const game = gameRef.current;
     if (!game) return;
-    const bossActive = game.bossActive || game.bossStage > 0;
-    audioRef.current?.setMusicState({
-      active: !game.failed,
-      title: false,
-      boss: bossActive,
-    });
     game.shakeTime = Math.max(0, (game.shakeTime ?? 0) - dt);
     if (game.shakeTime <= 0) game.shakeStrength = 0;
     game.screenFlashTime = Math.max(0, (game.screenFlashTime ?? 0) - dt);
@@ -101,7 +95,7 @@ export function useGamePresentation(options: PresentationAdapters) {
     });
     game.effects.forEach((effect) => { effect.life -= dt; });
     game.effects = game.effects.filter((effect) => effect.life > 0);
-  }, [audioRef, gameRef, maxFlashes]);
+  }, [gameRef, maxFlashes]);
 
   const consumePresentationEvents = useCallback(() => {
     const game = gameRef.current;
@@ -203,9 +197,24 @@ export function useGamePresentation(options: PresentationAdapters) {
         }
         game.flashes.push({ text: `+${event.amount}`, x: event.x, y: event.y - 8, life: 0.85, color: "#72f1b8", emphasis: "heal" });
       } else if (event.type === "brick-destroyed") {
-        playAudio("brick-break", event.combo);
-        pushEffect(game, { kind: "spark", x: event.x, y: event.y, x2: event.x, y2: event.y, size: 38, life: 0.42, maxLife: 0.42, color: event.color, variant: event.brickIndex % 2, skillId: null });
-        for (let index = 0; index < 7; index += 1) {
+        const destroyedBrick = game.bricks.find((brick) => Math.abs(brick.x + brick.w / 2 - event.x) < 1 && Math.abs(brick.y + brick.h / 2 - event.y) < 1);
+        const isBossCore = destroyedBrick?.kind === "boss-core";
+        const isShieldRune = destroyedBrick?.kind === "boss-minion" && destroyedBrick.bossRow === undefined && destroyedBrick.bossCol === undefined;
+        if (isBossCore) {
+          playAudio("boss-clear", 1.5);
+          pushEffect(game, { kind: "blast", x: event.x, y: event.y, x2: event.x, y2: event.y, size: 150, life: 1.05, maxLife: 1.05, color: "#ff6b87", variant: 0, skillId: null });
+          for (let index = 0; index < 32; index += 1) {
+            const angle = presentationRandom() * Math.PI * 2;
+            const speed = 70 + presentationRandom() * 260;
+            pushParticle(game, { x: event.x, y: event.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 0.75 + presentationRandom() * 0.9, color: event.color });
+          }
+          game.flashes.push({ text: "CORE DESTROYED", x: width / 2, y: height / 2, life: 1.8, color: "#ff8ca3" });
+          setImpact(game, 12, "#ff6b87", 0.7, 0.35);
+          return;
+        }
+        playAudio(isShieldRune ? "skill-impact" : "brick-break", isShieldRune ? 0.8 : event.combo);
+        pushEffect(game, { kind: "spark", x: event.x, y: event.y, x2: event.x, y2: event.y, size: isShieldRune ? 24 : 38, life: isShieldRune ? 0.28 : 0.42, maxLife: isShieldRune ? 0.28 : 0.42, color: event.color, variant: event.brickIndex % 2, skillId: null });
+        for (let index = 0; index < (isShieldRune ? 3 : 7); index += 1) {
           pushParticle(game, {
             x: event.x,
             y: event.y,

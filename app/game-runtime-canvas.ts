@@ -5,7 +5,6 @@ import { beginGameCanvasFrame, endGameCanvasFrame, renderBalls, renderBricks, re
 
 const W = 900;
 const H = 600;
-const PLAYER_LINE_Y = H - 84;
 const PLAYER_PADDLE_Y = H - 70;
 const BRICK_ROW_Y = 74;
 const ITEM_BARRIER_Y = H - 18;
@@ -108,11 +107,11 @@ export function renderGameRuntimeCanvas({
   ghostPaddleY,
   ghostPaddleWidth,
 }: GameRuntimeCanvasOptions) {
-  const frame = beginGameCanvasFrame(canvas, game, W, H, PLAYER_LINE_Y);
+  const frame = beginGameCanvasFrame(canvas, game, W, H);
   if (!frame) return;
   const { ctx } = frame;
 
-  renderBricks({ ctx, game, width: W, height: H, playerLineY: PLAYER_LINE_Y, traitColors: BRICK_TRAIT_COLORS, itemData: ITEM_DATA, classSkillColor });
+  renderBricks({ ctx, game, width: W, height: H, traitColors: BRICK_TRAIT_COLORS, itemData: ITEM_DATA, classSkillColor });
   const magnetLinks: Array<{ x: number; y: number; itemX: number; itemY: number; alpha: number; color: string }> = [];
   const addMagnetLinks = (x: number, y: number, width: number, upgrades: UpgradeId[]) => {
     const normalizedUpgrades = upgrades.map(canonicalUpgradeId);
@@ -123,7 +122,7 @@ export function renderGameRuntimeCanvas({
   };
   addMagnetLinks(game.paddleX, PLAYER_PADDLE_Y, game.paddleWidth, game.upgrades);
   activeGhosts.forEach((ghost, index) => addMagnetLinks(game.ghostPaddles[index], ghostPaddleY(), ghostPaddleWidth(ghost), ghost.upgrades));
-renderWorldOverlays({ ctx, elapsed: game.elapsed, gravityWells: game.gravityWells, bossBarriers: game.bossBarriers, bossWalls: game.bossWalls, bossShield: game.bossShield, bricks: game.bricks, skillSheets, skillSheetReady, itemBarrierTime: game.itemBarrierTime, itemBarrierY: ITEM_BARRIER_Y, width: W, barrierColor: ITEM_DATA["auto-barrier"].color, magnetLinks });
+renderWorldOverlays({ ctx, elapsed: game.elapsed, gravityWells: game.gravityWells, bossBarriers: game.bossBarriers, bossWalls: game.bossWalls, bossShield: game.bossShield, bossArmorReformTimer: game.bossArmorReformTimer, bossArmorReformCells: game.bossArmorReformCells, bossIntroTimer: game.bossIntroTimer, bossReinforcementTelegraph: game.bossReinforcementTelegraph, bossReinforcementCount: game.bossReinforcementCount, bricks: game.bricks, skillSheets, skillSheetReady, itemBarrierTime: game.itemBarrierTime, itemBarrierY: ITEM_BARRIER_Y, width: W, barrierColor: ITEM_DATA["auto-barrier"].color, magnetLinks });
   renderPaddles({
     ctx,
     playerX: game.paddleX,
@@ -153,6 +152,23 @@ renderWorldOverlays({ ctx, elapsed: game.elapsed, gravityWells: game.gravityWell
       return { ...ray(a.horizontalRatio, a.verticalRatio, AIM_LINE_LENGTH), left: ray(-MAX_PADDLE_REBOUND_RATIO, edge, AIM_LIMIT_GUIDE_LENGTH), right: ray(MAX_PADDLE_REBOUND_RATIO, edge, AIM_LIMIT_GUIDE_LENGTH), limited: a.limited };
     })() : undefined,
   });
+
+  const heldBall = game.balls.find((ball) => ball.owner === "player" && ball.awaitingLaunch);
+  if (heldBall) {
+    const seconds = Math.max(0, heldBall.launchWaitTime ?? 0);
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `bold 18px ${PIXEL_FONT}`;
+    ctx.fillStyle = "rgba(10, 14, 28, 0.86)";
+    ctx.strokeStyle = "rgba(255, 250, 240, 0.7)";
+    ctx.lineWidth = 1;
+    ctx.fillRect(game.paddleX - 24, PLAYER_PADDLE_Y - 46, 48, 26);
+    ctx.strokeRect(game.paddleX - 24, PLAYER_PADDLE_Y - 46, 48, 26);
+    ctx.fillStyle = seconds <= 1 ? "#ffcf70" : "#fffaf0";
+    ctx.fillText(seconds.toFixed(1), game.paddleX, PLAYER_PADDLE_Y - 33);
+    ctx.restore();
+  }
 
   renderBalls({ ctx, game, getSkill, classSkillColor, mageSpells, mageSpellReady });
   renderHud({ ctx, game, width: W, height: H });
@@ -206,7 +222,8 @@ renderWorldOverlays({ ctx, elapsed: game.elapsed, gravityWells: game.gravityWell
             ? { sheet: 2, row: ["mage-fireball", "mage-lightning", "mage-freeze", "mage-black-hole", "mage-mana-blast"].indexOf(effectSkillId) }
             : null;
       const spriteImage = spriteRow && spriteRow.row >= 0 ? skillSheets[spriteRow.sheet] : null;
-      const skillOpacity = Math.max(0, Math.min(1, skillVfx?.opacity ?? 0.78));
+      const isArcherSkill = effectSkillId?.startsWith("archer-") ?? false;
+      const skillOpacity = Math.max(0, Math.min(1, (skillVfx?.opacity ?? 0.78) * (isArcherSkill ? 1.12 : 1)));
       if (spriteRow && spriteRow.row >= 0 && skillSheetReady[spriteRow.sheet] && spriteImage) {
         const frame = Math.min(SKILL_SHEET_COLUMNS - 1, Math.floor(progress * SKILL_SHEET_COLUMNS));
         const frameWidth = spriteImage.naturalWidth / SKILL_SHEET_COLUMNS;
@@ -216,6 +233,8 @@ renderWorldOverlays({ ctx, elapsed: game.elapsed, gravityWells: game.gravityWell
         const frameAspect = frameWidth / Math.max(1, frameHeight);
         const drawWidth = spriteSize * frameAspect;
         ctx.save();
+        ctx.shadowBlur = isArcherSkill ? 30 : 18;
+        ctx.filter = isArcherSkill ? "saturate(1.55) brightness(1.18)" : "none";
         ctx.translate(effect.x, effect.y);
         if (skillVfx?.rotation === "direction" && (effect.x2 !== effect.x || effect.y2 !== effect.y)) {
           ctx.rotate(Math.atan2(effect.y2 - effect.y, effect.x2 - effect.x));

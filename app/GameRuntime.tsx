@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { GameAudio } from "./game-audio";
-import { canonicalUpgradeId, DEFAULT_SKILLS, levelValue, NORMAL_SKILLS, normalizeSkillConfigs, SKILL_BUILD_STORAGE_KEY, SKILL_COLORS, SKILL_MECHANIC_LABELS, SKILL_STORAGE_KEY, skillConfigMap, skillConfigSignature, type ClassSkillId, type SkillCategory, type SkillConfig, type UpgradeId } from "./skill-config";
+import { GameAudio, type MusicState } from "./game-audio";
+import { canonicalUpgradeId, DEFAULT_SKILLS, levelValue, NORMAL_SKILLS, normalizeSkillConfigs, resolveSkillSummary, SKILL_BUILD_STORAGE_KEY, SKILL_COLORS, SKILL_MECHANIC_LABELS, SKILL_STORAGE_KEY, skillConfigMap, skillConfigSignature, type ClassSkillId, type SkillCategory, type SkillConfig, type UpgradeId } from "./skill-config";
 import { BALANCE_STORAGE_KEY, BOT_LIVE_STORAGE_KEY, BOT_RESULTS_STORAGE_KEY, DEFAULT_BALANCE_CONFIG, DEFAULT_SKILL_BENCH_CONFIG, DEFAULT_SKILL_BENCH_PROGRESS, normalizeBalanceConfig, normalizeSkillBenchConfig, normalizeSkillBenchProgress, SKILL_BENCH_PROGRESS_KEY, SKILL_BENCH_STORAGE_KEY, type BalanceConfig, type BotWaveSample, type SkillBenchConfig, type SkillBenchProgress } from "./balance-config";
 import { BENCHMARK_STORAGE_KEY, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConfig, type BenchmarkConfig } from "./benchmark-config";
-import { getActiveWaveDefinitions, MAX_WAVE, waveDefinition } from "./wave-config";
+import { WAVE_CELL_SIZE, WAVE_COLUMNS, blocksFromPattern, getActiveWaveDefinitions, MAX_WAVE, waveDefinition } from "./wave-config";
 import { PARALLEL_BENCHMARK_RULESET, type HeadlessBenchmarkRequest, type HeadlessTimeoutDiagnostic } from "./benchmark-headless";
 import { clearBenchmarkResults, getBenchmarkResults, putBenchmarkResults } from "./benchmark-result-store";
 import { createBotPolicyState, decideBotControls, POLICY_VERSION, reflectorBankAim, type BotPolicyState } from "./bot-policy";
@@ -57,7 +57,6 @@ const BENCHMARK_RULESET: BenchmarkRuleset = PARALLEL_BENCHMARK_RULESET;
 const PLAYER_PADDLE_Y = H - 70;
 const GHOST_PADDLE_Y = H - 42;
 const BRICK_ROW_Y = 74;
-const BRICK_ROW_STEP = 34;
 const STARTING_WAVE_ELAPSED = 0;
 const MAX_CORE_HP = 8;
 const BOSS_INTERVAL = 10;
@@ -168,7 +167,7 @@ function createUpgradeCatalog(skills: SkillConfig[]): Upgrade[] {
     category: skill.category,
     mechanic: skill.mechanic,
     tag: `${CLASS_META[skill.category].tag} 쨌 ${SKILL_MECHANIC_LABELS[skill.mechanic]}`,
-    description: skill.description,
+    description: resolveSkillSummary(skill, 1),
     color: skill.color,
   }));
 }
@@ -346,17 +345,15 @@ function newPaddleCounter(): PaddleCounter {
 function makeWaveBricks(waveNumber: number, balance = DEFAULT_BALANCE_CONFIG): Brick[] {
   const definition = waveDefinition(waveNumber);
   if (definition.boss) return makeBossBricks(definition.boss === "final" ? 4 : definition.boss === "late" ? 3 : definition.boss === "mid" ? 2 : 1, 0, balance, definition.hpMultiplier);
-  const cols = 12;
-  const gap = 7;
-  const margin = 36;
-  const width = (W - margin * 2 - gap * (cols - 1)) / cols;
+  const blocks = definition.blocks ?? blocksFromPattern(definition.pattern);
+  const gridX = (W - WAVE_COLUMNS * WAVE_CELL_SIZE) / 2;
   const baseHp = 1 + Math.floor((waveNumber - 1) / Math.max(1, Math.round(balance.baseHpWaveStep)));
-  const multiballCells = definition.pattern.flatMap((row, rowIndex) => [...row].map((cell, col) => ({ cell, rowIndex, col }))).filter(({ cell }) => cell !== "." && cell !== "x");
+  const multiballCells = blocks.filter((block) => block.type !== "x");
   const multiballKey = hasScheduledMultiball(waveNumber) && multiballCells.length > 0
     ? multiballCells[Math.floor(environmentRandom() * multiballCells.length)]
     : null;
-  return definition.pattern.flatMap((row, rowIndex) => [...row].flatMap((cell, col) => {
-    if (cell === ".") return [];
+  return blocks.map((block) => {
+    const cell = block.type;
     const trait: BrickTrait = cell === "g" ? "guard"
       : cell === "e" ? "explosive"
         : cell === "x" ? "indestructible"
@@ -365,13 +362,13 @@ function makeWaveBricks(waveNumber: number, balance = DEFAULT_BALANCE_CONFIG): B
               : "standard";
     const hpBonus = cell === "h" ? 1 + Math.floor((waveNumber - 1) / 8) : cell === "c" ? 2 : 0;
     const maxHp = Math.ceil((baseHp + hpBonus) * lateWaveHpMultiplier(waveNumber) * definition.hpMultiplier);
-    return [{
-      x: margin + col * (width + gap), y: BRICK_ROW_Y + rowIndex * BRICK_ROW_STEP, w: width, h: 24,
-      hp: maxHp, maxHp, hue: 178 + waveNumber * 9 + col * 2, alive: true, kind: "normal" as const,
-      drop: trait === "indestructible" ? null : multiballKey?.rowIndex === rowIndex && multiballKey.col === col ? "multiball" as const : pickBrickDrop(),
+    return {
+      x: gridX + block.x * WAVE_CELL_SIZE + 2, y: BRICK_ROW_Y + block.y * WAVE_CELL_SIZE + 2, w: block.width * WAVE_CELL_SIZE - 4, h: block.height * WAVE_CELL_SIZE - 4,
+      hp: maxHp, maxHp, hue: 178 + waveNumber * 9 + block.x * 2, alive: true, kind: "normal" as const,
+      drop: trait === "indestructible" ? null : multiballKey === block ? "multiball" as const : pickBrickDrop(),
       ...brickRuntimeState(trait),
-    }];
-  }));
+    };
+  });
 }
 
 function makeBossBricks(stage: number, ghostCount: number, balance: BalanceConfig, waveHpMultiplier = 1): Brick[] {
@@ -401,7 +398,7 @@ function makeInitialBricks(ghostCount: number, balance: BalanceConfig): Brick[] 
 
 function makePlayerBall(upgrades: UpgradeId[], x = W / 2): Ball {
   const speed = 1 + upgrades.filter((u) => u === "speed").length * 0.12;
-  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8 + skillValue("common-ball-size", upgradeLevel(upgrades, "common-ball-size")), owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, gravityBaseSpeed: null, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0, canTriggerSkills: true, skillGeneration: 0, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false, respawnRecoveryTime: 0, respawnRecoveryDuration: 0, respawnRecoveryBaseSpeed: 0 };
+  const ball: Ball = { x, y: H - 72, vx: BASE_BALL_VX * speed, vy: -BASE_BALL_VY * speed, radius: 8, owner: "player", pierce: 0, maxPierce: 0, blast: 0, payload: null, payloadLevel: 0, payloads: {}, attackPower: 1, color: PLAYER_BALL_COLOR, sourcePaddleId: "player", missileTime: 0, missileHitCooldown: 0, gravityRescueCooldown: 0, gravityBaseSpeed: null, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0, canTriggerSkills: true, skillGeneration: 0, skillCharges: {}, skillCooldowns: {}, visualSkill: null, temporaryTime: 0, waveBonus: false, respawnRecoveryTime: 0, respawnRecoveryDuration: 0, respawnRecoveryBaseSpeed: 0 };
   syncBallPayloadDisplay(ball, upgrades);
   return ball;
 }
@@ -443,6 +440,13 @@ function initialGame(activeGhosts: GhostRecord[], balance: BalanceConfig): GameS
     bossBarriers: [],
     bossWalls: [],
     bossShield: { active: false, life: 0, maxLife: 0, runeIds: [] },
+    bossArmorReformTimer: 0,
+    bossArmorReformCells: [],
+    bossIntroTimer: 0,
+    bossStatus: null,
+    bossReinforcementTimer: 0,
+    bossReinforcementTelegraph: 0,
+    bossReinforcementCount: 0,
     paddleBarriers: {},
     itemBarrierTime: 0,
     paddleCounters: Object.fromEntries(["player", ...activeGhosts.map((_, index) => `ghost-${index}`)].map((id) => [id, newPaddleCounter()])),
@@ -695,9 +699,22 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const [bossRewardChoices, setBossRewardChoices] = useState<UpgradeId[]>([]);
   const [rerollsLeft, setRerollsLeft] = useState(1);
   const [result, setResult] = useState<GameState | null>(null);
+  const [isPaused, setIsPaused] = useState(false);
   const [, setSavedMessage] = useState("");
   const [upgradeCatalog, setUpgradeCatalog] = useState<Upgrade[]>(DEFAULT_UPGRADES);
   const { soundEnabled, sfxVolume, musicVolume, setSfxVolume, setMusicVolume, toggleSound } = useRuntimeSettings(audioRef);
+  useEffect(() => {
+    const boss = hud.bossActive || (gameRef.current?.bossStage ?? 0) > 0;
+    let state: MusicState;
+    if (mode === "lobby") state = "title";
+    else if (mode === "transition") state = boss ? "boss-intro" : "transition";
+    else if (mode === "playing") state = boss ? "boss-gameplay" : "gameplay";
+    else if (mode === "waveclear") state = "wave-clear";
+    else if (mode === "bossreward") state = "boss-reward";
+    else if (mode === "initialskills" || mode === "levelup") state = "reward-select";
+    else state = "result";
+    audioRef.current?.setMusicState({ active: true, state });
+  }, [audioRef, gameRef, hud.bossActive, mode, transitionWave]);
   const playUiSound = useCallback((sound: Parameters<GameAudio["play"]>[0], intensity = 1) => {
     audioRef.current?.play(sound, intensity);
   }, [audioRef]);
@@ -707,6 +724,15 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     const from = event.relatedTarget;
     if (control && (!(from instanceof Node) || !control.contains(from))) playUiSound("ui-hover", 0.45);
   }, [playUiSound]);
+
+  const togglePause = useCallback(() => {
+    if (botActiveRef.current || mode !== "playing") return;
+    const nextPaused = !isPaused;
+    setIsPaused(nextPaused);
+    runningRef.current = !nextPaused;
+    if (nextPaused) playUiSound("pause");
+    else resetLoopClockRef.current();
+  }, [isPaused, mode, playUiSound]);
   const handleUiClick = useCallback((event: ReactMouseEvent<HTMLElement>) => {
     if (!(event.target instanceof Element)) return;
     if (event.target.closest("button, a")) playUiSound("ui-click", 0.7);
@@ -1169,7 +1195,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
       } else if (next.outcome.type === "ready-for-next-wave") {
         startCanonicalNextWave();
       }
-    }, botActiveRef.current ? 0 : 760)];
+    }, botActiveRef.current ? 0 : result.outcome.boss ? 2000 : 760)];
   }, [rewardOpeningRef, setClearedWave, setMode, startCanonicalNextWave, transitionTimersRef]);
 
   // Canonical-only mode intentionally bypasses the legacy updateGame pipeline.
@@ -1200,6 +1226,9 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
       botMoveRef.current = controls.move;
       pointerXRef.current = aimX;
       pointerYRef.current = aimY;
+      if (state.balls.some((ball) => ball.awaitingLaunch)) {
+        dispatchCanonicalCommand(state, { type: "launch-ball", aimX, aimY });
+      }
     } else if (aimInputModeRef.current === "keyboard") {
       const aimMovement = Number(keyboardAimRef.current.right) - Number(keyboardAimRef.current.left);
       keyboardAimRef.current.horizontalRatio = Math.max(-MAX_PADDLE_REBOUND_RATIO, Math.min(MAX_PADDLE_REBOUND_RATIO, keyboardAimRef.current.horizontalRatio + aimMovement * KEYBOARD_AIM_RATIO_SPEED * dt));
@@ -1229,6 +1258,18 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     }
     return null;
   }, [aimInputModeRef, handleCanonicalPhase, keyboardAimRef, keyboardRef, pointerXRef, pointerYRef, publishReplay, setHud]);
+
+  const launchCanonicalBall = useCallback(() => {
+    const state = canonicalStateRef.current;
+    const game = gameRef.current;
+    if (!state || !game || state.phase !== "running" || botActiveRef.current) return;
+    const result = dispatchCanonicalCommand(state, { type: "launch-ball", aimX: pointerXRef.current, aimY: pointerYRef.current });
+    if (!state.balls.some((ball) => !ball.awaitingLaunch && !ball.temporary && !ball.waveBonus)) return;
+    result.events.forEach((event) => emitGameEvent(gameEventsRef.current, event));
+    const projected = projectCanonicalStateIntoGameView(game, state);
+    gameRef.current = projected;
+    setHud(hudFromGame(projected));
+  }, [pointerXRef, pointerYRef, setHud]);
 
   const drawGame = useCallback((dt: number) => {
     const game = gameRef.current;
@@ -1275,6 +1316,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   resetLoopClockRef.current = resetLoopClock;
 
   const startRun = (asBot = false) => {
+    setIsPaused(false);
     transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     transitionTimersRef.current = [];
     rewardOpeningRef.current = false;
@@ -1284,7 +1326,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     const audio = audioRef.current ?? new GameAudio();
     audioRef.current = audio;
     audio.setMuted(!soundEnabled);
-    audio.setMusicState({ active: true, title: false, boss: false });
+    audio.setMusicState({ active: true, state: "transition" });
     void audio.unlock().then(() => audio.play("start"));
     void audio.startMusic();
     const activeGhosts: GhostRecord[] = [];
@@ -1771,14 +1813,14 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
       name: skill.name,
       category: skill.category,
       mechanic: skill.mechanic,
-      tag: `${CLASS_META[skill.category].tag} · SKILL EVOLUTION`,
-      description: skill.description,
+      tag: `${(gameRef.current?.upgrades ?? []).includes(id) ? CLASS_META[skill.category].tag : "ALTERNATE REWARD"} · SKILL EVOLUTION`,
+      description: resolveSkillSummary(skill, currentLevel),
       color: skill.color,
       currentLevel,
       unit: skill.unit,
       evolution: skill.evolution ?? "",
     };
-  }).filter((entry): entry is Upgrade & { currentLevel: number; unit: string; evolution: string } => entry !== null);
+  }).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
   const visibleBotResults = benchmarkMode ? botResults.filter((item) => item.benchmarkRuleset === BENCHMARK_RULESET) : botResults;
   const botAverageSurvival = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.elapsed, 0) / visibleBotResults.length : 0;
   const botAverageWave = visibleBotResults.length ? visibleBotResults.reduce((sum, item) => sum + item.wave, 0) / visibleBotResults.length : 0;
@@ -1880,20 +1922,23 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
               <div className="in-game-skill-list">
                 {hud.skillLevels.map(({ id, level, enhancement = 0 }) => {
                   const skill = upgradeCatalog.find((entry) => entry.id === id);
+                  const skillConfig = activeSkillMap[id];
                   const evolved = isSkillEvolved(gameRef.current?.upgrades ?? [], id);
                   const category = skill?.category ?? "common";
+                  const currentCooldown = skillConfig?.cooldown[Math.max(0, Math.min(2, level - 1))] ?? 0;
                   const playerBall = gameRef.current?.balls.find((ball) => ball.owner === "player");
-                  const cooldownTotal = Math.max(0, Number(skill?.cooldown?.[Math.max(0, Math.min(2, level - 1))] ?? 0));
                   const cooldownRemaining = Math.max(0, Number(playerBall?.skillCooldowns[id as ClassSkillId] ?? gameRef.current?.paddleCounters?.player?.skillCooldowns[id as ClassSkillId] ?? 0));
-                  const cooldownRatio = cooldownTotal > 0 ? Math.max(0, Math.min(1, cooldownRemaining / cooldownTotal)) : 0;
+                  const description = skillConfig ? [resolveSkillSummary(skillConfig, level), skillConfig.evolution ? `${evolved ? "EVOLVED" : "EVOLUTION"}: ${skillConfig.evolution}` : ""].filter(Boolean).join(" ") : "";
+                  const cooldownText = currentCooldown > 0 ? `CD ${currentCooldown}s` : "CD 없음";
+                  const hasInlineCooldown = Boolean(skillConfig?.description.includes("{cooldown}"));
                   return <div key={`side-${id}`} className={`in-game-skill-row class-${category}${evolved ? " evolved" : ""}`} tabIndex={0} aria-label={`${skill?.name ?? id} LEVEL ${level}`}>
-                    <span className="in-game-skill-tooltip" role="tooltip"><strong>{skill?.name ?? id}</strong><small>LEVEL {level}{enhancement > 0 ? ` 쨌 +${enhancement}` : ""}</small><p><SkillDescriptionText text={skill?.description ?? ""} /></p></span>
+                    <span className="in-game-skill-tooltip" role="tooltip"><strong>{skill?.name ?? id}</strong><small>LEVEL {level}{enhancement > 0 ? ` 쨌 +${enhancement}` : ""}</small><p><SkillDescriptionText text={description} />{!hasInlineCooldown && <><br /><span className="skill-cooldown-text">{cooldownText}</span></>}</p></span>
                     <span className="in-game-skill-icon">
                       <SkillIconArt id={id} />
-                      {cooldownTotal > 0 && <span className={`in-game-skill-cooldown${cooldownRemaining > 0 ? " is-cooling" : ""}`} style={{ height: cooldownRemaining > 0 ? `${Math.max(8, cooldownRatio * 100)}%` : "0%" }} aria-label={cooldownRemaining > 0 ? `COOLDOWN ${cooldownRemaining.toFixed(1)}s` : "READY"} />}
+                      {cooldownRemaining > 0 && <span className="in-game-skill-cooldown" aria-label={`COOLDOWN ${cooldownRemaining.toFixed(1)}s`} />}
                       {cooldownRemaining > 0 && <span className="in-game-skill-cooldown-label" aria-hidden="true">{cooldownRemaining.toFixed(1)}</span>}
                     </span>
-                    <span className="in-game-skill-level" aria-label={`LEVEL ${level}`}>{level}</span>
+                    <span className={`in-game-skill-level${evolved ? " is-evolved" : ""}`} aria-label={evolved ? `EVOLVED LEVEL ${level}` : `LEVEL ${level}`}>{evolved ? "E" : level}</span>
                     <span className="in-game-skill-copy"><strong>{skill?.name ?? id}</strong><small>LEVEL {level}{enhancement > 0 ? ` · +${enhancement}` : ""}</small></span>
                   </div>;
                 })}
@@ -1908,7 +1953,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
               height={H}
               aria-label="Core Breaker 게임 화면"
               onPointerMove={(e) => onPointerMove(e.clientX, e.clientY)}
-              onPointerDown={(e) => onPointerMove(e.clientX, e.clientY)}
+              onPointerDown={(e) => { onPointerMove(e.clientX, e.clientY); launchCanonicalBall(); }}
             />
             <output className="sr-only" aria-live="polite" aria-atomic="true">코어 체력 {hud.coreHp}/{hud.maxCoreHp}{hud.barriers > 0 ? `, 보호막 ${hud.barriers}개` : ""}</output>
             <div className="hud-badge hud-score" aria-label={`점수 ${formatScore(hud.score)}`}><i aria-hidden="true">✦</i><span><small>SCORE</small><strong>{formatScore(hud.score)}</strong></span></div>
@@ -1949,8 +1994,8 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
 
             {mode === "bossreward" && (
               <div className="overlay level-overlay boss-reward-overlay">
-                <p className="overlay-kicker">CORE FORTRESS DESTROYED // BOSS CORE</p>
-                <h2>보유 스킬을 강화하세요</h2>
+                <p className="overlay-kicker">CORE DESTROYED // BOSS REWARD</p>
+                <h2>BOSS REWARD</h2>
                 <div className="upgrade-grid">
                   {bossEnhancementCatalog.map((reward, index) => (
                     <button key={reward.id} className={`upgrade-card class-${reward.category} boss-enhancement-card`} onClick={() => applyBossReward(reward.id)} style={{ "--accent": reward.color } as React.CSSProperties}>
@@ -1959,10 +2004,9 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                       <span className="upgrade-icon" aria-hidden="true"><SkillIconArt id={reward.id} /></span>
                       <strong>{reward.name}</strong>
                       <div className="upgrade-level-values">
-                        <span className="owned"><small>CURRENT LV{reward.currentLevel}</small><b>READY</b></span>
-                        <span className="next"><small>BOSS REWARD</small><b>EVOLVE</b></span>
+                        <span className="next"><small>LV3</small><b>EVOLVE</b></span>
                       </div>
-                      <p><SkillDescriptionText text={reward.description} /> <strong className="skill-value-accent">{reward.evolution}</strong></p>
+                      <p><strong className="skill-value-accent">{reward.evolution}</strong></p>
                       <em>SKILL EVOLUTION</em>
                     </button>
                   ))}
@@ -1973,8 +2017,8 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
             {mode === "waveclear" && clearedWave !== null && (
               <div className={`wave-clear-overlay${clearedWave.boss ? " boss" : ""}`} aria-live="polite" aria-label={`웨이브 ${clearedWave.wave} 클리어`}>
                 <div className="wave-clear-copy">
-                  <span>{clearedWave.boss ? "FORTRESS SHATTERED" : "SECTOR SECURED"}</span>
-                  <strong>WAVE {clearedWave.wave} CLEAR</strong>
+                  <span>{clearedWave.boss ? "CORE DESTROYED" : "SECTOR SECURED"}</span>
+                  <strong>{clearedWave.boss ? "BOSS DEFEATED" : `WAVE ${clearedWave.wave} CLEAR`}</strong>
                   <i aria-hidden="true" />
                 </div>
               </div>
@@ -2008,11 +2052,47 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
             )}
             </div>
 
+            <div className="right-rail-stack">
             <aside className="in-game-side-panel in-game-stat-panel" aria-label="RUN STATUS">
               <div className="in-game-stat-card in-game-wave-card"><span>WAVE</span><div className="in-game-stat-value"><img className="in-game-stat-icon" src={STATUS_ICON_ASSETS.wave} alt="" aria-hidden="true" /><strong>{hud.wave}</strong></div></div>
               <div className="in-game-stat-card in-game-time-card"><span>TIME</span><div className="in-game-stat-value"><img className="in-game-stat-icon" src={STATUS_ICON_ASSETS.time} alt="" aria-hidden="true" /><strong>{String(Math.floor(hud.time / 60)).padStart(2, "0")}:{String(Math.floor(hud.time % 60)).padStart(2, "0")}</strong></div></div>
-              <div className="in-game-stat-card in-game-core-card"><span>CORE</span><div className="in-game-stat-value"><img className="in-game-stat-icon" src={STATUS_ICON_ASSETS.core} alt="" aria-hidden="true" /><strong>{hud.coreHp}</strong></div></div>
+              <div className="in-game-stat-card in-game-core-card">
+                <div className="core-pip-list" role="img" aria-label={`코어 ${hud.coreHp}/${hud.maxCoreHp}`}>
+                  {(() => {
+                    const iconCount = Math.max(8, Math.ceil(hud.maxCoreHp));
+                    return Array.from({ length: iconCount }, (_, index) => {
+                      const filled = index < Math.ceil(Math.max(0, hud.coreHp) / Math.max(1, hud.maxCoreHp) * iconCount);
+                      return <img key={index} className={`core-pip${filled ? " is-filled" : ""}`} src={STATUS_ICON_ASSETS.core} alt="" aria-hidden="true" />;
+                    });
+                  })()}
+                </div>
+              </div>
             </aside>
+              {mode !== "lobby" && (
+                <div className="runtime-controls-panel" aria-label="게임 컨트롤">
+                  <button type="button" className="runtime-pause-button" onClick={togglePause} disabled={botActiveRef.current} aria-pressed={isPaused}>
+                    {isPaused ? "계속하기" : "일시정지"}
+                  </button>
+                  <label className="runtime-volume-control">
+                    <span>사운드</span>
+                    <input
+                      aria-label="사운드 볼륨"
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={Math.max(sfxVolume, musicVolume)}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        setSfxVolume(value);
+                        setMusicVolume(value);
+                      }}
+                    />
+                    <output>{Math.round(Math.max(sfxVolume, musicVolume) * 100)}%</output>
+                  </label>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="build-tray">

@@ -1,5 +1,6 @@
 import type { Ball, GameState, PayloadId, DropItem, GravityWell, SkillRunMetric } from "./_types/game";
 import { PLAYER_LINE_Y, type CanonicalBall, type CanonicalState } from "./canonical-engine";
+import { waveDefinitionFrom } from "./wave-config";
 
 const PLAYER_BALL_COLOR = "#ffffff";
 const EXTRA_BALL_COLOR = "#9a8cff";
@@ -25,7 +26,7 @@ export function projectCanonicalBall(ball: CanonicalBall, overrides: Partial<Pic
     attackPower: ball.attackPower, missileTime: finiteNumber(ball.missileTime), missileHitCooldown: 0, gravityRescueCooldown: 0,
     gravityBaseSpeed: ball.gravityBaseSpeed, explosionBaseSpeed: ball.explosionBaseSpeed, explosionBoostRatio: ball.explosionBoostRatio, explosionBoostTime: ball.explosionBoostTime,
     canTriggerSkills: ball.canTriggerSkills, skillGeneration: ball.skillGeneration, skillCharges: { ...ball.skillCharges }, skillCooldowns: { ...ball.cooldowns },
-    visualSkill: ball.visualSkill as Ball["visualSkill"], temporaryTime: finiteNumber(ball.temporaryTime), waveBonus: Boolean(ball.waveBonus),
+    visualSkill: ball.visualSkill as Ball["visualSkill"], temporaryTime: finiteNumber(ball.temporaryTime), waveBonus: Boolean(ball.waveBonus), awaitingLaunch: Boolean(ball.awaitingLaunch), launchWaitTime: finiteNumber(ball.launchWaitTime),
     respawnRecoveryTime: ball.respawnRecoveryTime, respawnRecoveryDuration: ball.respawnRecoveryDuration,
     respawnRecoveryBaseSpeed: ball.respawnRecoveryBaseSpeed,
   };
@@ -101,6 +102,13 @@ function applyCanonicalStateProjection(target: GameState, source: CanonicalState
   target.bossAttackPattern = source.bossPattern;
   target.bossTimeRemaining = source.bossAttackTimer;
   target.bossActive = source.bricks.some((brick) => brick.kind === "boss-core" && brick.alive);
+  const bossRole = waveDefinitionFrom(source.waves, source.wave).boss;
+  target.bossStage = bossRole === "final" ? 4 : bossRole === "late" ? 3 : bossRole === "mid" ? 2 : bossRole === "early" ? 1 : 0;
+  target.bossArmorReformTimer = source.bossArmorReformTimer ?? 0;
+  target.bossArmorReformCells = (source.bossArmorReformCells ?? []).map((cell) => ({ ...cell }));
+  target.bossIntroTimer = source.bossIntroTimer ?? 0;
+  const armorAlive = source.bricks.some((brick) => brick.kind === "boss-minion" && brick.bossRow !== undefined && brick.bossCol !== undefined && brick.alive);
+  target.bossStatus = source.bossArmorReformTimer > 0 ? "ARMOR REFORMING" : source.bossShield.active ? "SHIELD ACTIVE" : armorAlive ? "ARMOR ACTIVE" : source.bricks.some((brick) => brick.kind === "boss-core" && brick.alive) ? "CORE EXPOSED" : null;
   target.bossPending = false;
   target.failed = source.gameOver;
   target.failureReason = source.gameOver ? (source.coreHp <= 0 ? "core" : "ball") : null;
@@ -129,6 +137,7 @@ function applyCanonicalStateProjection(target: GameState, source: CanonicalState
       frostVulnerability: canonicalBrick.frostVulnerability, traitLockTime: canonicalBrick.traitLockTime,
       lastHitPaddleId: null,
       healthFlashTime: 0, healthFlashDuration: 0, healthFlashKind: null,
+      bossRow: canonicalBrick.bossRow, bossCol: canonicalBrick.bossCol,
     };
     brick.x = canonicalBrick.x;
     brick.y = canonicalBrick.y;
@@ -149,6 +158,8 @@ function applyCanonicalStateProjection(target: GameState, source: CanonicalState
     brick.traitLockTime = canonicalBrick.traitLockTime;
     brick.drop = canonicalBrick.drop;
     brick.kind = canonicalBrick.kind === "boss-core" ? "boss-core" : canonicalBrick.kind === "boss-minion" ? "boss-minion" : "normal";
+    brick.bossRow = canonicalBrick.bossRow;
+    brick.bossCol = canonicalBrick.bossCol;
     return brick;
   });
 
@@ -166,8 +177,16 @@ function applyCanonicalStateProjection(target: GameState, source: CanonicalState
   target.gravityWells = source.gravityWells.map((well): GravityWell => ({
     ownerPaddleId: "player", x: well.x, y: well.y, radius: well.radius,
     life: well.life, maxLife: Math.max(well.life, 1), color: "#a77bff",
-    damagePerSecond: well.damagePerSecond, damageTick: well.damageTick,
+    damagePerSecond: well.damagePerSecond, damageTick: well.damageTick, sourceSkillId: well.sourceSkillId,
   }));
+  target.bossBarriers = (source.bossBarriers ?? []).map((barrier) => ({ ...barrier }));
+  target.bossWalls = (source.bossWalls ?? []).map((wall) => ({ ...wall }));
+  const bossShield = source.bossShield ?? { active: false, life: 0, maxLife: 0, runeIds: [] };
+  target.bossShield = { ...bossShield, runeIds: [...bossShield.runeIds] };
+  target.bossReinforcementTimer = source.bossReinforcementTimer ?? 0;
+  target.bossReinforcementTelegraph = source.bossReinforcementTelegraph ?? 0;
+  const activeReinforcementCount = (source.bossReinforcementIds ?? []).filter((id) => source.bricks.some((brick) => brick.id === id && brick.alive)).length;
+  target.bossReinforcementCount = source.bossReinforcementTelegraph > 0 ? Math.max(1, source.wave) : activeReinforcementCount;
   target.skillMetrics = Object.fromEntries(Object.entries(source.skillMetrics).map(([id, metric]) => [id, { ...(metric as SkillRunMetric) }])) as GameState["skillMetrics"];
   target.physicalPower = source.combatStats.physicalPower;
   target.magicPower = source.combatStats.magicPower;
@@ -189,6 +208,15 @@ export function projectCanonicalStateIntoGameView(previous: GameState, source: C
     bricks: previous.bricks.map((brick) => ({ ...brick })),
     items: previous.items.map((item) => ({ ...item })),
     gravityWells: previous.gravityWells.map((well) => ({ ...well })),
+    bossBarriers: (previous.bossBarriers ?? []).map((barrier) => ({ ...barrier })),
+    bossWalls: (previous.bossWalls ?? []).map((wall) => ({ ...wall })),
+    bossShield: { ...(previous.bossShield ?? { active: false, life: 0, maxLife: 0, runeIds: [] }), runeIds: [...(previous.bossShield?.runeIds ?? [])] },
+    bossArmorReformTimer: previous.bossArmorReformTimer ?? 0,
+    bossArmorReformCells: (previous.bossArmorReformCells ?? []).map((cell) => ({ ...cell })),
+    bossIntroTimer: previous.bossIntroTimer ?? 0,
+    bossReinforcementTimer: previous.bossReinforcementTimer ?? 0,
+    bossReinforcementTelegraph: previous.bossReinforcementTelegraph ?? 0,
+    bossReinforcementCount: previous.bossReinforcementCount ?? 0,
     safetyBlocks: previous.safetyBlocks.map((block) => ({ ...block })),
     paddleCounters: Object.fromEntries(Object.entries(previous.paddleCounters).map(([id, counter]) => [id, { ...counter, skillCooldowns: { ...counter.skillCooldowns } }])),
     upgrades: [...previous.upgrades],

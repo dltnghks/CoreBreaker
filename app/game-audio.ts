@@ -2,18 +2,16 @@ import { appHref } from "./site-path";
 
 export type GameSound = "start" | "paddle" | "brick-hit" | "brick-break" | "explosion" | "item" | "level-up" | "skill" | "skill-impact" | "critical" | "boss" | "boss-clear" | "barrier" | "core-damage" | "game-over" | "ui-hover" | "ui-click" | "start-confirm" | "skill-select" | "skill-reroll" | "wave-start" | "wave-clear" | "reward-select" | "countdown" | "pause" | "danger-warning" | "core-danger" | "time-warning" | "menu-transition" | "save-complete";
 
-export type MusicLayer = "title" | "normal" | "boss";
+export type MusicLayer = "normal";
+export type MusicState = "title" | "transition" | "gameplay" | "wave-clear" | "reward-select" | "boss-intro" | "boss-gameplay" | "boss-reward" | "result";
 
 export type AdaptiveMusicState = {
   active: boolean;
-  title: boolean;
-  boss: boolean;
+  state: MusicState;
 };
 
 const MUSIC_FILES: Record<MusicLayer, string> = {
-  title: appHref("/audio/Music_Title.mp3"),
-  normal: appHref("/audio/Music_Loop.mp3"),
-  boss: appHref("/audio/Boss_Loop.m4a"),
+  normal: appHref("/audio/BGM_LOOP.mp3"),
 };
 const SFX_FILES: Record<GameSound, string> = {
   start: appHref("/audio/sfx/start-confirm.wav"),
@@ -48,7 +46,17 @@ const SFX_FILES: Record<GameSound, string> = {
   "save-complete": appHref("/audio/sfx/save-complete.wav"),
 };
 const MUSIC_CROSSFADE_SECONDS = 2;
-const BOSS_MUSIC_LEVEL = 0.63; // approximately -4 dB relative to normal BGM
+const MUSIC_STATE_PARAMS: Record<MusicState, { rate: number; detune: number; gain: number }> = {
+  title: { rate: 1, detune: 0, gain: 0.58 },
+  transition: { rate: 1, detune: 0, gain: 0.72 },
+  gameplay: { rate: 1, detune: 0, gain: 1 },
+  "wave-clear": { rate: 1, detune: 0, gain: 0.72 },
+  "reward-select": { rate: 1, detune: 0, gain: 0.62 },
+  "boss-intro": { rate: 1, detune: 0, gain: 0.70 },
+  "boss-gameplay": { rate: 1, detune: 0, gain: 0.63 },
+  "boss-reward": { rate: 1, detune: 0, gain: 0.58 },
+  result: { rate: 1, detune: 0, gain: 0.45 },
+};
 
 type MusicSource = { source: AudioBufferSourceNode; gain: GainNode };
 type MusicLayerRuntime = { gain: GainNode; sources: Set<MusicSource>; timer: number | null };
@@ -63,10 +71,11 @@ export class GameAudio {
   private musicLayers: Partial<Record<MusicLayer, MusicLayerRuntime>> = {};
   private musicBuffers: Partial<Record<MusicLayer, AudioBuffer>> = {};
   private musicLoadPromise: Promise<void> | null = null;
+  private musicElement: HTMLAudioElement | null = null;
   private sfxBuffers: Partial<Record<GameSound, AudioBuffer>> = {};
   private sfxLoadPromise: Promise<void> | null = null;
   private musicStarted = false;
-  private musicState: AdaptiveMusicState = { active: false, title: false, boss: false };
+  private musicState: AdaptiveMusicState = { active: false, state: "title" };
   private sfxVolume = 0.28;
   private musicVolume = 0.24;
 
@@ -93,7 +102,11 @@ export class GameAudio {
 
   async startMusic() {
     await this.unlock();
-    if (!this.context || !this.musicMaster || this.musicStarted) return;
+    if (!this.context || !this.musicMaster) return;
+    if (this.musicStarted) {
+      void this.musicElement?.play().catch(() => undefined);
+      return;
+    }
     if (!this.musicLoadPromise) this.musicLoadPromise = this.loadMusicBuffers();
     await this.musicLoadPromise;
     if (!this.context || !this.musicMaster || this.musicStarted) return;
@@ -103,6 +116,11 @@ export class GameAudio {
     // scheduler intentionally refuses to create follow-up sources after
     // close(), so this flag must be set before the first schedule call.
     this.musicStarted = true;
+    if (!this.musicBuffers.normal) {
+      this.startElementMusic();
+      this.applyMusicState();
+      return;
+    }
     (Object.keys(MUSIC_FILES) as MusicLayer[]).forEach((layer) => {
       const buffer = this.musicBuffers[layer];
       if (!buffer) return;
@@ -119,7 +137,7 @@ export class GameAudio {
   setMusicState(state: AdaptiveMusicState) {
     this.musicState = {
       active: state.active,
-      boss: state.boss,
+      state: state.state,
     };
     this.applyMusicState();
   }
@@ -240,6 +258,8 @@ export class GameAudio {
     });
     this.musicLayers = {};
     this.musicStarted = false;
+    this.musicElement?.pause();
+    this.musicElement = null;
     void this.context?.close();
     this.context = null;
     this.master = null;
@@ -260,6 +280,21 @@ export class GameAudio {
     }));
   }
 
+  private startElementMusic() {
+    if (!this.context || !this.musicMaster || this.musicElement) return;
+    const element = new Audio(MUSIC_FILES.normal);
+    element.preload = "auto";
+    element.loop = true;
+    element.crossOrigin = "anonymous";
+    const mediaSource = this.context.createMediaElementSource(element);
+    const gain = this.context.createGain();
+    mediaSource.connect(gain);
+    gain.connect(this.musicMaster);
+    this.musicElement = element;
+    this.musicLayers.normal = { gain, sources: new Set(), timer: null };
+    void element.play().catch((error) => console.warn("[music] element playback blocked", error));
+  }
+
   private async loadSfxBuffers() {
     if (!this.context) return;
     await Promise.all((Object.entries(SFX_FILES) as [GameSound, string][]).map(async ([sound, url]) => {
@@ -275,18 +310,23 @@ export class GameAudio {
 
   private applyMusicState() {
     if (!this.context || !this.musicStarted) return;
-    const { active, title, boss } = this.musicState;
-    const targets: Record<MusicLayer, number> = {
-      title: active && title ? 1 : 0.0001,
-      normal: active && !title && !boss ? 1 : 0.0001,
-      boss: active && boss ? BOSS_MUSIC_LEVEL : 0.0001,
-    };
+    const { active } = this.musicState;
+    const params = MUSIC_STATE_PARAMS[this.musicState.state];
+    const targets: Record<MusicLayer, number> = { normal: active ? params.gain : 0.0001 };
     const now = this.context.currentTime;
+    if (this.musicElement) {
+      this.musicElement.playbackRate = params.rate;
+      this.musicElement.preservesPitch = true;
+    }
     (Object.keys(targets) as MusicLayer[]).forEach((layer) => {
-      const node = this.musicLayers[layer]?.gain;
-      if (!node) return;
-      node.gain.cancelScheduledValues(now);
-      node.gain.setTargetAtTime(targets[layer], now, MUSIC_CROSSFADE_SECONDS / 3);
+      const runtime = this.musicLayers[layer];
+      if (!runtime) return;
+      runtime.gain.gain.cancelScheduledValues(now);
+      runtime.gain.gain.setTargetAtTime(targets[layer], now, MUSIC_CROSSFADE_SECONDS / 3);
+      runtime.sources.forEach(({ source }) => {
+        source.playbackRate.setTargetAtTime(params.rate, now, MUSIC_CROSSFADE_SECONDS / 3);
+        source.detune.setTargetAtTime(params.detune, now, MUSIC_CROSSFADE_SECONDS / 3);
+      });
     });
   }
 

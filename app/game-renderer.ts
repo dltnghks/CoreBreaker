@@ -2,24 +2,32 @@ import type { GameState } from "./_types/game";
 import type { Brick, ItemKind } from "./_types/game";
 import { SKILL_VFX_CONFIG, type ClassSkillId, type SkillConfig } from "./skill-config";
 
+type BrickTileSet = { single: string; left: string; middle: string; right: string };
+
 const GAMEPLAY_ART = {
   bricks: {
-    standard: "/assets/gameplay/blocks/standard.png",
-    guard: "/assets/gameplay/blocks/guard.png",
-    explosive: "/assets/gameplay/blocks/explosive.png",
-    indestructible: "/assets/gameplay/blocks/indestructible.png",
-    healer: "/assets/gameplay/blocks/healer.png",
-    reflector: "/assets/gameplay/blocks/reflector.png",
+    standard: { single: "/assets/gameplay/blocks/standard-single.png", left: "/assets/gameplay/blocks/standard-left.png", middle: "/assets/gameplay/blocks/standard-middle.png", right: "/assets/gameplay/blocks/standard-right.png" },
+    guard: { single: "/assets/gameplay/blocks/guard-single.png", left: "/assets/gameplay/blocks/guard-left.png", middle: "/assets/gameplay/blocks/guard-middle.png", right: "/assets/gameplay/blocks/guard-right.png" },
+    explosive: { single: "/assets/gameplay/blocks/explosive-single.png", left: "/assets/gameplay/blocks/explosive-left.png", middle: "/assets/gameplay/blocks/explosive-middle.png", right: "/assets/gameplay/blocks/explosive-right.png" },
+    indestructible: { single: "/assets/gameplay/blocks/indestructible-single.png", left: "/assets/gameplay/blocks/indestructible-left.png", middle: "/assets/gameplay/blocks/indestructible-middle.png", right: "/assets/gameplay/blocks/indestructible-right.png" },
+    healer: { single: "/assets/gameplay/blocks/healer-single.png", left: "/assets/gameplay/blocks/healer-left.png", middle: "/assets/gameplay/blocks/healer-middle.png", right: "/assets/gameplay/blocks/healer-right.png" },
+    reflector: { single: "/assets/gameplay/blocks/reflector-single.png", left: "/assets/gameplay/blocks/reflector-left.png", middle: "/assets/gameplay/blocks/reflector-middle.png", right: "/assets/gameplay/blocks/reflector-right.png" },
   },
   ball: "/assets/gameplay/props/ball.png",
   runeRing: "/assets/gameplay/props/rune-ring.png",
-  paddle: "/assets/gameplay/props/paddle.png",
+  paddle: { single: "/assets/gameplay/props/paddle-single.png", left: "/assets/gameplay/props/paddle-left.png", middle: "/assets/gameplay/props/paddle-middle.png", right: "/assets/gameplay/props/paddle-right.png" },
   bossPatterns: {
     barrier: "/assets/gameplay/boss-patterns/boss-rune-barrier.png",
     wall: "/assets/gameplay/boss-patterns/boss-wall-protrusion.png",
     gravity: "/assets/gameplay/boss-patterns/boss-gravity-rune.png",
     shield: "/assets/gameplay/boss-patterns/boss-core-shield.png",
     ward: "/assets/gameplay/boss-patterns/boss-rune-ward.png",
+  },
+  bossVfx: {
+    barrier: "/assets/gameplay/boss-vfx/boss-barrier-sheet.png",
+    wall: "/assets/gameplay/boss-vfx/boss-wall-sheet.png",
+    gravity: "/assets/gameplay/boss-vfx/boss-gravity-sheet.png",
+    shield: "/assets/gameplay/boss-vfx/boss-shield-sheet.png",
   },
 } as const;
 
@@ -31,10 +39,10 @@ const BOSS_BLOCK_WAVES = {
 } as const;
 
 const WAVE_BACKGROUNDS = [
-  "/assets/gameplay/backgrounds/wave-01-05.png",
-  "/assets/gameplay/backgrounds/wave-06-10.png",
-  "/assets/gameplay/backgrounds/wave-11-15.png",
-  "/assets/gameplay/backgrounds/wave-16-20.png",
+  "/assets/gameplay/backgrounds/wave-01-05-v7.png",
+  "/assets/gameplay/backgrounds/wave-06-10-v7.png",
+  "/assets/gameplay/backgrounds/wave-11-15-v7.png",
+  "/assets/gameplay/backgrounds/wave-16-20-v7.png",
 ] as const;
 
 // Keep canvas labels consistent with the pixel-style UI font.
@@ -43,6 +51,9 @@ const PIXEL_FONT = '"Neo둥근모", monospace';
 const gameplayImages: Record<string, HTMLImageElement | null> = {};
 const SKILL_SHEET_COLUMNS = 8;
 const SKILL_SHEET_ROWS = 5;
+const BOSS_VFX_COLUMNS = 4;
+const BOSS_VFX_ROWS = 2;
+const BOSS_VFX_FRAMES = BOSS_VFX_COLUMNS * BOSS_VFX_ROWS;
 
 function gameplayImage(key: string, src: string) {
   if (typeof Image === "undefined") return null;
@@ -53,6 +64,21 @@ function gameplayImage(key: string, src: string) {
   }
   const image = gameplayImages[key];
   return image?.complete && image.naturalWidth > 0 ? image : null;
+}
+
+function drawBossVfxFrame(ctx: CanvasRenderingContext2D, image: HTMLImageElement, frame: number, x: number, y: number, width: number, height: number, alpha = 1, rotation = 0) {
+  const frameWidth = image.naturalWidth / BOSS_VFX_COLUMNS;
+  const frameHeight = image.naturalHeight / BOSS_VFX_ROWS;
+  const safeFrame = ((Math.floor(frame) % BOSS_VFX_FRAMES) + BOSS_VFX_FRAMES) % BOSS_VFX_FRAMES;
+  const sourceX = (safeFrame % BOSS_VFX_COLUMNS) * frameWidth;
+  const sourceY = Math.floor(safeFrame / BOSS_VFX_COLUMNS) * frameHeight;
+  ctx.save();
+  ctx.translate(x, y);
+  if (rotation) ctx.rotate(rotation);
+  ctx.globalAlpha *= alpha;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(image, sourceX, sourceY, frameWidth, frameHeight, -width / 2, -height / 2, width, height);
+  ctx.restore();
 }
 
 function drawWaveBackground(ctx: CanvasRenderingContext2D, wave: number, width: number, height: number) {
@@ -68,31 +94,33 @@ function drawWaveBackground(ctx: CanvasRenderingContext2D, wave: number, width: 
   ctx.restore();
 }
 
-function drawBrickSprite(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number) {
-  const sourceWidth = image.naturalWidth;
-  const sourceHeight = image.naturalHeight;
-  const capSource = sourceWidth * 0.2;
-  const bodySourceX = sourceWidth * 0.12;
-  const bodySourceWidth = sourceWidth * 0.12;
-  const iconSourceX = sourceWidth * 0.32;
-  const iconSourceWidth = sourceWidth * 0.36;
-  const capWidth = Math.min(16, width * 0.18);
-  const centerWidth = Math.max(1, width - capWidth * 2);
+function drawBrickSprite(ctx: CanvasRenderingContext2D, images: { single: HTMLImageElement | null; left: HTMLImageElement | null; middle: HTMLImageElement | null; right: HTMLImageElement | null }, x: number, y: number, width: number, height: number) {
+  const tileSize = Math.min(28, height);
+  const tileCount = Math.max(1, Math.round((width + 4) / (tileSize + 4)));
+  // Treat the modules as one continuous strip. The source sprites expose
+  // caps only at the outer ends, so stretching each module to its slot avoids
+  // doubled seams while preserving the square source-pixel style.
+  const tileWidth = width / tileCount;
+  for (let index = 0; index < tileCount; index += 1) {
+    const image = tileCount === 1 ? images.single : index === 0 ? images.left : index === tileCount - 1 ? images.right : images.middle;
+    if (image) ctx.drawImage(image, x + index * tileWidth, y, tileWidth, height);
+  }
+}
 
-  // Nine-slice base: keep the end caps crisp and stretch only a plain body strip.
-  ctx.drawImage(image, 0, 0, capSource, sourceHeight, x, y, capWidth, height);
-  ctx.drawImage(image, bodySourceX, 0, bodySourceWidth, sourceHeight, x + capWidth, y, centerWidth, height);
-  ctx.drawImage(image, sourceWidth - capSource, 0, capSource, sourceHeight, x + width - capWidth, y, capWidth, height);
-
-  // The emblem remains centered and is scaled uniformly with the brick height.
-  const iconWidth = Math.min(width * 0.42, iconSourceWidth / sourceHeight * height);
-  ctx.drawImage(image, iconSourceX, 0, iconSourceWidth, sourceHeight, x + width / 2 - iconWidth / 2, y, iconWidth, height);
+function drawPaddleSprite(ctx: CanvasRenderingContext2D, images: { single: HTMLImageElement | null; left: HTMLImageElement | null; middle: HTMLImageElement | null; right: HTMLImageElement | null }, x: number, y: number, width: number) {
+  const tileSize = 28;
+  const tileCount = Math.max(1, Math.round((width + 4) / (tileSize + 4)));
+  const tileWidth = width / tileCount;
+  for (let index = 0; index < tileCount; index += 1) {
+    const image = tileCount === 1 ? images.single : index === 0 ? images.left : index === tileCount - 1 ? images.right : images.middle;
+    if (image) ctx.drawImage(image, x - width / 2 + index * tileWidth, y - 7, tileWidth, tileSize);
+  }
 }
 
 // Renderer contract markers: these names document the visual invariants covered
 // by rendered-html tests after extraction from page.tsx. They intentionally keep
 // the contract searchable without coupling tests to orchestration internals.
-// Brick health is communicated visually through opacity, cracks, flashes, and bars; no remaining-HP text is rendered.
+// Brick health is communicated visually through opacity, cracks, and flashes; no remaining-HP text or bar is rendered.
 // Brick traits: const traceBrickBody = (brick: Brick) => brick; ctx.roundRect(x, y, w, h, 8), reflectorLineY,
 // reflectorThreatened ? 4 : 3, HEAL PULSE // +1, EXPLOSIVE // BALL LAUNCHED.
 // const reflectorShieldPulse =; const reflectorThreatened = game.balls.some; const reflectorScan =;
@@ -143,7 +171,7 @@ export type CanvasRendererContext = CanvasRenderingContext2D;
 
 export type GameCanvasFrame = { ctx: CanvasRenderingContext2D; canvas: HTMLCanvasElement };
 
-export function beginGameCanvasFrame(canvas: HTMLCanvasElement, game: Pick<GameState, "shakeTime" | "shakeStrength" | "wave">, width: number, height: number, playerLineY: number): GameCanvasFrame | null {
+export function beginGameCanvasFrame(canvas: HTMLCanvasElement, game: Pick<GameState, "shakeTime" | "shakeStrength" | "wave">, width: number, height: number): GameCanvasFrame | null {
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
   canvas.width = width;
@@ -161,14 +189,12 @@ export function beginGameCanvasFrame(canvas: HTMLCanvasElement, game: Pick<GameS
   // remain readable across all four wave scenes.
   ctx.fillStyle = "rgba(0, 0, 0, .30)";
   ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = "rgba(216,196,151,.28)";
-  ctx.beginPath(); ctx.moveTo(0, playerLineY); ctx.lineTo(width, playerLineY); ctx.stroke();
   return { ctx, canvas };
 }
 
 export function endGameCanvasFrame(frame: GameCanvasFrame) { frame.ctx.restore(); }
 
-export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor }: { ctx: CanvasRenderingContext2D; game: Pick<GameState, "bricks" | "elapsed" | "balls" | "bossStage">; width: number; height: number; playerLineY: number; traitColors: Record<string, string>; itemData: Record<ItemKind, { symbol: string; color: string }>; classSkillColor?: (id: ClassSkillId) => string }) {
+export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor }: { ctx: CanvasRenderingContext2D; game: Pick<GameState, "bricks" | "elapsed" | "balls" | "bossStage">; width: number; height: number; traitColors: Record<string, string>; itemData: Record<ItemKind, { symbol: string; color: string }>; classSkillColor?: (id: ClassSkillId) => string }) {
   const trace = (b: Brick, inset = 0) => {
     const x = b.x + inset, y = b.y + inset, w = b.w - inset * 2, h = b.h - inset * 2;
     const cut = b.trait === "indestructible" ? 8 : b.trait === "explosive" ? 6 : b.trait === "reflector" ? 4 : 3;
@@ -191,8 +217,13 @@ export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor
       brick.trait === "healer" ? "#72f1b8" : brick.trait === "reflector" ? "#65dcff" : brick.maxHp >= 5 ? "#c5a766" : brick.maxHp >= 3 ? "#aeb4bd" : "#8f969f";
     const healthFlashRatio = (brick.healthFlashTime ?? 0) / Math.max(0.001, brick.healthFlashDuration ?? 0.001);
     const centerX = brick.x + brick.w / 2, centerY = brick.y + brick.h / 2;
+    const bossIntroTimer = (game as GameState).bossIntroTimer ?? 0;
+    const bossIntroOffset = isBossTile && bossIntroTimer > 0 ? -Math.min(120, bossIntroTimer * 40) : 0;
+    const bossIntroAlpha = isBossTile && bossIntroTimer > 0
+      ? brick.kind === "boss-core" ? Math.min(1, 0.5 + (3 - bossIntroTimer) * 0.18) : Math.min(1, 0.35 + Math.max(0, 2 - bossIntroTimer) * 0.32)
+      : 1;
     ctx.save();
-    ctx.translate(centerX, centerY);
+    ctx.translate(centerX, centerY + bossIntroOffset);
     const damageWobble = Math.sin(brick.x * 0.17 + brick.y * 0.11) * damageRatio;
     const eventScale = brick.healthFlashKind === "damage"
       ? 1 - healthFlashRatio * 0.045
@@ -200,19 +231,30 @@ export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor
     ctx.rotate(damageWobble * 0.018);
     ctx.scale((1 - damageRatio * 0.035) * eventScale, (1 + damageRatio * 0.045) * eventScale);
     ctx.translate(-centerX, -centerY);
-    ctx.shadowBlur = 12; ctx.shadowColor = color;
+    ctx.shadowBlur = 0; ctx.shadowColor = "transparent";
     const usesBossDesign = isBossTile && game.bossStage >= 1 && game.bossStage <= 4;
     const usesNormalWaveDesign = !usesBossDesign && (brick.kind === "normal" || brick.kind === "boss-minion");
     const bossWave = usesBossDesign ? BOSS_BLOCK_WAVES[game.bossStage as 1 | 2 | 3 | 4] : null;
-    const bossImage = usesBossDesign && bossWave
-      ? gameplayImage(`boss-block-${bossWave}-${brick.bossRow}-${brick.bossCol}`, `/assets/gameplay/boss-blocks/boss-wave-${bossWave}-r${brick.bossRow! + 1}c${brick.bossCol! + 1}.png`)
+    const bossImage = usesBossDesign
+      ? brick.kind === "boss-core"
+        ? gameplayImage(`boss-core-2x2-${bossWave}`, `/assets/gameplay/boss-blocks/boss-core-2x2-wave-${bossWave}.png`)
+        : bossWave
+          ? gameplayImage(`boss-block-${bossWave}-${brick.bossRow}-${brick.bossCol}`, `/assets/gameplay/boss-blocks/boss-wave-${bossWave}-r${brick.bossRow! + 1}c${brick.bossCol! + 1}.png`)
+          : null
       : null;
-    const brickImage = bossImage ?? (usesNormalWaveDesign ? gameplayImage(`brick-${brick.trait}`, GAMEPLAY_ART.bricks[brick.trait as keyof typeof GAMEPLAY_ART.bricks]) : null);
+    const brickTiles = usesNormalWaveDesign ? GAMEPLAY_ART.bricks[brick.trait as keyof typeof GAMEPLAY_ART.bricks] as BrickTileSet : null;
+    const brickImages = brickTiles ? {
+      single: gameplayImage(`brick-${brick.trait}-single`, brickTiles.single),
+      left: gameplayImage(`brick-${brick.trait}-left`, brickTiles.left),
+      middle: gameplayImage(`brick-${brick.trait}-middle`, brickTiles.middle),
+      right: gameplayImage(`brick-${brick.trait}-right`, brickTiles.right),
+    } : null;
+    const brickImage = bossImage ?? brickImages?.single ?? null;
     if (brickImage) {
-      ctx.globalAlpha = usesBossDesign ? 0.96 : alpha;
+      ctx.globalAlpha = usesBossDesign ? 0.96 * bossIntroAlpha : alpha;
       ctx.imageSmoothingEnabled = false;
       if (usesBossDesign) ctx.drawImage(brickImage, brick.x, brick.y, brick.w, brick.h);
-      else drawBrickSprite(ctx, brickImage, brick.x, brick.y, brick.w, brick.h);
+      else if (brickImages) drawBrickSprite(ctx, brickImages, brick.x, brick.y, brick.w, brick.h);
       ctx.globalAlpha = 1;
       ctx.shadowBlur = 0;
     } else {
@@ -256,12 +298,6 @@ export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor
         ctx.beginPath(); ctx.moveTo(brick.x + brick.w, brick.y + brick.h); ctx.lineTo(brick.x + brick.w - chip, brick.y + brick.h); ctx.lineTo(brick.x + brick.w, brick.y + brick.h - chip * .75); ctx.closePath(); ctx.fill();
       }
       ctx.restore();
-    }
-    if (!usesBossDesign && brick.trait !== "indestructible" && brick.maxHp > 1) {
-      const barX = brick.x + 5, barY = brick.y + brick.h - 4, barWidth = brick.w - 10;
-      ctx.fillStyle = "rgba(3,6,12,.72)"; ctx.fillRect(barX, barY, barWidth, 2);
-      ctx.fillStyle = healthRatio > .55 ? "#72f1b8" : healthRatio > .25 ? "#ffcf4a" : "#ff6b87";
-      ctx.fillRect(barX, barY, barWidth * healthRatio, 2);
     }
     if (healthFlashRatio > 0 && brick.healthFlashKind) {
       const flashColor = brick.healthFlashKind === "heal" ? "#72f1b8" : "#ff6b87";
@@ -511,7 +547,7 @@ export function renderBalls({ ctx, game, getSkill, classSkillColor, mageSpells =
   });
 }
 
-export function renderHud({ ctx, game, width }: { ctx: CanvasRenderingContext2D; game: Pick<GameState, "combo" | "bossActive" | "bossStage" | "bricks" | "bossSkillTimer">; width: number; height: number }) {
+export function renderHud({ ctx, game, width }: { ctx: CanvasRenderingContext2D; game: Pick<GameState, "combo" | "bossActive" | "bossStage" | "bricks" | "bossSkillTimer" | "bossStatus">; width: number; height: number }) {
   ctx.save();
   if (game.combo >= 3) {
     ctx.textAlign = "right";
@@ -526,9 +562,11 @@ export function renderHud({ ctx, game, width }: { ctx: CanvasRenderingContext2D;
     const ratio = Math.max(0, Math.min(1, currentHp / Math.max(1, maximumHp)));
     ctx.textAlign = "center";
     ctx.fillStyle = "#ff6b87";
-    ctx.fillText(`CORE FORTRESS ${game.bossStage}`, width / 2, 14);
+    ctx.font = `900 10px ${PIXEL_FONT}`;
+    ctx.fillText(game.bossStatus ?? `CORE FORTRESS ${game.bossStage}`, width / 2, 14);
     ctx.fillStyle = "rgba(255,255,255,.14)"; ctx.fillRect(width / 2 - 170, 20, 340, 6);
-    ctx.fillStyle = game.bossStage >= 3 ? "#c18cff" : "#65b8ff";
+    const hpColor = `hsl(${Math.round(345 - (1 - ratio) * 345)} 86% 62%)`;
+    ctx.fillStyle = hpColor;
     ctx.fillRect(width / 2 - 170, 20, 340 * ratio, 6);
   }
   ctx.restore();
@@ -599,11 +637,19 @@ export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor,
 }) {
   const draw = (x: number, y: number, width: number, color: string, alpha = 1, useArt = false) => {
     ctx.save(); ctx.globalAlpha = alpha; ctx.shadowColor = color; ctx.shadowBlur = 12;
-    const paddleImage = useArt ? gameplayImage("paddle", GAMEPLAY_ART.paddle) : null;
-    if (paddleImage) {
+    const paddleTiles = useArt ? GAMEPLAY_ART.paddle : null;
+    const paddleImages = paddleTiles ? {
+      single: gameplayImage("paddle-single", paddleTiles.single),
+      left: gameplayImage("paddle-left", paddleTiles.left),
+      middle: gameplayImage("paddle-middle", paddleTiles.middle),
+      right: gameplayImage("paddle-right", paddleTiles.right),
+    } : null;
+    if (paddleImages?.single) {
       ctx.imageSmoothingEnabled = false;
-      const height = Math.max(28, width / 3.66);
-      ctx.drawImage(paddleImage, x - width / 2, y - 7, width, height);
+      // The generated paddle already contains its pixel shadow and bevel.
+      // Disable the old per-tile glow so the left cap remains readable.
+      ctx.shadowBlur = 0; ctx.shadowColor = "transparent";
+      drawPaddleSprite(ctx, paddleImages, x, y, width);
       ctx.restore();
       return;
     }
@@ -637,26 +683,138 @@ function drawCoreCrystal(ctx: CanvasRenderingContext2D, x: number, y: number, sc
   const gradient = ctx.createLinearGradient(-7, -9, 7, 10); gradient.addColorStop(0, "#ffffff"); gradient.addColorStop(.28, danger ? "#ffb0c0" : "#bdf8ff"); gradient.addColorStop(.62, color); gradient.addColorStop(1, danger ? "#7d1738" : "#17617c"); ctx.fillStyle = gradient; ctx.strokeStyle = danger ? "#ffd5df" : "#e9fdff"; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(7, -2); ctx.lineTo(5, 7); ctx.lineTo(0, 11); ctx.lineTo(-5, 7); ctx.lineTo(-7, -2); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0; ctx.globalAlpha *= .72; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(0, 9); ctx.moveTo(-6, -2); ctx.lineTo(0, 1); ctx.lineTo(6, -2); ctx.stroke(); ctx.restore();
 }
 
-export function renderWorldOverlays({ ctx, elapsed, gravityWells, bossBarriers = [], bossWalls = [], bossShield = { active: false, life: 0, maxLife: 0, runeIds: [] }, bricks = [], skillSheets = [], skillSheetReady = [], itemBarrierTime, itemBarrierY, width, barrierColor, magnetLinks = [] }: {
+export function renderWorldOverlays({ ctx, elapsed, gravityWells, bossBarriers = [], bossWalls = [], bossShield = { active: false, life: 0, maxLife: 0, runeIds: [] }, bossArmorReformTimer = 0, bossArmorReformCells = [], bossIntroTimer = 0, bossReinforcementTelegraph = 0, bossReinforcementCount = 0, bricks = [], skillSheets = [], skillSheetReady = [], itemBarrierTime, itemBarrierY, width, barrierColor, magnetLinks = [] }: {
   ctx: CanvasRenderingContext2D; elapsed: number; gravityWells: ReadonlyArray<{ x: number; y: number; radius: number; life: number; color: string; sourceSkillId?: string }>;
   bossBarriers?: ReadonlyArray<{ x: number; y: number; w: number; h: number; life: number; maxLife: number; telegraph: number; hitCount: number; maxHits: number }>;
   bossWalls?: ReadonlyArray<{ x: number; y: number; w: number; h: number; baseX: number; baseY: number; life: number; maxLife: number; telegraph: number; hp: number; maxHp: number }>;
   bossShield?: { active: boolean; life: number; maxLife: number; runeIds: number[] };
+  bossArmorReformTimer?: number;
+  bossArmorReformCells?: ReadonlyArray<{ row: number; col: number }>;
+  bossIntroTimer?: number;
+  bossReinforcementTelegraph?: number; bossReinforcementCount?: number;
   bricks?: ReadonlyArray<Pick<Brick, "x" | "y" | "w" | "h" | "alive" | "kind">>;
   skillSheets?: ReadonlyArray<HTMLImageElement | null>;
   skillSheetReady?: ReadonlyArray<boolean>;
   itemBarrierTime: number; itemBarrierY: number; width: number; barrierColor: string;
   magnetLinks?: ReadonlyArray<{ x: number; y: number; itemX: number; itemY: number; alpha: number; color: string }>;
 }) {
+  const bossGravityWells = gravityWells.filter((well) => well.sourceSkillId === "gravity-well");
+  if ((bossIntroTimer ?? 0) > 0) {
+    ctx.save();
+    const phase = 3 - (bossIntroTimer ?? 0);
+    const label = phase < 1 ? "BOSS INCOMING" : phase < 2 ? "CORE WARNING" : "ARMOR ONLINE";
+    const color = phase < 1 ? "#ffd166" : phase < 2 ? "#72e7ff" : "#c5a766";
+    ctx.globalAlpha = 0.72 + Math.sin(elapsed * 10) * 0.18;
+    ctx.textAlign = "center";
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 18;
+    ctx.font = `900 15px ${PIXEL_FONT}`;
+    ctx.fillText(label, width / 2, 48);
+    const core = bricks.find((brick) => brick.kind === "boss-core");
+    if (core) {
+      const landing = Math.max(0, Math.min(1, (phase - 2.15) / 0.85));
+      ctx.globalAlpha = 0.16 + (1 - landing) * 0.28;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 8]);
+      for (let trail = 1; trail <= 3; trail += 1) {
+        const offset = trail * 18 + Math.max(0, 3 - phase) * 22;
+        ctx.strokeRect(core.x - 16, core.y - offset, core.w + 32, core.h + 32);
+      }
+      ctx.setLineDash([]);
+      if (landing > 0) {
+        ctx.globalAlpha = (1 - landing) * 0.75;
+        ctx.beginPath();
+        ctx.ellipse(core.x + core.w / 2, core.y + core.h + 14, 80 + landing * 180, 12 + landing * 18, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (phase >= 2) {
+        ctx.globalAlpha = 0.12 + Math.sin(elapsed * 18) * 0.06;
+        ctx.fillStyle = "#f4d58b";
+        ctx.fillRect(core.x - 34, core.y - 34, core.w + 68, core.h + 68);
+      }
+    }
+    ctx.restore();
+  }
+  const bossCore = bricks.find((brick) => brick.kind === "boss-core" && brick.alive);
+  const bossPatternColors = [
+    bossBarriers.length > 0 ? "#a86cff" : null,
+    bossWalls.length > 0 ? "#65b8ff" : null,
+    bossGravityWells.length > 0 ? "#c18cff" : null,
+    bossShield.active ? "#ffd166" : null,
+    bossReinforcementTelegraph > 0 ? "#ffcf4a" : null,
+  ].filter((color): color is string => color !== null);
+  if (bossCore && bossPatternColors.length > 0) {
+    ctx.save();
+    const color = bossPatternColors[Math.floor(elapsed) % bossPatternColors.length];
+    const pulse = 0.18 + Math.sin(elapsed * 7) * 0.05;
+    ctx.globalAlpha = pulse;
+    ctx.strokeStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 24;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(bossCore.x - 28, bossCore.y - 28, bossCore.w + 56, bossCore.h + 56);
+    ctx.restore();
+  }
+  if ((bossArmorReformTimer ?? 0) > 0 && (bossArmorReformCells?.length ?? 0) > 0) {
+    ctx.save();
+    const pulse = 0.38 + Math.sin(elapsed * 16) * 0.12;
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = "#8d96a8";
+    ctx.strokeStyle = "#e4d7b8";
+    ctx.shadowColor = "#c5a766";
+    ctx.shadowBlur = 18;
+    ctx.setLineDash([5, 5]);
+    for (const cell of bossArmorReformCells ?? []) {
+      const x = (width - (98 * 4 + 7 * 3)) / 2 + cell.col * 105;
+      const y = 58 + cell.row * 33;
+      ctx.fillRect(x, y, 98, 28);
+      ctx.strokeRect(x, y, 98, 28);
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+  if (bossReinforcementTelegraph > 0) {
+    ctx.save();
+    const pulse = 0.65 + Math.sin(elapsed * 18) * 0.2;
+    ctx.globalAlpha = pulse;
+    ctx.strokeStyle = "#ffcf4a";
+    ctx.fillStyle = "rgba(255, 207, 74, .08)";
+    ctx.shadowColor = "#ffcf4a";
+    ctx.shadowBlur = 18;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([9, 7]);
+    ctx.strokeRect(30, 212, width - 60, 208);
+    ctx.setLineDash([]);
+    ctx.fillRect(30, 212, width - 60, 208);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffe7a0";
+    ctx.font = `900 12px ${PIXEL_FONT}`;
+    ctx.fillText(`REINFORCEMENTS INCOMING · ${bossReinforcementCount || "?"}`, width / 2, 306);
+    ctx.font = `800 9px ${PIXEL_FONT}`;
+    ctx.fillText(`${bossReinforcementTelegraph.toFixed(1)}s`, width / 2, 326);
+    ctx.restore();
+  }
   bossBarriers.forEach((barrier) => {
     ctx.save();
     const active = barrier.telegraph <= 0;
-    const image = gameplayImage("boss-pattern-barrier", GAMEPLAY_ART.bossPatterns.barrier);
+    const image = gameplayImage("boss-vfx-barrier", GAMEPLAY_ART.bossVfx.barrier);
+    const fallbackImage = gameplayImage("boss-pattern-barrier", GAMEPLAY_ART.bossPatterns.barrier);
     ctx.globalAlpha = active ? 0.9 : 0.42 + Math.sin(elapsed * 14) * 0.16;
+    ctx.shadowColor = active ? "#a86cff" : "#5da8ff";
+    ctx.shadowBlur = active ? 24 : 12;
     if (image) {
+      const frame = barrier.telegraph > 0
+        ? Math.min(2, Math.floor((1 - Math.min(1, barrier.telegraph / 0.72)) * 3))
+        : barrier.life < 0.8 ? 6 + Math.min(1, Math.floor((0.8 - barrier.life) * 4)) : 3 + (Math.floor(elapsed * 5) % 3);
+      const drawWidth = Math.max(96, barrier.w * 2.4);
+      ctx.imageSmoothingEnabled = false;
+      drawBossVfxFrame(ctx, image, frame, barrier.x, barrier.y + barrier.h / 2, drawWidth, barrier.h + 46, 1);
+    } else if (fallbackImage) {
       const drawWidth = Math.max(82, barrier.w * 8);
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(image, barrier.x - drawWidth / 2, barrier.y - 20, drawWidth, barrier.h + 40);
+      ctx.drawImage(fallbackImage, barrier.x - drawWidth / 2, barrier.y - 20, drawWidth, barrier.h + 40);
     } else {
       ctx.strokeStyle = active ? "#e7c56f" : "#fff2b2";
       ctx.shadowColor = ctx.strokeStyle;
@@ -666,17 +824,38 @@ export function renderWorldOverlays({ ctx, elapsed, gravityWells, bossBarriers =
       ctx.strokeRect(barrier.x - barrier.w / 2, barrier.y, barrier.w, barrier.h);
       ctx.setLineDash([]);
     }
+    if (!active) {
+      ctx.globalAlpha = 0.72 + Math.sin(elapsed * 16) * 0.16;
+      ctx.strokeStyle = "#c495ff";
+      ctx.shadowColor = "#b76dff";
+      ctx.shadowBlur = 18;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 7]);
+      ctx.strokeRect(barrier.x - barrier.w * 2.2, barrier.y - 8, barrier.w * 4.4, barrier.h + 16);
+      ctx.setLineDash([]);
+    }
     ctx.restore();
   });
   bossWalls.forEach((wall) => {
     ctx.save();
     ctx.globalAlpha = wall.telegraph > 0 ? 0.4 + Math.sin(elapsed * 16) * 0.18 : Math.min(1, wall.life / 0.45);
-    const image = gameplayImage("boss-pattern-wall", GAMEPLAY_ART.bossPatterns.wall);
+    ctx.shadowColor = wall.telegraph > 0 ? "#65b8ff" : "#b56cff";
+    ctx.shadowBlur = wall.telegraph > 0 ? 12 : 20;
+    const image = gameplayImage("boss-vfx-wall", GAMEPLAY_ART.bossVfx.wall);
+    const fallbackImage = gameplayImage("boss-pattern-wall", GAMEPLAY_ART.bossPatterns.wall);
     if (image) {
+      const frame = wall.telegraph > 0
+        ? Math.min(2, Math.floor((1 - Math.min(1, wall.telegraph / 0.65)) * 3))
+        : wall.life < 0.7 ? 6 + Math.min(1, Math.floor((0.7 - wall.life) * 4)) : 3 + (Math.floor(elapsed * 5) % 3);
+      const drawWidth = Math.max(110, wall.w * 2.2);
+      const drawHeight = Math.max(88, wall.h * 2.5);
+      ctx.imageSmoothingEnabled = false;
+      drawBossVfxFrame(ctx, image, frame, wall.x + wall.w / 2, wall.y + wall.h / 2, drawWidth, drawHeight, 1);
+    } else if (fallbackImage) {
       const drawWidth = Math.max(120, wall.w * 1.8);
       const drawHeight = Math.max(52, wall.h * 3.1);
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(image, wall.x + wall.w / 2 - drawWidth / 2, wall.y + wall.h / 2 - drawHeight / 2, drawWidth, drawHeight);
+      ctx.drawImage(fallbackImage, wall.x + wall.w / 2 - drawWidth / 2, wall.y + wall.h / 2 - drawHeight / 2, drawWidth, drawHeight);
     } else {
       ctx.fillStyle = wall.telegraph > 0 ? "#8eb9ff" : "#4d84d8";
       ctx.strokeStyle = "#d8e8ff";
@@ -688,28 +867,56 @@ export function renderWorldOverlays({ ctx, elapsed, gravityWells, bossBarriers =
     ctx.globalAlpha *= 0.7;
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(wall.x + 6, wall.y + 4, Math.max(0, wall.w - 12) * Math.min(1, wall.hp / Math.max(1, wall.maxHp)), 2);
+    if (wall.telegraph > 0) {
+      ctx.globalAlpha = 0.62 + Math.sin(elapsed * 18) * 0.18;
+      ctx.strokeStyle = "#d5a8ff";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 5]);
+      ctx.strokeRect(wall.x - 8, wall.y - 8, wall.w + 16, wall.h + 16);
+      ctx.setLineDash([]);
+    }
     ctx.restore();
   });
   if (bossShield.active) {
     ctx.save();
     const pulse = 0.92 + Math.sin(elapsed * 7) * 0.06;
     ctx.globalAlpha = 0.38 + Math.min(0.32, bossShield.life / Math.max(0.01, bossShield.maxLife) * 0.32);
-    const image = gameplayImage("boss-pattern-shield", GAMEPLAY_ART.bossPatterns.shield);
+    const image = gameplayImage("boss-vfx-shield", GAMEPLAY_ART.bossVfx.shield);
+    const fallbackImage = gameplayImage("boss-pattern-shield", GAMEPLAY_ART.bossPatterns.shield);
+    const core = bricks.find((brick) => brick.alive && brick.kind === "boss-core");
+    const centerX = core ? core.x + core.w / 2 : width / 2;
+    const centerY = core ? core.y + core.h / 2 : 180;
+    ctx.translate(centerX, centerY);
+    ctx.rotate(elapsed * 0.12);
+    ctx.shadowColor = "#b66cff";
+    ctx.shadowBlur = 28;
     if (image) {
-      const size = 330 * pulse;
+      const size = 270 * pulse;
+      const lifeRatio = bossShield.life / Math.max(0.01, bossShield.maxLife);
+      const frame = lifeRatio > 0.78 ? Math.min(2, Math.floor((1 - lifeRatio) / 0.08)) : lifeRatio < 0.22 ? 6 + Math.min(1, Math.floor((0.22 - lifeRatio) * 8)) : 3 + (Math.floor(elapsed * 5) % 3);
+      drawBossVfxFrame(ctx, image, frame, 0, 0, size, size, 1);
+    } else if (fallbackImage) {
+      const size = 270 * pulse;
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(image, width / 2 - size / 2, 84 - size / 2, size, size);
+      ctx.drawImage(fallbackImage, -size / 2, -size / 2, size, size);
     } else {
-      ctx.strokeStyle = "#65b8ff";
-      ctx.shadowColor = "#65b8ff";
+      ctx.strokeStyle = "#c18cff";
       ctx.shadowBlur = 24;
       ctx.lineWidth = 5;
       ctx.setLineDash([12, 8]);
       ctx.beginPath();
-      ctx.arc(width / 2, 145, 228 * pulse, Math.PI, Math.PI * 2);
+      ctx.arc(0, 0, 135 * pulse, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
     }
+    ctx.globalAlpha *= 0.58;
+    ctx.strokeStyle = "#e6c7ff";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([9, 12]);
+    ctx.beginPath();
+    ctx.arc(0, 0, 152 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
     ctx.restore();
   }
   gravityWells.forEach((well) => {
@@ -718,7 +925,8 @@ export function renderWorldOverlays({ ctx, elapsed, gravityWells, bossBarriers =
     ctx.save(); ctx.globalAlpha = Math.min(1, well.life / .45) * skillOpacity; ctx.translate(well.x, well.y); ctx.rotate(elapsed * 1.6);
     const playerBlackHoleSheet = well.sourceSkillId === "mage-black-hole" ? skillSheets[2] : null;
     const playerBlackHoleReady = Boolean(playerBlackHoleSheet && skillSheetReady[2]);
-    const image = playerBlackHoleReady ? null : gameplayImage("boss-pattern-gravity", GAMEPLAY_ART.bossPatterns.gravity);
+    const image = playerBlackHoleReady ? null : gameplayImage("boss-vfx-gravity", GAMEPLAY_ART.bossVfx.gravity);
+    const fallbackImage = playerBlackHoleReady ? null : gameplayImage("boss-pattern-gravity", GAMEPLAY_ART.bossPatterns.gravity);
     if (playerBlackHoleReady && playerBlackHoleSheet) {
       const frame = Math.floor(elapsed * 12) % SKILL_SHEET_COLUMNS;
       const frameWidth = playerBlackHoleSheet.naturalWidth / SKILL_SHEET_COLUMNS;
@@ -728,13 +936,16 @@ export function renderWorldOverlays({ ctx, elapsed, gravityWells, bossBarriers =
       ctx.drawImage(playerBlackHoleSheet, frame * frameWidth, 3 * frameHeight, frameWidth, frameHeight, -size / 2, -size / 2, size, size);
     } else if (image) {
       const size = well.radius * 2.25 * pulse;
+      drawBossVfxFrame(ctx, image, Math.floor(elapsed * 9) % BOSS_VFX_FRAMES, 0, 0, size, size, 1);
+    } else if (fallbackImage) {
+      const size = well.radius * 2.25 * pulse;
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(image, -size / 2, -size / 2, size, size);
+      ctx.drawImage(fallbackImage, -size / 2, -size / 2, size, size);
     } else {
       const gradient = ctx.createRadialGradient(0, 0, 5, 0, 0, well.radius); gradient.addColorStop(0, "rgba(5,7,18,.98)"); gradient.addColorStop(.2, "rgba(193,140,255,.42)"); gradient.addColorStop(1, "rgba(193,140,255,0)"); ctx.fillStyle = gradient; ctx.beginPath(); ctx.arc(0, 0, well.radius * pulse, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = well.color; ctx.lineWidth = 2; ctx.setLineDash([10, 14]); ctx.beginPath(); ctx.arc(0, 0, well.radius * .58, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
     }
-    ctx.fillStyle = "#ecf2ff"; ctx.font = `900 9px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText(`GRAVITY ${well.life.toFixed(1)}s`, 0, -well.radius * .88); ctx.restore();
+    ctx.restore();
   });
   const ward = gameplayImage("boss-pattern-ward", GAMEPLAY_ART.bossPatterns.ward);
   if (ward && bossShield.active) {
