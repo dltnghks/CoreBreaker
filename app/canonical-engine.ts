@@ -94,7 +94,7 @@ export type CanonicalRngState = { world: number; reward: number };
 /** Step policy is explicit so parity runs can use the legacy variable frame
  * delta while production fixed-step runs retain their bounded 120Hz tick. */
 export type CanonicalStepOptions = { clampToFixedStep?: boolean };
-export type CanonicalBall = { x: number; y: number; vx: number; vy: number; radius: number; temporary: boolean; temporaryTime: number; missileTime: number; waveBonus: boolean; awaitingLaunch: boolean; launchWaitTime: number; visualSkill: UpgradeId | null; visualSkillTime: number; cooldowns: Record<string, number>; skillCharges: Partial<Record<UpgradeId, number>>; attackPower: number; pierce: number; maxPierce: number; payload: CanonicalPayloadId | null; payloadLevel: number; payloads: Partial<Record<CanonicalPayloadId, number>>; canTriggerSkills: boolean; skillGeneration: number; lastHitBrickId: number | null; gravityBaseSpeed: number | null; explosionBaseSpeed: number | null; explosionBoostRatio: number; explosionBoostTime: number; respawnRecoveryTime: number; respawnRecoveryDuration: number; respawnRecoveryBaseSpeed: number };
+export type CanonicalBall = { x: number; y: number; vx: number; vy: number; radius: number; temporary: boolean; temporaryTime: number; missileTime: number; waveBonus: boolean; awaitingLaunch: boolean; launchWaitTime: number; visualSkill: UpgradeId | null; visualSkillTime: number; cooldowns: Record<string, number>; skillCharges: Partial<Record<UpgradeId, number>>; attackPower: number; pierce: number; maxPierce: number; payload: CanonicalPayloadId | null; payloadLevel: number; payloads: Partial<Record<CanonicalPayloadId, number>>; canTriggerSkills: boolean; skillGeneration: number; lastHitBrickId: number | null; piercingBrickId: number | null; gravityBaseSpeed: number | null; explosionBaseSpeed: number | null; explosionBoostRatio: number; explosionBoostTime: number; respawnRecoveryTime: number; respawnRecoveryDuration: number; respawnRecoveryBaseSpeed: number };
 export type CanonicalBrick = { id: number; x: number; y: number; w: number; h: number; hp: number; maxHp: number; alive: boolean; trait: CanonicalTrait; guardReady: boolean; healTimer: number; healBlockTime: number; burnTime: number; burnTick: number; burnDamage: number; burnDamageType: SkillDamageType; burnSourceSkillId: UpgradeId | null; poisonTime: number; poisonTick: number; traitLockTime: number; frostVulnerability: number; frostSourceSkillId: UpgradeId | null; focusStacks: number; focusTimer: number; drop: CanonicalItemKind | null; kind: "normal" | "boss-core" | "boss-minion"; bossRow?: number; bossCol?: number };
 export type CanonicalItem = { x: number; y: number; vy: number; kind: CanonicalItemKind; alive: boolean };
 export type CanonicalActiveEffect = { id: string; kind: SkillEffectConfig["kind"]; target: SkillEffectConfig["target"]; scopeId?: string; order: number; radius: number; interval: number; timer: number; damage: number; damageType: SkillDamageType };
@@ -686,7 +686,7 @@ function makeBall(state: CanonicalState, x = GAME_WIDTH / 2, temporary = false, 
   const speed = baseSpeed * (recovering ? 1 : overdriveMultiplier(state.overdriveLevel));
   const aim = paddleAimDirection(x, PLAYER_PADDLE_Y, aimX, aimY);
   const awaitingLaunch = state.interactive && !temporary;
-  return { x, y: PLAYER_PADDLE_Y - 11, vx: aim.horizontalRatio * speed, vy: aim.verticalRatio * speed, radius: 8, temporary, temporaryTime, missileTime: 0, waveBonus: temporary, awaitingLaunch, launchWaitTime: awaitingLaunch ? 3 : 0, visualSkill: null, visualSkillTime: 0, cooldowns: {}, skillCharges: {}, attackPower: 1 + commonDamageBonus(state, "physical"), pierce: 0, maxPierce: 0, payload: null, payloadLevel: 0, payloads: {}, canTriggerSkills: !temporary, skillGeneration: 0, lastHitBrickId: null, gravityBaseSpeed: null, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0, respawnRecoveryTime: recovering && !awaitingLaunch ? RESPAWN_SPEED_RECOVERY_SECONDS : 0, respawnRecoveryDuration: recovering ? RESPAWN_SPEED_RECOVERY_SECONDS : 0, respawnRecoveryBaseSpeed: recovering ? baseSpeed : 0 };
+  return { x, y: PLAYER_PADDLE_Y - 11, vx: aim.horizontalRatio * speed, vy: aim.verticalRatio * speed, radius: 8, temporary, temporaryTime, missileTime: 0, waveBonus: temporary, awaitingLaunch, launchWaitTime: awaitingLaunch ? 3 : 0, visualSkill: null, visualSkillTime: 0, cooldowns: {}, skillCharges: {}, attackPower: 1 + commonDamageBonus(state, "physical"), pierce: 0, maxPierce: 0, payload: null, payloadLevel: 0, payloads: {}, canTriggerSkills: !temporary, skillGeneration: 0, lastHitBrickId: null, piercingBrickId: null, gravityBaseSpeed: null, explosionBaseSpeed: null, explosionBoostRatio: 1, explosionBoostTime: 0, respawnRecoveryTime: recovering && !awaitingLaunch ? RESPAWN_SPEED_RECOVERY_SECONDS : 0, respawnRecoveryDuration: recovering ? RESPAWN_SPEED_RECOVERY_SECONDS : 0, respawnRecoveryBaseSpeed: recovering ? baseSpeed : 0 };
 }
 
 function aimHeldBall(state: CanonicalState, ball: CanonicalBall, aimX: number, aimY: number) {
@@ -2353,6 +2353,10 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
     }
     for (const brick of collisionCandidates(state, ball, previousBallX, previousBallY)) {
       if (!brick.alive) continue;
+      if (ball.piercingBrickId === brick.id) {
+        if (circleRect(ball, brick)) continue;
+        ball.piercingBrickId = null;
+      }
       const collision = circleRect(ball, brick);
       if (!collision) continue;
       const indestructible = brick.trait === "indestructible";
@@ -2381,10 +2385,12 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
         ball.x += ball.vx / speed * 1.5;
         ball.y += ball.vy / speed * 1.5;
       } else if (passesThrough) {
-        if (collision.nx < 0) ball.x = brick.x + brick.w + ball.radius + 0.1;
-        else if (collision.nx > 0) ball.x = brick.x - ball.radius - 0.1;
-        else if (collision.ny < 0) ball.y = brick.y + brick.h + ball.radius + 0.1;
-        else ball.y = brick.y - ball.radius - 0.1;
+        // Keep the ball at the entry face and let subsequent fixed steps move
+        // it through the block. The hit block is ignored until the ball exits
+        // so large boss cores no longer cause a visible position teleport.
+        ball.x += collision.nx * 1.6;
+        ball.y += collision.ny * 1.6;
+        ball.piercingBrickId = brick.id;
       } else {
         if (collision.nx) ball.vx = collision.nx * Math.abs(ball.vx); else ball.vy = collision.ny * Math.abs(ball.vy);
         ball.x += collision.nx * 1.5;
@@ -2469,7 +2475,7 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
 export function canonicalSnapshot(state: CanonicalState) {
   return {
     tick: state.tick, phase: state.phase, rng: { ...state.rng }, wave: state.wave, pendingWave: state.pendingWave, elapsed: Number(state.elapsed.toFixed(6)), waveElapsed: Number(state.waveElapsed.toFixed(6)), rowTimer: Number(state.rowTimer.toFixed(6)), itemBarrierTime: Number(state.itemBarrierTime.toFixed(6)), paddleX: Number(state.paddleX.toFixed(4)), lastMove: state.lastMove, moveBoostTime: Number(state.moveBoostTime.toFixed(4)), coreHp: state.coreHp, score: Number.isFinite(state.score) ? state.score : 0, bricksBroken: state.bricksBroken,
-    balls: state.balls.map((ball) => ({ x: Number(ball.x.toFixed(4)), y: Number(ball.y.toFixed(4)), vx: Number(ball.vx.toFixed(4)), vy: Number(ball.vy.toFixed(4)), attackPower: ball.attackPower, pierce: ball.pierce, maxPierce: ball.maxPierce, payload: ball.payload, payloadLevel: ball.payloadLevel, payloads: { ...ball.payloads }, skillCharges: { ...ball.skillCharges }, cooldowns: { ...ball.cooldowns }, lastHitBrickId: ball.lastHitBrickId, explosionBaseSpeed: ball.explosionBaseSpeed === null ? null : Number(ball.explosionBaseSpeed.toFixed(4)), explosionBoostRatio: Number(ball.explosionBoostRatio.toFixed(6)), explosionBoostTime: Number(ball.explosionBoostTime.toFixed(6)) })),
+    balls: state.balls.map((ball) => ({ x: Number(ball.x.toFixed(4)), y: Number(ball.y.toFixed(4)), vx: Number(ball.vx.toFixed(4)), vy: Number(ball.vy.toFixed(4)), attackPower: ball.attackPower, pierce: ball.pierce, maxPierce: ball.maxPierce, payload: ball.payload, payloadLevel: ball.payloadLevel, payloads: { ...ball.payloads }, skillCharges: { ...ball.skillCharges }, cooldowns: { ...ball.cooldowns }, lastHitBrickId: ball.lastHitBrickId, piercingBrickId: ball.piercingBrickId, explosionBaseSpeed: ball.explosionBaseSpeed === null ? null : Number(ball.explosionBaseSpeed.toFixed(4)), explosionBoostRatio: Number(ball.explosionBoostRatio.toFixed(6)), explosionBoostTime: Number(ball.explosionBoostTime.toFixed(6)) })),
     bricks: state.bricks.filter((brick) => brick.alive).map((brick) => [brick.id, Number(brick.hp.toFixed(3)), brick.guardReady, Number(brick.traitLockTime.toFixed(3)), Number(brick.frostVulnerability.toFixed(3))]),
     upgrades: [...state.upgrades], skillHistory: state.skillHistory.map((event) => ({ ...event })), sharedSkillCooldowns: { ...state.sharedSkillCooldowns }, complete: state.complete, gameOver: state.gameOver, combatStats: { ...state.combatStats }, totalDamage: Number(state.totalDamage.toFixed(3)), physicalDamage: Number(state.physicalDamage.toFixed(3)), magicDamage: Number(state.magicDamage.toFixed(3)), lastDamageElapsed: Number(state.lastDamageElapsed.toFixed(3)), reflectorBlockedHits: state.reflectorBlockedHits, barrierTime: Number(state.barrierTime.toFixed(3)), barrierCharges: state.barrierCharges, echoSplitReflections: state.echoSplitReflections,
     safetyBlocks: state.safetyBlocks.map((block) => ({ ...block })),
@@ -2523,6 +2529,7 @@ export function restoreCanonicalState(serialized: string): CanonicalState {
   state.maxCoreHp = canonicalIntegerCombatAmount(state.maxCoreHp);
   state.coreHp = Math.min(state.maxCoreHp, Math.max(0, Math.round(Number(state.coreHp) || 0)));
   for (const ball of state.balls) {
+    ball.piercingBrickId ??= null;
     ball.explosionBaseSpeed ??= null;
     ball.explosionBoostRatio ??= 1;
     ball.explosionBoostTime ??= 0;
