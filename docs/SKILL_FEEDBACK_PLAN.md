@@ -72,6 +72,7 @@
 - 역할: 가드·힐러·반사 등 특수 블록 대응 전용 보조 스킬
 - 일반 블록에는 추가 피해를 주지 않음
 - 특수 블록 대상 추가 피해량: LV1 / LV2 / LV3 = `1 / 2 / 3`
+- 기본 쿨타임: LV1 / LV2 / LV3 = `2 / 1 / 0.5초`
 - 공격 강화(`common-damage`) 적용
 - 스킬 피해 강화(`common-skill-damage`) 미적용
 - 실제 피해 계산: 스킬 기본 피해량 + 공통 물리 강화
@@ -96,7 +97,7 @@
 - 역할: 임시 화살을 여러 개 생성하는 핵심 공격 스킬
 - 기본 발동 시 임시 화살 2발 생성
 - 임시 화살 유지시간: LV1 / LV2 / LV3 = `5 / 7 / 9초`
-- 진화 효과: 생성된 화살은 원본 공과 독립적으로 존재
+- 진화 효과: 생성된 화살은 원본 공과 독립적으로 존재하며 별도 스킬을 발동하지 않음
 - 진화 화살도 화면 아래로 떨어지거나 웨이브가 종료되면 사라짐
 
 ## 궁수 - 관통 화살 (`archer-pierce`)
@@ -298,7 +299,7 @@
 - 역할: 적을 얼리고 다음 직접 타격을 강화하는 제어 스킬
 - 동결 지속시간: LV1 / LV2 / LV3 = `2 / 4 / 6초`
 - 동결된 대상의 다음 직접 타격에 추가 피해 적용
-- 추가 피해: LV1 / LV2 / LV3 = `1 / 2 / 3 × 마법 공격력`
+- 추가 피해: LV1 / LV2 / LV3 = `1 / 2 / 3` + 공통 마법 강화
 - 진화 효과: 동결 종료 시 주변 블록으로 동결 확산
 
 ## 마법사 - 블랙홀 (`mage-black-hole`)
@@ -328,3 +329,59 @@
 
 - 스킬별로 `확정 변경안`, `미결정 사항`, `구현 메모`를 유지한다.
 - 새로 결정된 내용은 기존 결정을 덮어쓰지 않고 해당 스킬 항목에 최신안으로 정리한다.
+
+## Implementation Log (2026-08-07)
+
+### Confirmed damage formula
+
+- Normal ball physical damage: `ball base damage + common physical damage bonus`.
+- Physical skill damage: `skill base damage + common physical damage bonus`.
+- Magic skill damage: `skill base damage + common magic damage bonus`.
+- Physical/magic power and generic skill-damage multipliers are no longer used by canonical damage calculation.
+- Weakpoint, Focus, and Execute are final direct-hit modifiers applied after direct-hit packets are assembled.
+
+### Applied in code
+
+- Physical and magic skill ownership was separated in `app/skill-config.ts`.
+- Smash, Shockwave, Execute, Crush, Ricochet, Focus, and Weakpoint are physical; Freeze and Lightning are magic.
+- Shockwave now damages the collided block and every valid block in its radius without chaining.
+- Execute now scales linearly from 100% HP to its threshold; evolution moves the maximum point from 25% to 40% HP.
+- Fireball applies area healing prevention and only its evolved form applies burn damage.
+- Lightning uses its effective target count as per-target damage; evolution uses a `0.5` coefficient and adds three targets.
+- Black Hole is created at the collided block, pulls balls, and deals 1 magic damage per second only after evolution.
+- Pierce evolution bypasses guard and reflector protection while pierce charges remain.
+- Rapid Fire creates two arrows; evolved arrows are independent and have no skill lifetime timer.
+- Common physical damage now also scales ordinary ball hits; common magic damage is additive to magic skills.
+- Smash evolution now fixes its cooldown at `0.4s`.
+- Shockwave evolution adds `50px` to its area; Ricochet evolution adds `50px` range and `2` targets.
+- Ricochet damage follows ordinary ball damage and gains `+0.5x` per successive target.
+- Focus now stores up to three hit stacks, resets after `3s`, and persists for the wave after evolution.
+- Crush evolution bypasses reflector protection as well as guard protection.
+- Freeze evolution spreads when the freeze expires; Mana Seal remains non-damaging.
+- Removed runtime use of the deprecated combo and ball-size common skills.
+- Aligned `skill-config.ts` with the plan: Pierce is physical, Lightning is `2/4/6` base damage, and Rapid Fire no longer adds an undocumented generation cooldown.
+- Fixed Shockwave damage resolution so its `1/2/3` damage values are not confused with its `105/115/125px` range values.
+- Evolved Rapid Fire arrows no longer trigger separate skills.
+- Removed the undocumented evolved Pierce magic damage and kept Pierce damage identical to ordinary ball damage.
+- Corrected the non-damage config classification for Ricochet, Focus, and Weakpoint.
+- Lightning evolution now adds three targets; Freeze keeps its evolution-spread marker until the freeze expires; Mana Seal can activate against guarded blocks.
+- Player-facing descriptions now resolve `{levels}`, `{cooldown}`, trait values, and common physical/magic bonus references from the active skill config instead of duplicating numeric values.
+- Default skill descriptions were rewritten to match each skill's finalized `확정 변경안`, including roles, damage types, targets, durations, cooldowns, and evolution behavior.
+- New main balls created at wave start or after core damage now wait on the paddle, continuously preview the current mouse direction, and launch only after a mouse click; temporary/multiball arrows and non-interactive bot runs retain automatic movement.
+- Manual launch now has a 3-second limit; if the player does not click in time, the held ball launches automatically. Multiball pickups launch immediately using the current aim direction.
+- While a main ball is held, the remaining 3-second launch window is displayed above the player paddle and disappears on manual or automatic launch.
+- Owned-skill tooltips now resolve numeric descriptions to the currently owned level only and display the current cooldown separately when the description does not already include it.
+- Skill cards and owned-skill tooltips now use a compact two-sentence current-level summary; evolution-only sentences remain reserved for evolution/detail contexts.
+- The right-side CORE HUD now shows core icons in three columns with filled/depleted states instead of relying on a single numeric value; the CORE label was removed for a more immediate visual read.
+- Core HUD icon count now follows the current maximum core HP, so newly gained core capacity immediately creates additional icons.
+- Fixed skill-config normalization so Shockwave level damage values remain `1/2/3` while splash radius remains `105/115/125px`; persisted legacy configs are repaired when loaded.
+- Boss reward cards now show only the selected skill's evolution effect instead of repeating its normal description.
+- Boss reward cards now show only `LV3` + `EVOLVE`; the current-level panel was removed, and the gold panel uses a 56px 9-slice inset to preserve its corner ornaments.
+- Boss shield runes are removed when the shield expires; boss waves clear when the boss core HP reaches 0 or below, regardless of remaining reinforcements.
+- Removed the unused boss time-limit balance setting; boss attack interval and acceleration remain configurable.
+- Updated the boss-wave design documentation to match the implemented W5/W10/W15/W20 schedule.
+- Added a shared boss reinforcement pattern: summon the current wave number of mixed blocks for every boss, then respawn 10 seconds after the group is cleared with a 1.2-second telegraph.
+- Resized the boss core to one upper-center 2×2 hitbox, leaving eight outer armor blocks in the 4×3 fortress layout.
+- Removed the duplicate transient black-hole visual; the persistent gravity-well renderer is now the sole owner of the black-hole effect.
+- Owned-skill tooltips now show the skill's evolution effect together with the current-level summary and cooldown.
+- The lower-right status area now contains an independent framed pause/resume control and sound-volume slider panel.
