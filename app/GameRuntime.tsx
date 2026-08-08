@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { GameAudio, type MusicState } from "./game-audio";
 import { canonicalUpgradeId, DEFAULT_SKILLS, levelValue, NORMAL_SKILLS, normalizeSkillConfigs, resolveSkillSummary, SKILL_BUILD_STORAGE_KEY, SKILL_COLORS, SKILL_MECHANIC_LABELS, SKILL_STORAGE_KEY, skillConfigMap, skillConfigSignature, type ClassSkillId, type SkillCategory, type SkillConfig, type UpgradeId } from "./skill-config";
 import { BALANCE_STORAGE_KEY, BOT_LIVE_STORAGE_KEY, BOT_RESULTS_STORAGE_KEY, DEFAULT_BALANCE_CONFIG, DEFAULT_SKILL_BENCH_CONFIG, DEFAULT_SKILL_BENCH_PROGRESS, normalizeBalanceConfig, normalizeSkillBenchConfig, normalizeSkillBenchProgress, SKILL_BENCH_PROGRESS_KEY, SKILL_BENCH_STORAGE_KEY, type BalanceConfig, type BotWaveSample, type SkillBenchConfig, type SkillBenchProgress } from "./balance-config";
@@ -83,6 +83,16 @@ function paddleAimDirection(fromX: number, fromY: number, targetX: number, targe
     limited: Math.abs(rawHorizontalRatio) > MAX_PADDLE_REBOUND_RATIO,
   };
 }
+type RightRailPanelProps = {
+  children: ReactNode;
+  className: string;
+  ariaLabel: string;
+};
+
+function RightRailPanel({ children, className, ariaLabel }: RightRailPanelProps) {
+  return <section className={`right-rail-panel ${className}`} aria-label={ariaLabel}>{children}</section>;
+}
+
 const RING_EXPLOSION_ASSET = "/assets/vfx/ring-explosion.png";
 const TITLE_LOGO_ASSET = "/assets/ui/forged-core/core-breaker-title-v2.png";
 const HIT_SPARK_ASSETS = ["/assets/vfx/hit-spark-a.png", "/assets/vfx/hit-spark-b.png"] as const;
@@ -2146,7 +2156,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
             </div>
 
             <div className="right-rail-stack">
-            <aside className="in-game-side-panel in-game-stat-panel" aria-label="RUN STATUS">
+            <RightRailPanel className="in-game-side-panel in-game-stat-panel" ariaLabel="RUN STATUS">
               <h2>RUN INFO</h2>
               <span className="run-info-divider" aria-hidden="true" />
               <div className="in-game-stat-card in-game-wave-card"><div className="in-game-stat-main"><img className="in-game-stat-icon" src={STATUS_ICON_ASSETS.wave} alt="" aria-hidden="true" /><span>WAVE</span></div><strong>{hud.wave}</strong></div>
@@ -2167,9 +2177,9 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                   })()}
                 </div>
               </div>
-            </aside>
+            </RightRailPanel>
               {mode !== "lobby" && (
-                <div className="runtime-controls-panel" aria-label="게임 컨트롤">
+                <RightRailPanel className="runtime-controls-panel" ariaLabel="게임 컨트롤">
                   <button type="button" className="runtime-pause-button" onClick={togglePause} disabled={botActiveRef.current} aria-pressed={isPaused}>
                     {isPaused ? "계속하기" : "일시정지"}
                   </button>
@@ -2202,7 +2212,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                     />
                     <output>{Math.round(musicVolume * 100)}%</output>
                   </label>
-                </div>
+                </RightRailPanel>
               )}
             </div>
           </div>

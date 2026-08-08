@@ -574,7 +574,6 @@ button {
 }
 
 .overlay.lobby-overlay {
-   //max-height: 100%;
    overflow: hidden
 }
 
@@ -6109,50 +6108,6 @@ select {
    animation: right-rail-reveal .52s cubic-bezier(.2, .82, .25, 1) .05s both;
 }
 
-/* All normal game states share the exact title-screen center footprint. */
-.gameplay-shell .gameplay-stage {
-   grid-template-columns: 112px minmax(0, 1fr) 150px !important;
-   gap: 14px !important;
-   max-width: 1500px !important;
-}
-
-.gameplay-shell .gameplay-stage>.game-frame {
-   width: 92% !important;
-   aspect-ratio: 3 / 2;
-   justify-self: center;
-}
-
-/* Title and gameplay use the same center-frame footprint. The lobby needs the
-   same reserved lower space as the live arena so the two screens do not jump
-   when transitioning between them. */
-.gameplay-shell.mode-lobby .gameplay-stage>.game-frame {
-   width: 92% !important;
-   aspect-ratio: 3 / 2;
-   margin: 0 auto 58px !important;
-}
-
-@media(max-width:1120px) {
-   .gameplay-shell .gameplay-stage {
-      grid-template-columns: 96px minmax(0, 1fr) 132px !important;
-      gap: 8px !important;
-   }
-
-   .gameplay-shell .gameplay-stage>.game-frame {
-      width: 96% !important;
-   }
-
-   .gameplay-shell.mode-lobby .gameplay-stage>.game-frame {
-      width: 96% !important;
-      margin-bottom: 58px !important;
-   }
-}
-
-@media(prefers-reduced-motion: reduce) {
-   .gameplay-shell.first-game-entry .gameplay-stage>.right-rail-stack>.in-game-stat-panel {
-      animation: none !important;
-   }
-}
-
 .art-loading-shell {
    min-height: 100vh;
    display: grid;
@@ -6242,8 +6197,13 @@ select {
    }
 }
 
-/* Shared arena footprint: lobby and gameplay use the same central frame. */
+/* PC layout authority: one final geometry for the arena and its information rails. */
 .gameplay-shell {
+   --pc-left-rail: 168px;
+   --pc-arena-width: 1000px;
+   --pc-arena-height: 667px;
+   --pc-right-rail: 192px;
+   --pc-stage-gap: 12px;
    padding-top: 0 !important
 }
 
@@ -6259,17 +6219,103 @@ html {
    margin-top: 0
 }
 
-.gameplay-shell .gameplay-stage {
-   grid-template-columns: 112px minmax(0, 1fr) 150px !important;
-   gap: 14px !important;
-   max-width: 1500px !important;
+.gameplay-shell .gameplay-stage,
+.gameplay-shell:not(.mode-lobby) .gameplay-stage {
+   grid-template-columns: var(--pc-left-rail) minmax(0, var(--pc-arena-width)) var(--pc-right-rail) !important;
+   gap: var(--pc-stage-gap) !important;
+   width: calc(var(--pc-left-rail) + var(--pc-arena-width) + var(--pc-right-rail) + (var(--pc-stage-gap) * 2)) !important;
+   min-width: calc(var(--pc-left-rail) + var(--pc-arena-width) + var(--pc-right-rail) + (var(--pc-stage-gap) * 2)) !important;
+   max-width: calc(100vw - 16px) !important;
+   margin-left: auto !important;
+   margin-right: auto !important;
 }
 
 .gameplay-shell .gameplay-stage > .game-frame {
-   width: 92% !important;
-   max-width: none !important;
-   height: auto !important;
+   width: var(--pc-arena-width) !important;
+   height: var(--pc-arena-height) !important;
+   min-width: 0 !important;
+   max-width: var(--pc-arena-width) !important;
+   max-height: var(--pc-arena-height) !important;
    align-self: start;
    aspect-ratio: 3 / 2;
    margin: 0 auto 43px !important;
+}
+
+/* More readable PC HUD scale. */
+.gameplay-shell:not(.mode-lobby) .in-game-skill-panel {
+   width: 168px;
+   min-height: 420px;
+   height: 420px;
+   padding: 12px 9px !important;
+}
+
+.gameplay-shell:not(.mode-lobby) .in-game-skill-panel h2 {
+   margin-bottom: 12px;
+   font-size: 12px;
+}
+
+.gameplay-shell:not(.mode-lobby) .in-game-skill-row {
+   min-height: 52px;
+   height: 52px;
+}
+
+.gameplay-shell:not(.mode-lobby) .in-game-skill-icon {
+   width: 42px;
+   height: 42px;
+}
+
+.gameplay-shell:not(.mode-lobby) .in-game-skill-level {
+   min-width: 16px;
+   height: 16px;
+   font-size: 10px;
+}
+
+.gameplay-shell:not(.mode-lobby) .in-game-stat-panel {
+   padding: 14px 12px 16px;
+}
+
+.gameplay-shell:not(.mode-lobby) .in-game-stat-panel .in-game-stat-card {
+   min-height: 48px;
+   padding: 6px 2px;
+}
+
+.gameplay-shell:not(.mode-lobby) .in-game-stat-panel .in-game-stat-card span,
+.gameplay-shell:not(.mode-lobby) .in-game-stat-panel h2 {
+   font-size: 11px;
+}
+
+.gameplay-shell:not(.mode-lobby) .in-game-stat-panel .in-game-stat-card strong {
+   font-size: 19px;
+}
+
+/* Both right-rail surfaces share one component and one geometry. */
+.gameplay-shell:not(.mode-lobby) .right-rail-panel {
+   width: var(--pc-right-rail);
+   align-self: stretch;
+   box-sizing: border-box;
+}
+
+@media (max-width: 1231px) {
+   .gameplay-shell {
+      --pc-left-rail: 140px;
+      --pc-right-rail: 160px;
+   }
+
+   .gameplay-shell .gameplay-stage {
+      grid-template-columns: var(--pc-left-rail) minmax(0, 1fr) var(--pc-right-rail) !important;
+      width: calc(100vw - 32px) !important;
+      max-width: calc(100vw - 32px) !important;
+   }
+
+   .gameplay-shell .gameplay-stage > .game-frame {
+      width: 100% !important;
+      max-width: none !important;
+      height: auto !important;
+      max-height: none !important;
+   }
+
+   .gameplay-shell:not(.mode-lobby) .in-game-skill-panel,
+   .gameplay-shell:not(.mode-lobby) .right-rail-panel {
+      width: auto;
+   }
 }
