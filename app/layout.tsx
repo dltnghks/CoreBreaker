@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Core Breaker - Playtest",
+  title: "Core Breaker",
   description: "A one-ball, 20-wave brick breaker with fixed patterns and core-loss recovery.",
 };
 
