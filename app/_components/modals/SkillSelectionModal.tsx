@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Upgrade, UpgradeChoice } from "../../_types/game";
-import { SKILL_VALUE_UNIT_SUFFIX, type SkillConfig, type UpgradeId } from "../../skill-config";
+import { resolveSkillSummary, SKILL_VALUE_UNIT_SUFFIX, type SkillConfig, type UpgradeId } from "../../skill-config";
 import { SkillIconArt } from "../SkillIconArt";
 
 function skillPickCount(upgrades: UpgradeId[], id: UpgradeId) {
@@ -56,7 +56,7 @@ export function SkillSelectionModal({
                 <div className="upgrade-tooltip" role="tooltip">
                   <span>발동 조건</span>
                   <b>{config.trigger}</b>
-                  <p>{config.description}</p>
+                  <p>{resolveSkillSummary(config, 1)}</p>
                 </div>
               </button>
             );
@@ -101,7 +101,7 @@ export function SkillSelectionModal({
               <div className="upgrade-tooltip" role="tooltip">
                 <span>발동 조건</span>
                 <b>{config!.trigger}</b>
-                <p>{config!.description}</p>
+                <p>{resolveSkillSummary(config!, evolutionChoice ? 3 : Math.max(1, currentLevel + 1))}</p>
                 {evolutionChoice && config!.evolution && <p className="upgrade-evolution">{config!.evolution}</p>}
               </div>
             </button>

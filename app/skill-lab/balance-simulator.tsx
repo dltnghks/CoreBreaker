@@ -32,7 +32,6 @@ const CONTROLS: ControlSpec[] = [
   { key: "guardChanceGrowth", label: "가드 증가", min: 0, max: 0.01, step: 0.0005, unit: "/W" },
   { key: "bossBaseHp", label: "보스 기본 체력", min: 40, max: 500, step: 10, unit: "HP" },
   { key: "bossHpPerStage", label: "보스 단계 성장", min: 0, max: 240, step: 10, unit: "HP" },
-  { key: "bossTimeLimit", label: "보스 제한시간", min: 25, max: 75, step: 1, unit: "초" },
   { key: "bossAttackInterval", label: "보스 공격 주기", min: 3, max: 9, step: 0.25, unit: "초" },
 ];
 

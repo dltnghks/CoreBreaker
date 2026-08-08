@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { DEFAULT_SKILLS, normalizeSkillConfigs, SKILL_APPLICATION_LABELS, SKILL_BUILD_STORAGE_KEY, SKILL_EFFECT_KIND_LABELS, SKILL_EFFECT_TARGET_LABELS, SKILL_EFFECT_TRIGGER_LABELS, SKILL_MECHANIC_LABELS, SKILL_STORAGE_KEY, SKILL_TRAIT_LABELS, SKILL_TRIGGER_LABELS, SKILL_VALUE_UNIT_LABELS, SKILL_VALUE_UNIT_SUFFIX, type CustomSkillId, type SkillApplicationScope, type SkillCategory, type SkillConfig, type SkillDamageType, type SkillEffectConfig, type SkillEffectKind, type SkillEffectTarget, type SkillEffectTrigger, type SkillMechanic, type SkillTrait, type SkillTraitConfig, type SkillTriggerType, type SkillValueUnit } from "../skill-config";
+import { DEFAULT_SKILLS, normalizeSkillConfigs, resolveSkillDescription, SKILL_APPLICATION_LABELS, SKILL_BUILD_STORAGE_KEY, SKILL_EFFECT_KIND_LABELS, SKILL_EFFECT_TARGET_LABELS, SKILL_EFFECT_TRIGGER_LABELS, SKILL_MECHANIC_LABELS, SKILL_STORAGE_KEY, SKILL_TRAIT_LABELS, SKILL_TRIGGER_LABELS, SKILL_VALUE_UNIT_LABELS, SKILL_VALUE_UNIT_SUFFIX, type CustomSkillId, type SkillApplicationScope, type SkillCategory, type SkillConfig, type SkillDamageType, type SkillEffectConfig, type SkillEffectKind, type SkillEffectTarget, type SkillEffectTrigger, type SkillMechanic, type SkillTrait, type SkillTraitConfig, type SkillTriggerType, type SkillValueUnit } from "../skill-config";
 import styles from "./skill-lab.module.css";
 import { appHref } from "../site-path";
 
@@ -366,7 +366,7 @@ export default function SkillLab() {
             <button key={skill.id} data-category={skill.category} data-enabled={skill.enabled} className={`${styles.skillCard} ${selected.id === skill.id ? styles.selected : ""}`} style={skillStyle(skill)} onClick={() => setSelectedId(skill.id)}>
               <i className={styles.skillIcon} aria-hidden="true">{CATEGORY_ICONS[skill.category]}</i>
               <span>{CATEGORY_LABELS[skill.category]} · {SKILL_MECHANIC_LABELS[skill.mechanic]} · {skill.builtIn ? "기본" : "사용자"}{skill.enabled ? "" : " · 보관됨"}</span><strong>{skill.name}</strong><small><b>발동</b> {SKILL_TRIGGER_LABELS[skill.triggerType]}</small>
-              <p className={styles.description}><SkillDescriptionText text={skill.description} /></p>
+              <p className={styles.description}><SkillDescriptionText text={resolveSkillDescription(skill)} /></p>
               <em>{skill.effects.filter((effect) => effect.enabled).map((effect) => `${SKILL_EFFECT_KIND_LABELS[effect.kind]} ${effect.values.join("/")}${SKILL_VALUE_UNIT_SUFFIX[effect.unit]}${effect.damage.some((value) => value > 0) ? ` · ${effect.damageType.toUpperCase()} ${effect.damage.join("/")}DMG` : ""}`).join(" · ")}{skill.cooldown.some((value) => value > 0) ? ` · CD ${skill.cooldown.join("/")}s` : ""}</em>
             </button>
           ))}

@@ -7,8 +7,9 @@ const SKILL_SYMBOLS: Partial<Record<UpgradeId, string>> = {
   "warrior-smash": "⚒", "warrior-shockwave": "◉", "warrior-execute": "✦", "warrior-crush": "◆", "warrior-guard": "⬡",
   "archer-rapid": "➶", "archer-pierce": "➵", "archer-ricochet": "⌁", "archer-focus": "◎", "archer-weakpoint": "⌾",
   "mage-fireball": "●", "mage-lightning": "ϟ", "mage-freeze": "❄", "mage-black-hole": "◌", "mage-mana-blast": "✧",
-  "common-magnet": "⌁", "common-luck": "✤", "common-wide": "↔", "common-move-speed": "»", "common-xp": "◇", "common-combo": "∞",
-  "common-ball-size": "●", "common-skill-range": "◎", "common-chain": "⌘", "common-damage": "▲", "common-magic": "✦", "common-cooldown": "◷",
+  "common-magnet": "⌁", "common-luck": "✤", "common-wide": "↔", "common-move-speed": "»", "common-xp": "◇",
+  "common-skill-range": "◎", "common-chain": "⌘", "common-damage": "▲", "common-magic": "✦", "common-cooldown": "◷",
+  "common-skill-duration": "T",
 };
 
 function skillIconPath(id: UpgradeId) {

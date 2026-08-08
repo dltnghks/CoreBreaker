@@ -10,10 +10,10 @@ const CELL_INFO: Record<string, { label: string; color: string }> = {
   c: { label: "회복", color: "#6cc99a" }, r: { label: "반사", color: "#62c9e8" },
 };
 
-const cloneWaves = (waves: WaveDefinition[]) => waves.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+const cloneWaves = (waves: WaveDefinition[]) => waves.map((wave) => ({ ...wave, pattern: [...wave.pattern], blocks: wave.blocks?.map((block) => ({ ...block })) }));
 
 export default function StageLabPage() {
-  const [draft, setDraft] = useState(() => cloneWaves(WAVE_DEFINITIONS));
+  const [draft, setDraft] = useState<WaveDefinition[]>(() => cloneWaves(WAVE_DEFINITIONS));
   const [selectedWave, setSelectedWave] = useState(1);
   const [brush, setBrush] = useState<(typeof WAVE_CELL_TYPES)[number]>("n");
   const [message, setMessage] = useState("변경 사항은 저장·적용 전까지 게임에 반영되지 않습니다.");
@@ -40,7 +40,9 @@ export default function StageLabPage() {
     if (current.boss) return;
     const rows = [...current.pattern];
     const cells = [...rows[rowIndex]];
-    cells[colIndex] = brush;
+    const start = Math.floor(colIndex / 2) * 2;
+    cells[start] = brush;
+    cells[start + 1] = brush;
     rows[rowIndex] = cells.join("");
     updateCurrent({ pattern: rows });
   };
