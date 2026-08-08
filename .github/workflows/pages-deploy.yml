@@ -59,6 +59,27 @@ jobs:
           bundler-cache: true
           working-directory: blog-source
 
+      - name: Escape Liquid syntax in imported code samples
+        working-directory: blog-source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          fixes = {
+              "_posts/2026-07-23-07-23.md": ("```jsx\n", "`{ }`안에 들어있는 코드"),
+              "_posts/2026-02-05-obsidian-web-clipper.md": ("노트 내용을 이런 식으로 입력.", "근데 Gemini API를 사용하면"),
+          }
+          for relative, (start_marker, end_marker) in fixes.items():
+              path = Path(relative)
+              text = path.read_text(encoding="utf-8")
+              if "{% raw %}" in text:
+                  continue
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              text = text[:start] + "{% raw %}\n" + text[start:end] + "{% endraw %}\n" + text[end:]
+              path.write_text(text, encoding="utf-8")
+          PY
+
       - name: Build blog
         working-directory: blog-source
         run: bundle exec jekyll build --destination ../_site
