@@ -14,6 +14,9 @@ const GAMEPLAY_ART = {
   ball: "/assets/gameplay/props/ball.png",
   runeRing: "/assets/gameplay/props/rune-ring.png",
   paddle: "/assets/gameplay/props/paddle.png",
+  items: {
+    autoBarrier: "/assets/gameplay/items/auto-barrier.png",
+  },
   bossPatterns: {
     barrier: "/assets/gameplay/boss-patterns/boss-rune-barrier.png",
     wall: "/assets/gameplay/boss-patterns/boss-wall-protrusion.png",
@@ -64,12 +67,13 @@ function gameplayImage(key: string, src: string) {
   return image?.complete && image.naturalWidth > 0 ? image : null;
 }
 
-function drawBossVfxFrame(ctx: CanvasRenderingContext2D, image: HTMLImageElement, frame: number, x: number, y: number, width: number, height: number, alpha = 1, rotation = 0) {
-  const frameWidth = image.naturalWidth / BOSS_VFX_COLUMNS;
-  const frameHeight = image.naturalHeight / BOSS_VFX_ROWS;
-  const safeFrame = ((Math.floor(frame) % BOSS_VFX_FRAMES) + BOSS_VFX_FRAMES) % BOSS_VFX_FRAMES;
-  const sourceX = (safeFrame % BOSS_VFX_COLUMNS) * frameWidth;
-  const sourceY = Math.floor(safeFrame / BOSS_VFX_COLUMNS) * frameHeight;
+function drawBossVfxFrame(ctx: CanvasRenderingContext2D, image: HTMLImageElement, frame: number, x: number, y: number, width: number, height: number, alpha = 1, rotation = 0, columns = BOSS_VFX_COLUMNS, rows = BOSS_VFX_ROWS) {
+  const frameWidth = image.naturalWidth / columns;
+  const frameHeight = image.naturalHeight / rows;
+  const frameCount = columns * rows;
+  const safeFrame = ((Math.floor(frame) % frameCount) + frameCount) % frameCount;
+  const sourceX = (safeFrame % columns) * frameWidth;
+  const sourceY = Math.floor(safeFrame / columns) * frameHeight;
   ctx.save();
   ctx.translate(x, y);
   if (rotation) ctx.rotate(rotation);
@@ -77,6 +81,10 @@ function drawBossVfxFrame(ctx: CanvasRenderingContext2D, image: HTMLImageElement
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(image, sourceX, sourceY, frameWidth, frameHeight, -width / 2, -height / 2, width, height);
   ctx.restore();
+}
+
+function bossVfxFrameAspect(image: HTMLImageElement, columns = 8, rows = 1) {
+  return (image.naturalHeight / rows) / (image.naturalWidth / columns);
 }
 
 function drawWaveBackground(ctx: CanvasRenderingContext2D, wave: number, width: number, height: number) {
@@ -533,13 +541,13 @@ export function renderTransientFeedback(ctx: CanvasRendererContext, game: Pick<G
   }
 }
 
-export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor, safetyBlocks, playerCores = [], coreBreak, aim, playerCharge, elapsed = 0 }: {
+export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor, safetyBlocks, playerCores = [], coreBreak, aim, elapsed = 0, itemBarrierTime = 0 }: {
   ctx: CanvasRenderingContext2D; playerX: number; playerY: number; playerWidth: number; playerColor: string;
   safetyBlocks: ReadonlyArray<{ x: number; y: number; width: number; color: string }>;
   playerCores?: ReadonlyArray<{ x: number; y: number; scale?: number; alpha?: number; danger?: boolean }>;
   coreBreak?: { x: number; y: number; progress: number };
   aim?: { x: number; y: number; left: { x: number; y: number }; right: { x: number; y: number }; limited: boolean };
-  playerCharge?: ChargeVisual | null; elapsed?: number;
+  elapsed?: number; itemBarrierTime?: number;
 }) {
   const draw = (x: number, y: number, width: number, color: string, alpha = 1, useArt = false) => {
     ctx.save(); ctx.globalAlpha = alpha; ctx.shadowColor = color; ctx.shadowBlur = 12;
@@ -555,14 +563,35 @@ export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor,
     ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(x - width / 2, y, width, 18, 5); ctx.fill(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
     ctx.shadowBlur = 0; ctx.fillStyle = "rgba(255,255,255,.42)"; ctx.fillRect(x - width / 2 + 7, y + 3, Math.max(0, width - 14), 2); ctx.restore();
   };
-  const charge = (x: number, y: number, width: number, visual: ChargeVisual | null | undefined, alpha = 1) => {
-    if (!visual) return; const beat = 0.65 + Math.sin(elapsed * (visual.pulse > 0 ? 15 : 8)) * 0.25;
-    ctx.save(); ctx.globalAlpha = alpha * (0.45 + visual.intensity * 0.45) * beat; ctx.strokeStyle = visual.color; ctx.shadowColor = visual.color; ctx.shadowBlur = 18 + visual.intensity * 18; ctx.lineWidth = visual.pulse > 0 ? 5 : 3;
-    ctx.strokeRect(x - width / 2 - 6, y - 6, width + 12, 28); ctx.fillStyle = visual.color; ctx.fillRect(x - width / 2, y, width * Math.max(0.2, visual.intensity), 4); ctx.restore();
-  };
   safetyBlocks.forEach((b) => { ctx.save(); ctx.shadowColor = b.color; ctx.shadowBlur = 18; ctx.fillStyle = b.color; ctx.fillRect(b.x - b.width / 2, b.y, b.width, 7); ctx.shadowBlur = 0; ctx.fillStyle = "#07101b"; ctx.font = `900 8px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText("AUTO REFLECT", b.x, b.y + 6); ctx.restore(); });
-  draw(playerX, playerY, playerWidth, playerColor, 1, true); charge(playerX, playerY, playerWidth, playerCharge);
+  draw(playerX, playerY, playerWidth, playerColor, 1, true);
   playerCores.forEach((core) => drawCoreCrystal(ctx, core.x, core.y, core.scale ?? 1, core.alpha ?? 1, core.danger ?? false));
+  if (itemBarrierTime > 0) {
+    const maxBarrierTime = 10;
+    const progress = Math.min(1, itemBarrierTime / maxBarrierTime);
+    const warning = itemBarrierTime <= 1;
+    const color = warning ? "#ff6b87" : "#65dcff";
+    const centerY = playerY - 34;
+    const icon = gameplayImage("item-auto-barrier", GAMEPLAY_ART.items.autoBarrier);
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = warning ? 0.78 + Math.sin(elapsed * 18) * 0.2 : 1;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = warning ? 16 : 10;
+    if (icon) ctx.drawImage(icon, playerX - 11, centerY - 11, 22, 22);
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(5, 12, 22, .86)";
+    ctx.beginPath(); ctx.arc(playerX, centerY, 15, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.beginPath(); ctx.arc(playerX, centerY, 15, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress); ctx.stroke();
+    ctx.fillStyle = "#f4fbff";
+    ctx.font = `900 8px ${PIXEL_FONT}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(itemBarrierTime.toFixed(1), playerX, centerY);
+    ctx.restore();
+  }
   if (coreBreak) {
     drawCoreCrystal(ctx, coreBreak.x, coreBreak.y, 1 + coreBreak.progress * .8, Math.max(0, 1 - coreBreak.progress), true);
     ctx.save(); ctx.translate(coreBreak.x, coreBreak.y); ctx.strokeStyle = `rgba(255,107,135,${1 - coreBreak.progress})`; ctx.lineWidth = 2.5; ctx.shadowColor = "#ff6b87"; ctx.shadowBlur = 12;
@@ -574,13 +603,12 @@ export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor,
   }
 }
 
-export type ChargeVisual = { color: string; intensity: number; pulse: number };
 function drawCoreCrystal(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number, alpha: number, danger: boolean) {
   const color = danger ? "#ff6b87" : "#72e7ff"; ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale); ctx.globalAlpha = alpha; ctx.shadowColor = color; ctx.shadowBlur = danger ? 15 : 11;
   const gradient = ctx.createLinearGradient(-7, -9, 7, 10); gradient.addColorStop(0, "#ffffff"); gradient.addColorStop(.28, danger ? "#ffb0c0" : "#bdf8ff"); gradient.addColorStop(.62, color); gradient.addColorStop(1, danger ? "#7d1738" : "#17617c"); ctx.fillStyle = gradient; ctx.strokeStyle = danger ? "#ffd5df" : "#e9fdff"; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(7, -2); ctx.lineTo(5, 7); ctx.lineTo(0, 11); ctx.lineTo(-5, 7); ctx.lineTo(-7, -2); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0; ctx.globalAlpha *= .72; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(0, 9); ctx.moveTo(-6, -2); ctx.lineTo(0, 1); ctx.lineTo(6, -2); ctx.stroke(); ctx.restore();
 }
 
-export function renderWorldOverlays({ ctx, elapsed, gravityWells, bossBarriers = [], bossWalls = [], bossShield = { active: false, life: 0, maxLife: 0, runeIds: [] }, bossArmorReformTimer = 0, bossArmorReformCells = [], bossIntroTimer = 0, bossReinforcementTelegraph = 0, bossReinforcementCount = 0, bricks = [], skillSheets = [], skillSheetReady = [], itemBarrierTime, itemBarrierY, width, barrierColor, magnetLinks = [] }: {
+export function renderWorldOverlays({ ctx, elapsed, gravityWells, bossBarriers = [], bossWalls = [], bossShield = { active: false, life: 0, maxLife: 0, runeIds: [] }, bossArmorReformTimer = 0, bossArmorReformCells = [], bossIntroTimer = 0, bossReinforcementTelegraph = 0, bossReinforcementCount = 0, bricks = [], skillSheets = [], skillSheetReady = [], itemBarrierTime = 0, itemBarrierY, width, barrierColor = "#65dcff", magnetLinks = [] }: {
   ctx: CanvasRenderingContext2D; elapsed: number; gravityWells: ReadonlyArray<{ x: number; y: number; radius: number; life: number; color: string; sourceSkillId?: string }>;
   bossBarriers?: ReadonlyArray<{ x: number; y: number; w: number; h: number; life: number; maxLife: number; telegraph: number; hitCount: number; maxHits: number }>;
   bossWalls?: ReadonlyArray<{ x: number; y: number; w: number; h: number; baseX: number; baseY: number; life: number; maxLife: number; telegraph: number; hp: number; maxHp: number }>;
@@ -592,7 +620,7 @@ export function renderWorldOverlays({ ctx, elapsed, gravityWells, bossBarriers =
   bricks?: ReadonlyArray<Pick<Brick, "x" | "y" | "w" | "h" | "alive" | "kind">>;
   skillSheets?: ReadonlyArray<HTMLImageElement | null>;
   skillSheetReady?: ReadonlyArray<boolean>;
-  itemBarrierTime: number; itemBarrierY: number; width: number; barrierColor: string;
+  itemBarrierTime?: number; itemBarrierY?: number; width: number; barrierColor?: string;
   magnetLinks?: ReadonlyArray<{ x: number; y: number; itemX: number; itemY: number; alpha: number; color: string }>;
 }) {
   const bossGravityWells = gravityWells.filter((well) => well.sourceSkillId === "gravity-well");
@@ -706,8 +734,9 @@ export function renderWorldOverlays({ ctx, elapsed, gravityWells, bossBarriers =
         ? Math.min(2, Math.floor((1 - Math.min(1, barrier.telegraph / 0.72)) * 3))
         : barrier.life < 0.8 ? 6 + Math.min(1, Math.floor((0.8 - barrier.life) * 4)) : 3 + (Math.floor(elapsed * 5) % 3);
       const drawWidth = Math.max(96, barrier.w * 2.4);
+      const drawHeight = drawWidth * bossVfxFrameAspect(image);
       ctx.imageSmoothingEnabled = false;
-      drawBossVfxFrame(ctx, image, frame, barrier.x, barrier.y + barrier.h / 2, drawWidth, barrier.h + 46, 1);
+      drawBossVfxFrame(ctx, image, frame, barrier.x, barrier.y + barrier.h / 2, drawWidth, drawHeight, 1, 0, 8, 1);
     } else if (fallbackImage) {
       const drawWidth = Math.max(82, barrier.w * 8);
       ctx.imageSmoothingEnabled = false;
@@ -744,10 +773,10 @@ export function renderWorldOverlays({ ctx, elapsed, gravityWells, bossBarriers =
       const frame = wall.telegraph > 0
         ? Math.min(2, Math.floor((1 - Math.min(1, wall.telegraph / 0.65)) * 3))
         : wall.life < 0.7 ? 6 + Math.min(1, Math.floor((0.7 - wall.life) * 4)) : 3 + (Math.floor(elapsed * 5) % 3);
-      const drawWidth = Math.max(110, wall.w * 2.2);
-      const drawHeight = Math.max(88, wall.h * 2.5);
+      const drawWidth = Math.max(110, wall.w * 1.4);
+      const drawHeight = drawWidth * bossVfxFrameAspect(image);
       ctx.imageSmoothingEnabled = false;
-      drawBossVfxFrame(ctx, image, frame, wall.x + wall.w / 2, wall.y + wall.h / 2, drawWidth, drawHeight, 1);
+      drawBossVfxFrame(ctx, image, frame, wall.x + wall.w / 2, wall.y + wall.h / 2, drawWidth, drawHeight, 1, 0, 8, 1);
     } else if (fallbackImage) {
       const drawWidth = Math.max(120, wall.w * 1.8);
       const drawHeight = Math.max(52, wall.h * 3.1);
@@ -788,10 +817,11 @@ export function renderWorldOverlays({ ctx, elapsed, gravityWells, bossBarriers =
     ctx.shadowColor = "#b66cff";
     ctx.shadowBlur = 28;
     if (image) {
-      const size = 270 * pulse;
+      const drawWidth = 270 * pulse;
+      const drawHeight = drawWidth * bossVfxFrameAspect(image);
       const lifeRatio = bossShield.life / Math.max(0.01, bossShield.maxLife);
       const frame = lifeRatio > 0.78 ? Math.min(2, Math.floor((1 - lifeRatio) / 0.08)) : lifeRatio < 0.22 ? 6 + Math.min(1, Math.floor((0.22 - lifeRatio) * 8)) : 3 + (Math.floor(elapsed * 5) % 3);
-      drawBossVfxFrame(ctx, image, frame, 0, 0, size, size, 1);
+      drawBossVfxFrame(ctx, image, frame, 0, 0, drawWidth, drawHeight, 1, 0, 8, 1);
     } else if (fallbackImage) {
       const size = 270 * pulse;
       ctx.imageSmoothingEnabled = false;
@@ -832,8 +862,9 @@ export function renderWorldOverlays({ ctx, elapsed, gravityWells, bossBarriers =
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(playerBlackHoleSheet, frame * frameWidth, 3 * frameHeight, frameWidth, frameHeight, -size / 2, -size / 2, size, size);
     } else if (image) {
-      const size = well.radius * 2.25 * pulse;
-      drawBossVfxFrame(ctx, image, Math.floor(elapsed * 9) % BOSS_VFX_FRAMES, 0, 0, size, size, 1);
+      const drawWidth = well.radius * 3 * pulse;
+      const drawHeight = drawWidth * bossVfxFrameAspect(image);
+      drawBossVfxFrame(ctx, image, Math.floor(elapsed * 9) % 8, 0, 0, drawWidth, drawHeight, 1, 0, 8, 1);
     } else if (fallbackImage) {
       const size = well.radius * 2.25 * pulse;
       ctx.imageSmoothingEnabled = false;
@@ -855,6 +886,21 @@ export function renderWorldOverlays({ ctx, elapsed, gravityWells, bossBarriers =
     });
     ctx.restore();
   }
-  if (itemBarrierTime > 0) { const pulse = .72 + Math.sin(elapsed * 10) * .2; ctx.save(); ctx.globalAlpha = pulse; ctx.strokeStyle = barrierColor; ctx.shadowColor = barrierColor; ctx.shadowBlur = 18; ctx.lineWidth = 4; ctx.setLineDash([22, 8]); ctx.beginPath(); ctx.moveTo(24, itemBarrierY); ctx.lineTo(width - 24, itemBarrierY); ctx.stroke(); ctx.setLineDash([]); ctx.shadowBlur = 0; ctx.fillStyle = barrierColor; ctx.font = `900 10px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText(`AUTO BARRIER ${itemBarrierTime.toFixed(1)}s`, width / 2, itemBarrierY - 9); ctx.restore(); }
+  if (itemBarrierTime > 0 && itemBarrierY !== undefined) {
+    const pulse = 0.72 + Math.sin(elapsed * 10) * 0.2;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.strokeStyle = barrierColor;
+    ctx.shadowColor = barrierColor;
+    ctx.shadowBlur = 18;
+    ctx.lineWidth = 4;
+    ctx.setLineDash([22, 8]);
+    ctx.beginPath();
+    ctx.moveTo(24, itemBarrierY);
+    ctx.lineTo(width - 24, itemBarrierY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
   if (magnetLinks.length) { ctx.save(); ctx.lineWidth = 1.5; ctx.setLineDash([4, 6]); magnetLinks.forEach((link) => { ctx.globalAlpha = link.alpha; ctx.strokeStyle = link.color; ctx.beginPath(); ctx.moveTo(link.x, link.y); ctx.quadraticCurveTo((link.x + link.itemX) / 2, link.itemY + 24, link.itemX, link.itemY); ctx.stroke(); }); ctx.setLineDash([]); ctx.restore(); }
 }

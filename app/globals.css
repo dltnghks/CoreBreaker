@@ -573,6 +573,11 @@ button {
    font: 700 10px monospace
 }
 
+.overlay.lobby-overlay {
+   //max-height: 100%;
+   overflow: hidden
+}
+
 .primary-button,
 .secondary-button {
    position: relative;
@@ -798,7 +803,6 @@ kbd {
 }
 
 .benchmark-panel {
-   min-height: 720px;
    display: flex;
    flex-direction: column;
    border: 1px solid var(--line);
@@ -2262,9 +2266,19 @@ body {
 }
 
 @keyframes boss-collapse {
-   0% { opacity: 0; transform: translate(-50%, -50%) scale(.25) rotate(0); }
-   35% { opacity: 1; }
-   100% { opacity: 0; transform: translate(-50%, -50%) scale(2.5) rotate(18deg); }
+   0% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(.25) rotate(0);
+   }
+
+   35% {
+      opacity: 1;
+   }
+
+   100% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(2.5) rotate(18deg);
+   }
 }
 
 .wave-clear-copy span {
@@ -2866,8 +2880,17 @@ body {
 }
 
 @keyframes boss-reward-wave {
-   0%, 100% { opacity: .15; transform: scaleX(1.45) scaleY(.82); }
-   50% { opacity: .55; transform: scaleX(1.8) scaleY(1.08); }
+
+   0%,
+   100% {
+      opacity: .15;
+      transform: scaleX(1.45) scaleY(.82);
+   }
+
+   50% {
+      opacity: .55;
+      transform: scaleX(1.8) scaleY(1.08);
+   }
 }
 
 .boss-enhancement-value {
@@ -3719,6 +3742,15 @@ body {
    font: 800 8px/1 monospace;
 }
 
+.gameplay-shell .runtime-controls-panel label.runtime-volume-control:nth-of-type(1)>span {
+   font-size: 0;
+}
+
+.gameplay-shell .runtime-controls-panel label.runtime-volume-control:nth-of-type(1)>span::after {
+   content: "SFX";
+   font-size: 8px;
+}
+
 @media(max-width:760px) {
    .gameplay-shell .in-game-core-card .core-pip-list {
       grid-template-columns: repeat(3, 26px);
@@ -3745,7 +3777,7 @@ body {
    gap: 8px;
 }
 
-.gameplay-shell .right-rail-stack > .in-game-stat-panel {
+.gameplay-shell .right-rail-stack>.in-game-stat-panel {
    width: 100%;
 }
 
@@ -3822,14 +3854,14 @@ body {
 
 /* Keep the frame artwork above the neighboring rails so its pixel corners are
    never covered at the grid edges. */
-.gameplay-shell .gameplay-stage > .game-frame {
+.gameplay-shell .gameplay-stage>.game-frame {
    position: relative;
    z-index: 3;
 }
 
 /* Dedicated wide frame: its corners are authored at gameplay scale instead of
    stretching a small generic panel across the arena. */
-.gameplay-shell .gameplay-stage > .game-frame {
+.gameplay-shell .gameplay-stage>.game-frame {
    border: 2px solid rgba(133, 151, 178, .72);
    border-image: none;
    border-radius: 0;
@@ -3842,7 +3874,7 @@ body {
 
 /* The content panel artwork has ~48px source-corner plates. Use that exact
    corner region so the owned-skills and run-info rails keep fixed corners. */
-.gameplay-shell .gameplay-stage > .in-game-side-panel {
+.gameplay-shell .gameplay-stage>.in-game-side-panel {
    border-image-slice: 48 fill;
    border-image-width: 12px;
    border-image-repeat: stretch;
@@ -3888,23 +3920,33 @@ body {
 }
 
 @keyframes evolved-owned-icon-rainbow {
-   0%, 100% {
+
+   0%,
+   100% {
       box-shadow: 0 0 5px rgba(255, 77, 111, .8), 0 0 13px rgba(255, 77, 111, .36)
    }
+
    25% {
       box-shadow: 0 0 5px rgba(255, 210, 86, .8), 0 0 13px rgba(255, 210, 86, .36)
    }
+
    50% {
       box-shadow: 0 0 5px rgba(91, 225, 134, .8), 0 0 13px rgba(91, 225, 134, .36)
    }
+
    75% {
       box-shadow: 0 0 5px rgba(91, 184, 255, .8), 0 0 13px rgba(91, 184, 255, .36)
    }
 }
 
 @keyframes evolved-owned-label-rainbow {
-   0% { background-position: 0% 50% }
-   100% { background-position: 220% 50% }
+   0% {
+      background-position: 0% 50%
+   }
+
+   100% {
+      background-position: 220% 50%
+   }
 }
 
 @media(max-width:760px) {
@@ -4404,8 +4446,10 @@ body {
 }
 
 .gameplay-shell.mode-lobby .gameplay-stage .game-frame {
-   width: 100%;
-   max-width: none
+   width: min(100%, calc((100vh - 28px) * 1.5));
+   max-width: calc((100vh - 28px) * 1.5);
+   aspect-ratio: 3 / 2;
+   margin: 0 auto
 }
 
 @media(max-width:1120px) {
@@ -4425,7 +4469,8 @@ body {
    }
 
    .gameplay-shell.mode-lobby .gameplay-stage .game-frame {
-      width: 100%
+      width: min(100%, calc((100vh - 28px) * 1.5));
+      max-width: calc((100vh - 28px) * 1.5)
    }
 }
 
@@ -5197,6 +5242,70 @@ select {
    border-bottom: 0
 }
 
+.app-shell.mode-lobby>.topbar {
+   display: none
+}
+
+.gameplay-shell.mode-lobby .in-game-core-hud {
+   display: none
+}
+
+.benchmark-shell.mode-lobby {
+   height: 100vh;
+   min-height: 0;
+   padding-bottom: 0;
+   overflow: hidden
+}
+
+.benchmark-shell.mode-lobby>.workspace {
+   width: 100%;
+   height: 100vh;
+   min-height: 0;
+   margin-top: 0;
+   grid-template-rows: minmax(0, 1fr);
+   overflow: hidden
+}
+
+.benchmark-shell.mode-lobby>.workspace>* {
+   min-height: 0
+}
+
+.benchmark-shell.mode-lobby .benchmark-panel {
+   min-height: 0;
+   height: 100%;
+   overflow-y: auto
+}
+
+/* Lobby must not inherit the non-playing single-column expansion rules. */
+.gameplay-shell.mode-lobby:not(.mode-playing) .gameplay-stage {
+   display: grid;
+   grid-template-columns: minmax(184px, 220px) minmax(0, 1fr) minmax(164px, 200px);
+   gap: 14px;
+   align-items: stretch
+}
+
+.gameplay-shell.mode-lobby:not(.mode-playing) .gameplay-stage .game-frame {
+   width: min(100%, calc((100vh - 28px) * 1.5));
+   max-width: calc((100vh - 28px) * 1.5);
+   aspect-ratio: 3 / 2;
+   margin: 0 auto
+}
+
+.gameplay-shell.mode-lobby:not(.mode-playing) .in-game-side-panel {
+   display: block !important;
+   visibility: hidden;
+   height: 0;
+   min-height: 0;
+   padding: 0;
+   border-width: 0;
+   overflow: hidden;
+}
+
+/* The navigation component is unavailable on the title screen; it returns during gameplay. */
+.app-shell.mode-lobby>.topbar .topbar-tabs {
+   display: none
+}
+
 /* In-game rails: owned skills only reserve room for the two-column icon grid. */
 .gameplay-shell.mode-playing .gameplay-stage {
    grid-template-columns: 112px minmax(0, 1fr) 150px
@@ -5509,7 +5618,7 @@ select {
 }
 
 .gameplay-shell:not(.mode-lobby) .in-game-stat-main span,
-.gameplay-shell:not(.mode-lobby) .in-game-stat-card > span {
+.gameplay-shell:not(.mode-lobby) .in-game-stat-card>span {
    color: #e4c36d;
    font: 900 9px/1 var(--pixel-font);
    letter-spacing: .04em;
@@ -5751,7 +5860,7 @@ select {
    transform: rotate(-45deg);
 }
 
-.in-game-next-boss > span:last-child {
+.in-game-next-boss>span:last-child {
    display: flex;
    flex-direction: column;
    gap: 4px;
@@ -5792,6 +5901,7 @@ select {
 }
 
 @media(max-width:760px) {
+
    .gameplay-shell:not(.mode-lobby) .in-game-stat-panel h2,
    .run-info-divider {
       display: none;
@@ -5993,14 +6103,173 @@ select {
 }
 
 /* The stat rail lives inside right-rail-stack, so it needs its own first-entry reveal target. */
-.gameplay-shell.first-game-entry .gameplay-stage > .right-rail-stack > .in-game-stat-panel {
+.gameplay-shell.first-game-entry .gameplay-stage>.right-rail-stack>.in-game-stat-panel {
    position: relative;
    z-index: 2;
    animation: right-rail-reveal .52s cubic-bezier(.2, .82, .25, 1) .05s both;
 }
 
+/* All normal game states share the exact title-screen center footprint. */
+.gameplay-shell .gameplay-stage {
+   grid-template-columns: 112px minmax(0, 1fr) 150px !important;
+   gap: 14px !important;
+   max-width: 1500px !important;
+}
+
+.gameplay-shell .gameplay-stage>.game-frame {
+   width: 92% !important;
+   aspect-ratio: 3 / 2;
+   justify-self: center;
+}
+
+/* Title and gameplay use the same center-frame footprint. The lobby needs the
+   same reserved lower space as the live arena so the two screens do not jump
+   when transitioning between them. */
+.gameplay-shell.mode-lobby .gameplay-stage>.game-frame {
+   width: 92% !important;
+   aspect-ratio: 3 / 2;
+   margin: 0 auto 58px !important;
+}
+
+@media(max-width:1120px) {
+   .gameplay-shell .gameplay-stage {
+      grid-template-columns: 96px minmax(0, 1fr) 132px !important;
+      gap: 8px !important;
+   }
+
+   .gameplay-shell .gameplay-stage>.game-frame {
+      width: 96% !important;
+   }
+
+   .gameplay-shell.mode-lobby .gameplay-stage>.game-frame {
+      width: 96% !important;
+      margin-bottom: 58px !important;
+   }
+}
+
 @media(prefers-reduced-motion: reduce) {
-   .gameplay-shell.first-game-entry .gameplay-stage > .right-rail-stack > .in-game-stat-panel {
+   .gameplay-shell.first-game-entry .gameplay-stage>.right-rail-stack>.in-game-stat-panel {
       animation: none !important;
    }
+}
+
+.art-loading-shell {
+   min-height: 100vh;
+   display: grid;
+   place-items: center;
+   background: #050913;
+   color: #f3e5c4;
+}
+
+.art-loading-screen {
+   width: min(420px, calc(100vw - 48px));
+   display: grid;
+   justify-items: center;
+   gap: 12px;
+   text-align: center;
+}
+
+.art-loading-core {
+   width: 54px;
+   height: 54px;
+   display: grid;
+   place-items: center;
+   border: 2px solid rgba(101, 220, 255, .72);
+   transform: rotate(45deg);
+   box-shadow: 0 0 18px rgba(101, 220, 255, .28);
+   animation: art-loading-pulse 1.2s steps(4, end) infinite;
+}
+
+.art-loading-core span {
+   width: 20px;
+   height: 20px;
+   background: #65dcff;
+   box-shadow: 0 0 16px #65dcff;
+}
+
+.art-loading-kicker {
+   margin: 8px 0 0;
+   color: #65dcff;
+   font: 900 11px/1 var(--pixel-font);
+   letter-spacing: .22em;
+}
+
+.art-loading-screen h1 {
+   margin: 0;
+   color: #e8c978;
+   font: 900 clamp(22px, 4vw, 34px)/1 var(--pixel-font);
+   letter-spacing: .1em;
+}
+
+.art-loading-progress {
+   width: 100%;
+   height: 10px;
+   padding: 2px;
+   border: 1px solid rgba(216, 189, 122, .64);
+   background: rgba(5, 8, 16, .92);
+}
+
+.art-loading-progress span {
+   display: block;
+   height: 100%;
+   background: linear-gradient(90deg, #266cae, #65dcff);
+   box-shadow: 0 0 10px rgba(101, 220, 255, .56);
+   transition: width .12s linear;
+}
+
+.art-loading-screen small {
+   color: #aeb8ca;
+   font: 700 10px/1 var(--pixel-font);
+}
+
+@keyframes art-loading-pulse {
+
+   0%,
+   100% {
+      opacity: .56;
+      transform: rotate(45deg) scale(.92)
+   }
+
+   50% {
+      opacity: 1;
+      transform: rotate(45deg) scale(1)
+   }
+}
+
+@media(prefers-reduced-motion: reduce) {
+   .art-loading-core {
+      animation: none
+   }
+}
+
+/* Shared arena footprint: lobby and gameplay use the same central frame. */
+.gameplay-shell {
+   padding-top: 0 !important
+}
+
+html {
+   scrollbar-gutter: stable
+}
+
+.benchmark-shell {
+   padding-top: 0 !important
+}
+
+.benchmark-shell > .workspace {
+   margin-top: 0
+}
+
+.gameplay-shell .gameplay-stage {
+   grid-template-columns: 112px minmax(0, 1fr) 150px !important;
+   gap: 14px !important;
+   max-width: 1500px !important;
+}
+
+.gameplay-shell .gameplay-stage > .game-frame {
+   width: 92% !important;
+   max-width: none !important;
+   height: auto !important;
+   align-self: start;
+   aspect-ratio: 3 / 2;
+   margin: 0 auto 43px !important;
 }

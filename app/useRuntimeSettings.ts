@@ -9,8 +9,8 @@ const MUSIC_VOLUME_STORAGE_KEY = "echo-breaker-music-volume-v1";
 /** Owns browser-backed runtime settings that are applied before a run starts. */
 export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>) {
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [sfxVolume, setSfxVolumeState] = useState(0.8);
-  const [musicVolume, setMusicVolumeState] = useState(0.8);
+  const [sfxVolume, setSfxVolumeState] = useState(1);
+  const [musicVolume, setMusicVolumeState] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -29,10 +29,10 @@ export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>) {
     const enabled = localStorage.getItem(SOUND_STORAGE_KEY) !== "off";
     const storedSfx = Number(localStorage.getItem(SFX_VOLUME_STORAGE_KEY));
     const storedMusic = Number(localStorage.getItem(MUSIC_VOLUME_STORAGE_KEY));
-    const nextSfx = Number.isFinite(storedSfx) ? Math.max(0, Math.min(1, storedSfx)) : 0.8;
-    const nextMusic = Number.isFinite(storedMusic) ? Math.max(0, Math.min(1, storedMusic)) : 0.8;
+    const nextSfx = Number.isFinite(storedSfx) ? Math.max(0, Math.min(1, storedSfx)) : 1;
+    const nextMusic = Number.isFinite(storedMusic) ? Math.max(0, Math.min(1, storedMusic)) : 1;
     const audio = new GameAudio();
-    audio.setSfxVolume(nextSfx * 0.35);
+    audio.setSfxVolume(nextSfx * 1.0);
     audio.setMusicVolume(nextMusic * 0.3);
     audio.setMuted(!enabled);
     audioRef.current = audio;
@@ -78,7 +78,7 @@ export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>) {
     localStorage.setItem(SFX_VOLUME_STORAGE_KEY, String(next));
     const audio = audioRef.current ?? new GameAudio();
     audioRef.current = audio;
-    audio.setSfxVolume(next * 0.35);
+    audio.setSfxVolume(next * 1.0);
   }, [audioRef]);
 
   const setMusicVolume = useCallback((value: number) => {

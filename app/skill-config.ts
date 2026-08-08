@@ -432,7 +432,7 @@ export const SKILL_COOLDOWNS: Record<BuiltinClassSkillId, [number, number, numbe
   "mage-fireball": [2.8, 2.3, 1.8],
   "mage-lightning": [2.5, 2, 1.5],
   "mage-freeze": [3, 2.5, 2],
-  "mage-black-hole": [6, 5, 4],
+  "mage-black-hole": [12, 10, 8],
   "mage-mana-blast": [3, 2.5, 2],
   "common-magnet": [0, 0, 0],
   "common-luck": [0, 0, 0],
@@ -874,7 +874,10 @@ function normalizeCommonSkillFields(saved: Partial<SkillConfig>, base: SkillConf
     evolutionEffects: [...evolutionTraitEffects, ...evolutionConfiguredEffects],
     evolutionEnabled: saved.evolutionEnabled !== false && (saved.evolutionEnabled === true || Boolean(saved.evolution)),
     levels,
-    unit: normalizeSkillValueUnit(primary?.unit ?? saved.unit, base.unit),
+    // The card's level values use the skill's primary `unit`; effect traits
+    // may use a different unit (for example, a fireball's splash radius is px
+    // while its displayed level value is the seal duration in seconds).
+    unit: base.builtIn ? base.unit : normalizeSkillValueUnit(saved.unit, base.unit),
     cooldown: tuple3(saved.cooldown, base.cooldown).map((value) => Math.max(0, value)) as [number, number, number],
     skillDamage: skillDamage.map((value) => Math.max(0, value)) as [number, number, number],
     damageType,
@@ -923,7 +926,7 @@ export function normalizeSkillConfigs(saved: unknown): SkillConfig[] {
     const savedMagicDamage = Array.isArray(savedSkill?.magicDamage) && savedSkill.magicDamage.length === 3 && savedSkill.magicDamage.every((value) => Number.isFinite(Number(value)))
       ? savedSkill.magicDamage.map(Number) as [number, number, number]
       : base.magicDamage ? [...base.magicDamage] as [number, number, number] : null;
-    return syncExplicitPrimaryFields(savedSkill ?? {}, normalizeCommonSkillFields({ ...migrated, id: base.id, builtIn: true, category: base.category, mechanic: base.mechanic, color: base.color, evolution: base.evolution, magicDamage: savedMagicDamage, skillDamage: tuple3(savedSkill?.skillDamage, savedMagicDamage ?? base.skillDamage), levels: base.id === "common-xp" || legacyReflectionTrigger ? base.levels : levels, cooldown: legacyReflectionTrigger ? base.cooldown : savedCooldown }, base));
+    return syncExplicitPrimaryFields(savedSkill ?? {}, normalizeCommonSkillFields({ ...migrated, id: base.id, builtIn: true, category: base.category, mechanic: base.mechanic, color: base.color, evolution: base.evolution, magicDamage: savedMagicDamage, skillDamage: tuple3(savedSkill?.skillDamage, savedMagicDamage ?? base.skillDamage), levels: base.id === "common-xp" || legacyReflectionTrigger ? base.levels : levels, cooldown: legacyReflectionTrigger ? base.cooldown : savedCooldown, unit: base.id === "mage-fireball" ? base.unit : migrated?.unit ?? base.unit }, base));
   });
   const custom = entries.flatMap((entry): SkillConfig[] => {
     if (!entry || typeof entry !== "object") return [];
