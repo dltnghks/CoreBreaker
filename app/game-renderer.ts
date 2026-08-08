@@ -2,20 +2,18 @@ import type { GameState } from "./_types/game";
 import type { Brick, ItemKind } from "./_types/game";
 import { SKILL_VFX_CONFIG, type ClassSkillId, type SkillConfig } from "./skill-config";
 
-type BrickTileSet = { single: string; left: string; middle: string; right: string };
-
 const GAMEPLAY_ART = {
   bricks: {
-    standard: { single: "/assets/gameplay/blocks/standard-single.png", left: "/assets/gameplay/blocks/standard-left.png", middle: "/assets/gameplay/blocks/standard-middle.png", right: "/assets/gameplay/blocks/standard-right.png" },
-    guard: { single: "/assets/gameplay/blocks/guard-single.png", left: "/assets/gameplay/blocks/guard-left.png", middle: "/assets/gameplay/blocks/guard-middle.png", right: "/assets/gameplay/blocks/guard-right.png" },
-    explosive: { single: "/assets/gameplay/blocks/explosive-single.png", left: "/assets/gameplay/blocks/explosive-left.png", middle: "/assets/gameplay/blocks/explosive-middle.png", right: "/assets/gameplay/blocks/explosive-right.png" },
-    indestructible: { single: "/assets/gameplay/blocks/indestructible-single.png", left: "/assets/gameplay/blocks/indestructible-left.png", middle: "/assets/gameplay/blocks/indestructible-middle.png", right: "/assets/gameplay/blocks/indestructible-right.png" },
-    healer: { single: "/assets/gameplay/blocks/healer-single.png", left: "/assets/gameplay/blocks/healer-left.png", middle: "/assets/gameplay/blocks/healer-middle.png", right: "/assets/gameplay/blocks/healer-right.png" },
-    reflector: { single: "/assets/gameplay/blocks/reflector-single.png", left: "/assets/gameplay/blocks/reflector-left.png", middle: "/assets/gameplay/blocks/reflector-middle.png", right: "/assets/gameplay/blocks/reflector-right.png" },
+    standard: "/assets/gameplay/blocks/standard.png",
+    guard: "/assets/gameplay/blocks/guard.png",
+    explosive: "/assets/gameplay/blocks/explosive.png",
+    indestructible: "/assets/gameplay/blocks/indestructible.png",
+    healer: "/assets/gameplay/blocks/healer.png",
+    reflector: "/assets/gameplay/blocks/reflector.png",
   },
   ball: "/assets/gameplay/props/ball.png",
   runeRing: "/assets/gameplay/props/rune-ring.png",
-  paddle: { single: "/assets/gameplay/props/paddle-single.png", left: "/assets/gameplay/props/paddle-left.png", middle: "/assets/gameplay/props/paddle-middle.png", right: "/assets/gameplay/props/paddle-right.png" },
+  paddle: "/assets/gameplay/props/paddle.png",
   bossPatterns: {
     barrier: "/assets/gameplay/boss-patterns/boss-rune-barrier.png",
     wall: "/assets/gameplay/boss-patterns/boss-wall-protrusion.png",
@@ -92,29 +90,6 @@ function drawWaveBackground(ctx: CanvasRenderingContext2D, wave: number, width: 
   ctx.globalAlpha = 0.9;
   ctx.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
   ctx.restore();
-}
-
-function drawBrickSprite(ctx: CanvasRenderingContext2D, images: { single: HTMLImageElement | null; left: HTMLImageElement | null; middle: HTMLImageElement | null; right: HTMLImageElement | null }, x: number, y: number, width: number, height: number) {
-  const tileSize = Math.min(28, height);
-  const tileCount = Math.max(1, Math.round((width + 4) / (tileSize + 4)));
-  // Treat the modules as one continuous strip. The source sprites expose
-  // caps only at the outer ends, so stretching each module to its slot avoids
-  // doubled seams while preserving the square source-pixel style.
-  const tileWidth = width / tileCount;
-  for (let index = 0; index < tileCount; index += 1) {
-    const image = tileCount === 1 ? images.single : index === 0 ? images.left : index === tileCount - 1 ? images.right : images.middle;
-    if (image) ctx.drawImage(image, x + index * tileWidth, y, tileWidth, height);
-  }
-}
-
-function drawPaddleSprite(ctx: CanvasRenderingContext2D, images: { single: HTMLImageElement | null; left: HTMLImageElement | null; middle: HTMLImageElement | null; right: HTMLImageElement | null }, x: number, y: number, width: number) {
-  const tileSize = 28;
-  const tileCount = Math.max(1, Math.round((width + 4) / (tileSize + 4)));
-  const tileWidth = width / tileCount;
-  for (let index = 0; index < tileCount; index += 1) {
-    const image = tileCount === 1 ? images.single : index === 0 ? images.left : index === tileCount - 1 ? images.right : images.middle;
-    if (image) ctx.drawImage(image, x - width / 2 + index * tileWidth, y - 7, tileWidth, tileSize);
-  }
 }
 
 // Renderer contract markers: these names document the visual invariants covered
@@ -242,19 +217,13 @@ export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor
           ? gameplayImage(`boss-block-${bossWave}-${brick.bossRow}-${brick.bossCol}`, `/assets/gameplay/boss-blocks/boss-wave-${bossWave}-r${brick.bossRow! + 1}c${brick.bossCol! + 1}.png`)
           : null
       : null;
-    const brickTiles = usesNormalWaveDesign ? GAMEPLAY_ART.bricks[brick.trait as keyof typeof GAMEPLAY_ART.bricks] as BrickTileSet : null;
-    const brickImages = brickTiles ? {
-      single: gameplayImage(`brick-${brick.trait}-single`, brickTiles.single),
-      left: gameplayImage(`brick-${brick.trait}-left`, brickTiles.left),
-      middle: gameplayImage(`brick-${brick.trait}-middle`, brickTiles.middle),
-      right: gameplayImage(`brick-${brick.trait}-right`, brickTiles.right),
-    } : null;
-    const brickImage = bossImage ?? brickImages?.single ?? null;
+    const brickArt = usesNormalWaveDesign ? GAMEPLAY_ART.bricks[brick.trait as keyof typeof GAMEPLAY_ART.bricks] : null;
+    const brickImage = bossImage ?? (brickArt ? gameplayImage(`brick-${brick.trait}`, brickArt) : null);
     if (brickImage) {
       ctx.globalAlpha = usesBossDesign ? 0.96 * bossIntroAlpha : alpha;
       ctx.imageSmoothingEnabled = false;
       if (usesBossDesign) ctx.drawImage(brickImage, brick.x, brick.y, brick.w, brick.h);
-      else if (brickImages) drawBrickSprite(ctx, brickImages, brick.x, brick.y, brick.w, brick.h);
+      else ctx.drawImage(brickImage, brick.x, brick.y, brick.w, brick.h);
       ctx.globalAlpha = 1;
       ctx.shadowBlur = 0;
     } else {
@@ -278,7 +247,6 @@ export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor
     if (brick.blastVulnerability > 1) { ctx.save(); ctx.globalAlpha = .7 + Math.sin(game.elapsed * 8) * .2; ctx.strokeStyle = "#ff6b87"; ctx.shadowColor = "#ff6b87"; ctx.shadowBlur = 10; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.strokeRect(brick.x - 2, brick.y - 2, brick.w + 4, brick.h + 4); ctx.setLineDash([]); ctx.fillStyle = "rgba(4,8,20,.86)"; ctx.fillRect(brick.x + brick.w / 2 - 24, brick.y - 9, 48, 10); ctx.fillStyle = "#ff8ca3"; ctx.font = `900 8px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText(`EXP ×${brick.blastVulnerability}`, brick.x + brick.w / 2, brick.y - 1); ctx.restore(); }
     if (brick.frostVulnerability > 0) { ctx.save(); ctx.globalAlpha = .72 + Math.sin(game.elapsed * 7 + brick.x * .02) * .18; ctx.fillStyle = "rgba(101,220,255,.18)"; ctx.fillRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4); ctx.strokeStyle = "#b9f4ff"; ctx.shadowColor = "#65dcff"; ctx.shadowBlur = 12; ctx.lineWidth = 2; ctx.strokeRect(brick.x - 2, brick.y - 2, brick.w + 4, brick.h + 4); ctx.fillStyle = "#e8fcff"; ctx.font = `900 10px ${PIXEL_FONT}`; ctx.textAlign = "left"; ctx.fillText(`×+${brick.frostVulnerability}`, brick.x + 5, brick.y + 12); ctx.restore(); }
     if (brick.traitLockTime > 0) { ctx.save(); ctx.globalAlpha = .72 + Math.sin(game.elapsed * 9 + brick.x * .025) * .18; ctx.strokeStyle = classSkillColor?.("mage-mana-blast") ?? "#c18cff"; ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 14; ctx.lineWidth = 3; ctx.setLineDash([7, 4]); ctx.strokeRect(brick.x - 4, brick.y - 4, brick.w + 8, brick.h + 8); ctx.setLineDash([]); ctx.fillStyle = "rgba(7,4,18,.9)"; ctx.fillRect(brick.x + brick.w / 2 - 26, brick.y + brick.h - 12, 52, 12); ctx.fillStyle = "#e4b7ff"; ctx.font = `900 9px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText(`LOCK ${Math.ceil(brick.traitLockTime)}s`, brick.x + brick.w / 2, brick.y + brick.h - 3); ctx.restore(); }
-    if (brick.lastHitPaddleId) { ctx.strokeStyle = "#c18cff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(brick.x + 5, brick.y + brick.h - 4); ctx.lineTo(brick.x + brick.w * .35, brick.y + 5); ctx.moveTo(brick.x + brick.w * .55, brick.y + brick.h - 4); ctx.lineTo(brick.x + brick.w - 5, brick.y + 5); ctx.stroke(); }
     if (damageRatio > 0.08) {
       const crackCount = Math.min(4, Math.max(1, Math.ceil(damageRatio * 4)));
       ctx.save(); ctx.strokeStyle = `rgba(7,9,15,${0.38 + damageRatio * 0.5})`; ctx.lineWidth = 1 + damageRatio * 1.4; ctx.lineCap = "round";
@@ -319,24 +287,26 @@ export function renderBalls({ ctx, game, getSkill, classSkillColor, mageSpells =
   const ownedSkills = [...new Set(game.upgrades)]
     .map((id) => ({ id, config: getSkill(id), level: Math.min(3, game.upgrades.filter((entry) => entry === id).length) }))
     .filter((entry): entry is { id: ClassSkillId; config: SkillConfig; level: number } => Boolean(entry.config && entry.config.category !== "common"));
-  game.balls.filter((ball) => ball.owner === "player").forEach((ball) => {
+  game.balls.forEach((ball) => {
     const speed = Math.max(1, Math.hypot(ball.vx, ball.vy));
     const powerBoost = Math.max(0, ball.attackPower - 1);
-    const radius = ball.radius + Math.min(3.5, powerBoost * 0.7);
-    const isExtraBall = ball.waveBonus || ball.temporaryTime > 0 || ball.visualSkill !== null;
+    const isExtraBall = ball.waveBonus || ball.temporaryTime > 0;
+    // Keep the main ball readable without adding another player-identification
+    // ring; skill rings remain the only ring effects around the ball.
+    const radius = ball.radius + Math.min(3.5, powerBoost * 0.7) + (isExtraBall ? 0 : 1.5);
+    const ballAlpha = isExtraBall ? 0.58 : 1;
     const ballVisualColor = isExtraBall ? "#9a8cff" : "#fffdf4";
     const skillEffectAlpha = isExtraBall ? 0.38 : 1;
-    const cooldownGaugeAlpha = isExtraBall ? 0.5 : 1;
     ctx.save();
     const trailSteps = 4 + Math.min(5, Math.floor(powerBoost));
     for (let trail = trailSteps; trail >= 1; trail--) {
-      ctx.globalAlpha = 0.035 + ((trailSteps + 1 - trail) / trailSteps) * 0.15;
+      ctx.globalAlpha = (0.035 + ((trailSteps + 1 - trail) / trailSteps) * 0.15) * ballAlpha;
       ctx.fillStyle = ballVisualColor;
       ctx.beginPath();
       ctx.arc(ball.x - ball.vx / speed * trail * (7 + powerBoost), ball.y - ball.vy / speed * trail * (7 + powerBoost), Math.max(2, radius - trail * 1.05), 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = ballAlpha;
     ctx.shadowColor = ballVisualColor;
     ctx.shadowBlur = 24;
     const ballImage = gameplayImage("ball", GAMEPLAY_ART.ball);
@@ -360,7 +330,7 @@ export function renderBalls({ ctx, game, getSkill, classSkillColor, mageSpells =
       ctx.beginPath(); ctx.arc(ball.x, ball.y, radius, 0, Math.PI * 2); ctx.fill();
     }
     ctx.save();
-    ctx.globalAlpha = isExtraBall ? 0.82 : 1;
+    ctx.globalAlpha = (isExtraBall ? 0.82 : 1) * ballAlpha;
     ctx.strokeStyle = ballVisualColor;
     ctx.shadowColor = ballVisualColor;
     ctx.shadowBlur = isExtraBall ? 14 : 22;
@@ -379,7 +349,7 @@ export function renderBalls({ ctx, game, getSkill, classSkillColor, mageSpells =
     ctx.restore();
     const powerRingCount = Math.min(3, Math.floor(powerBoost / 1.25));
     for (let ring = 0; ring < powerRingCount; ring++) {
-      ctx.globalAlpha = 0.48 - ring * 0.1;
+      ctx.globalAlpha = (0.48 - ring * 0.1) * ballAlpha;
       ctx.strokeStyle = ballVisualColor;
       ctx.lineWidth = 1.5 + powerBoost * 0.25;
       ctx.beginPath();
@@ -387,149 +357,86 @@ export function renderBalls({ ctx, game, getSkill, classSkillColor, mageSpells =
       ctx.stroke();
     }
 
-    // A rapid-fire arrow only owns class skills after the fourth-pick
-    // evolution. The simulation exposes that rule through canTriggerSkills;
-    // the renderer must not infer ownership from the run-wide loadout.
-    const ballSkills = ball.canTriggerSkills ? ownedSkills : [];
-    const runeRingImage = gameplayImage("rune-ring", GAMEPLAY_ART.runeRing);
-    if (runeRingImage) {
-      const runeSize = Math.max(38, (radius + 14) * 1.65);
+    // Only owned skills whose cooldown has reached zero get a rune slot. The
+    // slot uses the existing skill icon art, so the ring reads as a ready
+    // state rather than a persistent loadout or a post-cast effect.
+    const readySkillVisuals = ball.canTriggerSkills
+      ? ownedSkills
+        .filter(({ id, config }) => Number(config.cooldown[Math.max(0, Math.min(2, game.upgrades.filter((entry) => entry === id).length - 1))] ?? 0) > 0 && Number(ball.skillCooldowns[id] ?? 0) <= 0)
+        .map(({ id, config, level }) => ({ id, level, evolved: Boolean(config.evolutionEnabled && game.upgrades.filter((entry) => entry === id).length >= 4) }))
+      : [];
+    if (readySkillVisuals.length > 0) {
+      const laneCount = readySkillVisuals.length > 4 ? 2 : 1;
       const runeRotation = game.elapsed * 0.85;
-      const runeAlpha = (isExtraBall ? 0.34 : 0.58) * skillEffectAlpha;
-      ctx.save();
-      ctx.translate(ball.x, ball.y);
-      ctx.rotate(runeRotation);
-      ctx.globalAlpha = runeAlpha;
-      ctx.shadowColor = "#d5a957";
-      ctx.shadowBlur = 5;
-      ctx.filter = "saturate(.62) brightness(.82)";
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(runeRingImage, -runeSize / 2, -runeSize / 2, runeSize, runeSize);
-      ctx.restore();
-
-      const runeRadius = radius + 14;
-      const runeGlyphs = ["R", "B", "K", "X", "ᛉ", "ᛒ", "ᚲ", "ᛟ"];
-      ballSkills.slice(0, 8).forEach(({ id }, index) => {
-        const angle = -Math.PI / 2 + index * Math.PI / 4 + runeRotation;
-        const x = ball.x + Math.cos(angle) * runeRadius;
-        const y = ball.y + Math.sin(angle) * runeRadius;
-        const color = classSkillColor(id);
+      const runeRingImage = gameplayImage("rune-ring", GAMEPLAY_ART.runeRing);
+      for (let lane = 0; lane < laneCount; lane += 1) {
+        const laneSkills = readySkillVisuals.filter((_, index) => index % laneCount === lane);
+        const laneRadius = radius + 13 + lane * 8;
         ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(Math.PI / 4);
-        ctx.globalAlpha = (0.5 + Math.sin(game.elapsed * 4 + index) * 0.08) * skillEffectAlpha;
-        ctx.strokeStyle = color;
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 4;
-        ctx.rotate(-Math.PI / 4);
-        ctx.fillStyle = color;
-        ctx.font = `900 7px ${PIXEL_FONT}`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(runeGlyphs[index], 0, 1);
+        ctx.globalAlpha = 0.28 * skillEffectAlpha;
+        ctx.strokeStyle = lane === 0 ? "#d5a957" : "#8d7bd9";
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.arc(ball.x, ball.y, laneRadius, 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
-      });
-    }
-    const cooldownEntries = ballSkills.map(({ id, config, level }) => ({
-      id,
-      config,
-      level,
-      total: Math.max(0, Number(config.cooldown[level - 1] ?? 0)),
-      remaining: Math.max(0, Number(ball.skillCooldowns[id] ?? 0)),
-    })).filter(({ total }) => total > 0);
-    // Rune sockets are now the only persistent skill-state indicator around
-    // the ball; the former segmented cooldown arcs are intentionally hidden.
-    const coolingSkills = cooldownEntries.filter(({ remaining }) => remaining > 0);
-    const runeOnlyMode = true;
-    if (!runeOnlyMode && coolingSkills.length > 0) {
-      const gaugeRadius = radius + 5 + powerRingCount * 3;
-      const segmentSpan = Math.PI * 2 / coolingSkills.length;
-      const gap = Math.min(0.12, segmentSpan * 0.12);
-      ctx.save();
-      ctx.lineCap = "round";
-      coolingSkills.forEach((entry, index) => {
-        const progress = Math.max(0, Math.min(1, 1 - entry.remaining / entry.total));
-        const start = -Math.PI / 2 + index * segmentSpan + gap / 2;
-        const segmentLength = segmentSpan - gap;
-        const color = classSkillColor(entry.id);
-        ctx.globalAlpha = 0.2 * cooldownGaugeAlpha;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.arc(ball.x, ball.y, gaugeRadius, start, start + segmentLength); ctx.stroke();
-        if (progress > 0) {
-          ctx.globalAlpha = 0.95 * cooldownGaugeAlpha;
-          ctx.shadowColor = color; ctx.shadowBlur = 8;
-          ctx.beginPath(); ctx.arc(ball.x, ball.y, gaugeRadius, start, start + segmentLength * progress); ctx.stroke();
-          ctx.shadowBlur = 0;
-        }
-      });
-      ctx.restore();
-    }
-
-    const readySkills = cooldownEntries.filter(() => false);
-    readySkills.forEach(({ id, config, level }, index) => {
-      const color = classSkillColor(id);
-      ctx.save();
-      ctx.strokeStyle = color;
-      ctx.fillStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 12;
-      ctx.globalAlpha = 0.78 * skillEffectAlpha;
-      if (config.category === "warrior") {
-        ctx.translate(ball.x, ball.y);
-        ctx.lineWidth = 2.5 + level * 0.5;
-        if (id === "warrior-smash") {
-          ctx.rotate(-0.4); ctx.beginPath(); ctx.moveTo(-radius - 7, -radius - 4); ctx.lineTo(radius + 7, radius + 4); ctx.stroke();
-        } else if (id === "warrior-shockwave") {
-          for (let wave = 0; wave < 2; wave++) { const pulse = (game.elapsed * 2.8 + wave * 0.5) % 1; ctx.globalAlpha = 0.8 * (1 - pulse) * skillEffectAlpha; ctx.beginPath(); ctx.arc(0, 0, radius + 3 + pulse * (10 + wave * 4), 0, Math.PI * 2); ctx.stroke(); }
-        } else if (id === "warrior-execute") {
-          const pulse = 1 + Math.sin(game.elapsed * 9) * 0.18; ctx.scale(pulse, pulse); ctx.beginPath(); ctx.moveTo(0, -radius - 11); ctx.lineTo(0, radius + 8); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-5, radius + 3); ctx.lineTo(0, radius + 9); ctx.lineTo(5, radius + 3); ctx.stroke();
-        } else if (id === "warrior-crush") {
-          ctx.rotate(game.elapsed * 2.8); for (let shard = 0; shard < 4; shard++) { ctx.rotate(Math.PI / 2); ctx.save(); ctx.translate(radius + 7, 0); ctx.rotate(Math.PI / 4); ctx.fillRect(-3.5, -3.5, 7, 7); ctx.restore(); }
-        } else {
-          const pulse = 0.55 + Math.sin(game.elapsed * 7 + index) * 0.18; ctx.globalAlpha = pulse * skillEffectAlpha; ctx.beginPath(); ctx.arc(0, 0, radius + 5 + index * 2, 0, Math.PI * 2); ctx.stroke();
-        }
-      } else if (config.category === "archer") {
-        ctx.translate(ball.x, ball.y);
-        ctx.rotate(Math.atan2(ball.vy, ball.vx));
-        ctx.lineWidth = 2;
-        if (id === "archer-pierce") {
-          ctx.beginPath(); ctx.moveTo(-radius - 10, 0); ctx.lineTo(radius + 13, 0); ctx.lineTo(radius + 5, -6); ctx.moveTo(radius + 13, 0); ctx.lineTo(radius + 5, 6); ctx.stroke();
-        } else if (id === "archer-ricochet") {
-          ctx.beginPath(); ctx.moveTo(-radius - 13, 7); ctx.lineTo(-radius - 5, -6); ctx.lineTo(radius + 4, 5); ctx.lineTo(radius + 12, -5); ctx.stroke();
-        } else if (id === "archer-focus") {
-          ctx.rotate(-Math.atan2(ball.vy, ball.vx)); const reticle = radius + 7 + Math.sin(game.elapsed * 6) * 2; ctx.beginPath(); ctx.arc(0, 0, reticle, 0.2, Math.PI / 2 - 0.2); ctx.arc(0, 0, reticle, Math.PI / 2 + 0.2, Math.PI - 0.2); ctx.arc(0, 0, reticle, Math.PI + 0.2, Math.PI * 1.5 - 0.2); ctx.arc(0, 0, reticle, Math.PI * 1.5 + 0.2, Math.PI * 2 - 0.2); ctx.stroke();
-        } else if (id === "archer-weakpoint") {
-          ctx.rotate(-Math.atan2(ball.vy, ball.vx) + game.elapsed * 1.8); const mark = radius + 7; ctx.beginPath(); ctx.arc(0, 0, mark, 0, Math.PI * 2); ctx.moveTo(-mark - 5, 0); ctx.lineTo(mark + 5, 0); ctx.moveTo(0, -mark - 5); ctx.lineTo(0, mark + 5); ctx.stroke();
-        } else {
-          for (let chevron = 0; chevron < 2; chevron++) { const rear = -radius - 5 - chevron * 7 - index * 2; ctx.beginPath(); ctx.moveTo(rear - 5, -5); ctx.lineTo(rear, 0); ctx.lineTo(rear - 5, 5); ctx.stroke(); }
-        }
-      } else {
-        const mageSpellVariant = id === "mage-fireball" ? 0 : id === "mage-lightning" ? 1 : -1;
-        const mageSpellImage = mageSpellVariant >= 0 ? mageSpells[mageSpellVariant] : null;
-        if (mageSpellVariant >= 0 && mageSpellReady[mageSpellVariant] && mageSpellImage) {
-          const frame = Math.floor(game.elapsed * 14 + index) % 6;
-          const spriteSize = (id === "mage-fireball" ? 42 : 36) + level * 3;
-          ctx.translate(ball.x, ball.y);
-          if (id === "mage-fireball") ctx.rotate(Math.atan2(ball.vy, ball.vx));
-          ctx.globalAlpha = 0.92 * skillEffectAlpha;
+        laneSkills.forEach((visual, laneIndex) => {
+          const level = Math.max(1, Math.min(4, visual.level));
+          const evolved = visual.evolved || level >= 4;
+          const color = classSkillColor(visual.id as ClassSkillId);
+          const angle = -Math.PI / 2 + laneIndex * Math.PI * 2 / Math.max(1, laneSkills.length) + runeRotation * (lane === 0 ? 1 : -0.78);
+          const x = ball.x + Math.cos(angle) * laneRadius;
+          const y = ball.y + Math.sin(angle) * laneRadius;
+          // Keep each rune compact: its maximum is 25% of the ball diameter.
+          // Higher levels gain presence through glow and orbit marks instead
+          // of becoming visually bulky.
+          const iconSize = Math.max(4, (radius * 2) * 0.25);
+          const iconPath = `/assets/ui/skills/forged-core/${visual.id.split("-", 1)[0]}/${visual.id}.png`;
+          const iconImage = gameplayImage(`skill-icon:${visual.id}`, iconPath);
+          const pulse = 1 + Math.sin(game.elapsed * (evolved ? 7 : 5) + laneIndex) * (evolved ? 0.1 : 0.045);
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(angle + Math.PI / 2);
+          ctx.globalAlpha = (isExtraBall ? 0.32 : 0.9) * skillEffectAlpha;
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 5 + level * 2 + (evolved ? 7 : 0);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1.1 + level * 0.45 + (evolved ? 0.8 : 0);
+          ctx.beginPath(); ctx.arc(0, 0, iconSize * 0.62 * pulse, 0, Math.PI * 2); ctx.stroke();
+          if (runeRingImage) {
+            ctx.globalAlpha *= 0.52;
+            ctx.drawImage(runeRingImage, -iconSize * 0.72, -iconSize * 0.72, iconSize * 1.44, iconSize * 1.44);
+          }
+          ctx.globalAlpha = (isExtraBall ? 0.42 : 1) * skillEffectAlpha;
           ctx.imageSmoothingEnabled = false;
-          ctx.shadowBlur = 16;
-          ctx.drawImage(mageSpellImage, frame * 64, 0, 64, 64, -spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize);
-        } else {
-          const orbitRadius = radius + 6 + index * 3;
-          for (let mote = 0; mote < 3; mote++) { const angle = game.elapsed * (2.2 + index * 0.25) + mote * Math.PI * 2 / 3; ctx.beginPath(); ctx.arc(ball.x + Math.cos(angle) * orbitRadius, ball.y + Math.sin(angle) * orbitRadius, 2.2 + level * 0.25, 0, Math.PI * 2); ctx.fill(); }
-        }
+          if (iconImage) {
+            ctx.drawImage(iconImage, -iconSize / 2, -iconSize / 2, iconSize, iconSize);
+          } else {
+            ctx.fillStyle = color;
+            ctx.beginPath(); ctx.moveTo(0, -iconSize / 2); ctx.lineTo(iconSize / 2, 0); ctx.lineTo(0, iconSize / 2); ctx.lineTo(-iconSize / 2, 0); ctx.closePath(); ctx.fill();
+          }
+          if (evolved) {
+            ctx.globalAlpha = (isExtraBall ? 0.36 : 0.85) * skillEffectAlpha;
+            ctx.strokeStyle = "#fff0b0";
+            ctx.lineWidth = 1.1;
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath(); ctx.arc(0, 0, iconSize * 0.92 + Math.sin(game.elapsed * 6 + laneIndex) * 1.5, 0, Math.PI * 2); ctx.stroke();
+            for (let mark = 0; mark < 4; mark += 1) {
+              const markAngle = mark * Math.PI / 2 + game.elapsed * 0.7;
+              ctx.fillStyle = "#fff0b0";
+              ctx.fillRect(Math.cos(markAngle) * (iconSize + 2) - 1, Math.sin(markAngle) * (iconSize + 2) - 1, 2, 2);
+            }
+          }
+          ctx.restore();
+        });
       }
-      ctx.restore();
-    });
+    }
 
     if (ball.temporaryTime > 0) {
       const lifeRatio = Math.min(1, ball.temporaryTime / 7);
-      ctx.globalAlpha = 0.8; ctx.strokeStyle = ball.color; ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.8 * ballAlpha; ctx.strokeStyle = ball.color; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.radius + 7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * lifeRatio); ctx.stroke();
     }
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = ballAlpha;
     if (ball.missileTime > 0) {
       const angle = Math.atan2(ball.vy, ball.vx); ctx.save(); ctx.translate(ball.x, ball.y); ctx.rotate(angle); ctx.shadowColor = "#ff9658"; ctx.shadowBlur = 18; ctx.fillStyle = "#ff9658"; ctx.beginPath(); ctx.moveTo(ball.radius + 9, 0); ctx.lineTo(-ball.radius - 4, -ball.radius * 0.75); ctx.lineTo(-ball.radius - 1, 0); ctx.lineTo(-ball.radius - 4, ball.radius * 0.75); ctx.closePath(); ctx.fill(); ctx.restore();
     }
@@ -539,7 +446,7 @@ export function renderBalls({ ctx, game, getSkill, classSkillColor, mageSpells =
     const payloadLabels = { pierce: "P", blast: "B", glass: "G", link: "L" } as const;
     const activePayloads = (Object.keys(payloadLabels) as Array<keyof typeof payloadLabels>).filter((id) => (ball.payloads[id] ?? 0) > 0);
     if (activePayloads.length > 0 || ball.attackPower > 1.05) {
-      ctx.shadowBlur = 0; ctx.globalAlpha = 1; ctx.fillStyle = ball.color; ctx.font = `900 9px ${PIXEL_FONT}`; ctx.textAlign = "center";
+      ctx.shadowBlur = 0; ctx.globalAlpha = ballAlpha; ctx.fillStyle = ball.color; ctx.font = `900 9px ${PIXEL_FONT}`; ctx.textAlign = "center";
       const payloadLabel = activePayloads.map((id) => id === "pierce" ? `P×${ball.pierce}` : `${payloadLabels[id]}${ball.payloads[id]}`).join("+");
       ctx.fillText(`${ball.attackPower.toFixed(1)} ATK${ball.missileTime > 0 ? ` // MISSILE ${ball.missileTime.toFixed(1)}s` : ""}${payloadLabel ? ` // ${payloadLabel}` : ""}`, ball.x, ball.y - 13);
     }
@@ -626,9 +533,8 @@ export function renderTransientFeedback(ctx: CanvasRendererContext, game: Pick<G
   }
 }
 
-export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor, ghostPaddles, safetyBlocks, playerCores = [], coreBreak, aim, playerCharge, elapsed = 0 }: {
+export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor, safetyBlocks, playerCores = [], coreBreak, aim, playerCharge, elapsed = 0 }: {
   ctx: CanvasRenderingContext2D; playerX: number; playerY: number; playerWidth: number; playerColor: string;
-  ghostPaddles: ReadonlyArray<{ x: number; y: number; width: number; color: string; name: string; charge?: ChargeVisual | null }>;
   safetyBlocks: ReadonlyArray<{ x: number; y: number; width: number; color: string }>;
   playerCores?: ReadonlyArray<{ x: number; y: number; scale?: number; alpha?: number; danger?: boolean }>;
   coreBreak?: { x: number; y: number; progress: number };
@@ -637,19 +543,11 @@ export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor,
 }) {
   const draw = (x: number, y: number, width: number, color: string, alpha = 1, useArt = false) => {
     ctx.save(); ctx.globalAlpha = alpha; ctx.shadowColor = color; ctx.shadowBlur = 12;
-    const paddleTiles = useArt ? GAMEPLAY_ART.paddle : null;
-    const paddleImages = paddleTiles ? {
-      single: gameplayImage("paddle-single", paddleTiles.single),
-      left: gameplayImage("paddle-left", paddleTiles.left),
-      middle: gameplayImage("paddle-middle", paddleTiles.middle),
-      right: gameplayImage("paddle-right", paddleTiles.right),
-    } : null;
-    if (paddleImages?.single) {
+    const paddleImage = useArt ? gameplayImage("paddle", GAMEPLAY_ART.paddle) : null;
+    if (paddleImage) {
       ctx.imageSmoothingEnabled = false;
-      // The generated paddle already contains its pixel shadow and bevel.
-      // Disable the old per-tile glow so the left cap remains readable.
       ctx.shadowBlur = 0; ctx.shadowColor = "transparent";
-      drawPaddleSprite(ctx, paddleImages, x, y, width);
+      ctx.drawImage(paddleImage, x - width / 2, y - 7, width, 30);
       ctx.restore();
       return;
     }
@@ -663,7 +561,6 @@ export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor,
     ctx.strokeRect(x - width / 2 - 6, y - 6, width + 12, 28); ctx.fillStyle = visual.color; ctx.fillRect(x - width / 2, y, width * Math.max(0.2, visual.intensity), 4); ctx.restore();
   };
   safetyBlocks.forEach((b) => { ctx.save(); ctx.shadowColor = b.color; ctx.shadowBlur = 18; ctx.fillStyle = b.color; ctx.fillRect(b.x - b.width / 2, b.y, b.width, 7); ctx.shadowBlur = 0; ctx.fillStyle = "#07101b"; ctx.font = `900 8px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText("AUTO REFLECT", b.x, b.y + 6); ctx.restore(); });
-  ghostPaddles.forEach((p) => { draw(p.x, p.y, p.width, p.color, .74); charge(p.x, p.y, p.width, p.charge, .74); ctx.fillStyle = p.color; ctx.font = `800 9px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText(p.name, p.x, p.y + 24); });
   draw(playerX, playerY, playerWidth, playerColor, 1, true); charge(playerX, playerY, playerWidth, playerCharge);
   playerCores.forEach((core) => drawCoreCrystal(ctx, core.x, core.y, core.scale ?? 1, core.alpha ?? 1, core.danger ?? false));
   if (coreBreak) {
