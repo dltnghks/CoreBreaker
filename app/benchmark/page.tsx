@@ -1,5 +1,9 @@
 import { GameRuntime } from "../GameRuntime";
+import BenchmarkSetup from "./benchmark-setup";
 
 export default function BenchmarkPage() {
-  return <GameRuntime benchmarkMode />;
+  return <>
+    <BenchmarkSetup />
+    <GameRuntime benchmarkMode />
+  </>;
 }

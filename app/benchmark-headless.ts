@@ -116,7 +116,7 @@ function observation(state: CanonicalState): BotObservation {
 
 export function runCanonicalControlledSimulation(request: HeadlessBenchmarkRequest, controlProvider: (state: CanonicalState, step: number) => ReturnType<typeof decideBotControls>) {
   const benchmark = { ...DEFAULT_BENCHMARK_CONFIG, ...request.benchmarkConfig } as BenchmarkConfig;
-  const state = createCanonicalState({ seed: request.seed, targetWave: benchmark.targetWave, balance: { ...DEFAULT_BALANCE_CONFIG, ...request.balanceConfig }, skills: request.skills?.length ? request.skills : DEFAULT_SKILLS, waves: request.waveDefinitions?.length === WAVE_DEFINITIONS.length ? request.waveDefinitions : WAVE_DEFINITIONS, interactive: true, startingSkills: request.startingSkills });
+  const state = createCanonicalState({ seed: request.seed, startWave: benchmark.startWave, targetWave: benchmark.targetWave, balance: { ...DEFAULT_BALANCE_CONFIG, ...request.balanceConfig }, skills: request.skills?.length ? request.skills : DEFAULT_SKILLS, waves: request.waveDefinitions?.length === WAVE_DEFINITIONS.length ? request.waveDefinitions : WAVE_DEFINITIONS, interactive: true, startingSkills: request.startingSkills ?? benchmark.startingSkills });
   const decisionRandom = seededRandom(request.seed ^ 0x9e3779b9);
   const maxSteps = Math.ceil((request.maxSimulatedSeconds ?? 1800) / FIXED_STEP_SECONDS);
   for (let step = 0; step < maxSteps && !state.complete && !state.gameOver; step++) {

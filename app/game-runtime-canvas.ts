@@ -5,9 +5,9 @@ import { beginGameCanvasFrame, endGameCanvasFrame, renderBalls, renderBricks, re
 
 const W = 900;
 const H = 600;
+const ITEM_BARRIER_Y = H - 18;
 const PLAYER_PADDLE_Y = H - 70;
 const BRICK_ROW_Y = 74;
-const ITEM_BARRIER_Y = H - 18;
 const MIN_AIM_VERTICAL_DISTANCE = 52;
 const AIM_LIMIT_GUIDE_LENGTH = 100;
 const AIM_LINE_LENGTH = 170;
@@ -122,14 +122,8 @@ renderWorldOverlays({ ctx, elapsed: game.elapsed, gravityWells: game.gravityWell
     playerWidth: Math.min(280, game.paddleWidth),
     playerColor: PLAYER_BALL_COLOR,
     safetyBlocks: game.safetyBlocks,
-    playerCharge: game.paddleCounters?.player?.chargePulse && game.paddleCounters.player.chargePulse > 0
-      ? {
-        color: game.paddleCounters.player.chargeColor ?? PLAYER_BALL_COLOR,
-        intensity: Math.min(1, game.paddleCounters.player.chargePulse),
-        pulse: game.paddleCounters.player.chargePulse,
-      }
-      : undefined,
     elapsed: game.elapsed,
+    itemBarrierTime: game.itemBarrierTime,
     coreBreak: game.coreBreakTime > 0 ? { x: game.coreBreakX, y: game.coreBreakY, progress: 1 - game.coreBreakTime / Math.max(0.001, game.coreBreakDuration) } : undefined,
     aim: !botActive ? (() => {
       const a = paddleAimDirection(game.paddleX, PLAYER_PADDLE_Y, pointerX, pointerY);

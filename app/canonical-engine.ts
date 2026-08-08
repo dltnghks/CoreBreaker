@@ -184,6 +184,7 @@ export type CanonicalState = {
   moveBoostTime: number;
   balls: CanonicalBall[];
   bricks: CanonicalBrick[];
+  collisionGrid: Map<string, CanonicalBrick[]>;
   items: CanonicalItem[];
   gravityWells: CanonicalGravityWell[];
   bossBarriers: CanonicalBossBarrier[];
@@ -326,7 +327,8 @@ function availableSkillConfigs(state: CanonicalState) {
 }
 
 function createCanonicalChoices(state: CanonicalState, excluded: UpgradeId[] = []): UpgradeChoice[] {
-  const candidates = availableSkillConfigs(state).filter((config) => !excluded.includes(config.id));
+  const startSkillOnly = state.phase === "awaiting-start-skill";
+  const candidates = availableSkillConfigs(state).filter((config) => !excluded.includes(config.id) && (!startSkillOnly || config.category !== "common"));
   for (let index = candidates.length - 1; index > 0; index -= 1) {
     const target = Math.floor(canonicalRandom(state, "reward") * (index + 1));
     [candidates[index], candidates[target]] = [candidates[target], candidates[index]];
@@ -546,6 +548,44 @@ function makeBrick(state: CanonicalState, x: number, y: number, w: number, h: nu
   return { id: state.nextBrickId++, x, y, w, h, hp, maxHp: hp, alive: true, trait, guardReady: trait === "guard", healTimer: 3, healBlockTime: 0, burnTime: 0, burnTick: 0, burnDamage: 0, burnDamageType: "magic", burnSourceSkillId: null, poisonTime: 0, poisonTick: 0, traitLockTime: 0, frostVulnerability: 0, frostSourceSkillId: null, focusStacks: 0, focusTimer: 0, drop: trait === "indestructible" ? null : drop, kind };
 }
 
+function rebuildCollisionGrid(state: CanonicalState) {
+  const grid = new Map<string, CanonicalBrick[]>();
+  for (const brick of state.bricks) {
+    if (!brick.alive) continue;
+    const startCol = Math.floor(brick.x / WAVE_CELL_SIZE);
+    const endCol = Math.floor((brick.x + brick.w - 0.001) / WAVE_CELL_SIZE);
+    const startRow = Math.floor(brick.y / WAVE_CELL_SIZE);
+    const endRow = Math.floor((brick.y + brick.h - 0.001) / WAVE_CELL_SIZE);
+    for (let row = startRow; row <= endRow; row += 1) {
+      for (let col = startCol; col <= endCol; col += 1) {
+        const key = `${col}:${row}`;
+        const entries = grid.get(key) ?? [];
+        entries.push(brick);
+        grid.set(key, entries);
+      }
+    }
+  }
+  state.collisionGrid = grid;
+}
+
+function collisionCandidates(state: CanonicalState, ball: CanonicalBall, previousX: number, previousY: number) {
+  const minX = Math.min(previousX, ball.x) - ball.radius;
+  const maxX = Math.max(previousX, ball.x) + ball.radius;
+  const minY = Math.min(previousY, ball.y) - ball.radius;
+  const maxY = Math.max(previousY, ball.y) + ball.radius;
+  const candidateSet = new Set<CanonicalBrick>();
+  const startCol = Math.floor(minX / WAVE_CELL_SIZE);
+  const endCol = Math.floor(maxX / WAVE_CELL_SIZE);
+  const startRow = Math.floor(minY / WAVE_CELL_SIZE);
+  const endRow = Math.floor(maxY / WAVE_CELL_SIZE);
+  for (let row = startRow; row <= endRow; row += 1) {
+    for (let col = startCol; col <= endCol; col += 1) {
+      for (const brick of state.collisionGrid.get(`${col}:${row}`) ?? []) candidateSet.add(brick);
+    }
+  }
+  return [...candidateSet].sort((a, b) => a.id - b.id);
+}
+
 function scheduledMultiball(wave: number) { return [2, 4, 6, 8, 11, 13, 16, 18].includes(wave); }
 
 function buildWave(state: CanonicalState, wave: number) {
@@ -608,6 +648,7 @@ function buildWave(state: CanonicalState, wave: number) {
     state.bossArmorReformThresholds = [false, false, false];
     state.bossArmorReformTimer = 0;
     state.bossArmorReformCells = [];
+    rebuildCollisionGrid(state);
     state.bossIntroTimer = 3;
     emitCanonicalEvent(state, { type: "audio", cue: "boss", volume: 1.25 });
     state.bossReinforcementIds = [];
@@ -635,6 +676,7 @@ function buildWave(state: CanonicalState, wave: number) {
     const inset = 1;
     return makeBrick(state, gridX + block.x * WAVE_CELL_SIZE + inset, gridY + block.y * WAVE_CELL_SIZE + inset, block.width * WAVE_CELL_SIZE - inset * 2, block.height * WAVE_CELL_SIZE - inset * 2, hp, traitFor(cell), "normal", drop);
   });
+  rebuildCollisionGrid(state);
 }
 
 function makeBall(state: CanonicalState, x = GAME_WIDTH / 2, temporary = false, recovering = false, temporaryTime = 0, aimX = GAME_WIDTH / 2, aimY = GAME_HEIGHT / 3): CanonicalBall {
@@ -1236,7 +1278,6 @@ function triggerCollisionSkills(state: CanonicalState, ball: CanonicalBall, hit:
     const custom = !config.builtIn || config.id.startsWith("custom-");
     if (!customTriggerMatches(config, triggerContext)) continue;
     if (config.id === "mage-mana-blast" && !(triggerContext.originalTrait === "guard" || hit.guardReady || hit.trait === "healer" || hit.trait === "reflector")) continue;
-    if (config.id === "archer-ricochet" && levelOf(state, "mage-lightning") > 0 && skillCooldownRemaining(state, ball, "mage-lightning") <= 0) continue;
     const remaining = skillCooldownRemaining(state, ball, config.id);
     if (remaining > 0) continue;
     // Iron Wall's displayed 15/12/8 second value is its activation interval.
@@ -1682,6 +1723,7 @@ function finishBossArmorReform(state: CanonicalState) {
     armor.bossCol = cell.col;
     state.bricks.push(armor);
   }
+  rebuildCollisionGrid(state);
   state.bossArmorReformCells = [];
   emitCanonicalVisual(state, { kind: "skill", skillId: "original" as UpgradeId, x: GAME_WIDTH / 2, y: 94, radius: 210, duration: 0.7, color: "#c5a766", text: "ARMOR ONLINE" });
 }
@@ -1716,6 +1758,7 @@ function spawnBossReinforcements(state: CanonicalState) {
     ids.push(brick.id);
     state.bricks.push(brick);
   }
+  rebuildCollisionGrid(state);
   state.bossReinforcementIds = ids;
   state.bossReinforcementTimer = 0;
   state.bossReinforcementTelegraph = 0;
@@ -1765,6 +1808,7 @@ function activateBossPattern(state: CanonicalState) {
     runeIds.push(rune.id);
     state.bricks.push(rune);
   }
+  rebuildCollisionGrid(state);
   state.bossShield = { active: true, life: 5.8 + stage * 0.35, maxLife: 5.8 + stage * 0.35, runeIds };
 }
 
@@ -1832,7 +1876,7 @@ function cloneSkillConfigForState(config: SkillConfig): SkillConfig {
   };
 }
 
-export function createCanonicalState(options: { seed: number; targetWave?: number; balance?: BalanceConfig; skills?: SkillConfig[]; waves?: WaveDefinition[]; legacyEnchantments?: Partial<Record<LegacyUpgradeId, number>>; interactive?: boolean; startingSkills?: UpgradeId[] }): CanonicalState {
+export function createCanonicalState(options: { seed: number; targetWave?: number; startWave?: number; balance?: BalanceConfig; skills?: SkillConfig[]; waves?: WaveDefinition[]; legacyEnchantments?: Partial<Record<LegacyUpgradeId, number>>; interactive?: boolean; startingSkills?: UpgradeId[] }): CanonicalState {
   const runConfig: CanonicalRunConfig = {
     balance: { ...DEFAULT_BALANCE_CONFIG, ...options.balance },
     skills: (options.skills?.length ? options.skills.map((config) => normalizeSkillConfigs([config]).find((entry) => entry.id === config.id) ?? config) : DEFAULT_SKILLS).map(cloneSkillConfigForState),
@@ -1841,12 +1885,15 @@ export function createCanonicalState(options: { seed: number; targetWave?: numbe
     startingSkills: [...(options.startingSkills ?? [])],
   };
   const interactive = options.interactive ?? false;
+  const initialWave = Math.max(1, Math.min(runConfig.waves.length, Math.floor(options.startWave ?? 1)));
   const state: CanonicalState = {
     bossIntroTimer: 0,
+    collisionGrid: new Map(),
     seed: options.seed, rng: { world: options.seed >>> 0 || 1, reward: (options.seed ^ 0x9e3779b9) >>> 0 || 1 }, runConfig, tick: 0, eventSequence: 0, phase: interactive ? "awaiting-start-skill" : "running", interactive, pendingChoices: [], pendingBossChoices: [], rerollsLeft: 1, pendingWave: null, clearedWave: null, clearedBoss: false, gameOverReason: null, stepEvents: [], balance: runConfig.balance, skills: runConfig.skills, waves: runConfig.waves, targetWave: runConfig.targetWave,
     wave: 1, waveElapsed: 0, elapsed: 0, rowTimer: 0, itemBarrierTime: 0, overdriveLevel: 0, paddleX: GAME_WIDTH / 2, paddleWidth: BASE_PADDLE_WIDTH, lastMove: 0, moveBoostTime: 0, balls: [], bricks: [], items: [], gravityWells: [], bossBarriers: [], bossWalls: [], bossShield: { active: false, life: 0, maxLife: 0, runeIds: [] }, bossArmorHp: 0, bossArmorReformThresholds: [false, false, false], bossArmorReformTimer: 0, bossArmorReformCells: [], bossReinforcementIds: [], bossReinforcementTimer: 0, bossReinforcementTelegraph: 0, upgrades: [], bossEnhancements: {}, legacyEnchantments: { ...(options.legacyEnchantments ?? {}) }, echoSplitReflections: 0, safetyBlocks: [], skillHistory: [], skillMetrics: {}, sharedSkillCooldowns: {}, combatStats: { physicalPower: 1, magicPower: 1, skillDamageMultiplier: 1, skillRangeMultiplier: 1, skillDurationMultiplier: 1, skillCooldownMultiplier: 1, chainBonus: 0 }, waveMetrics: [], coreHp: 8, maxCoreHp: 8, score: 0, bricksBroken: 0, combo: 0, maxCombo: 0, maxBalls: 1, ballLosses: 0, totalDamage: 0, physicalDamage: 0, magicDamage: 0, lastDamageElapsed: 0, reflectorBlockedHits: 0, barrierTime: 0, barrierCharges: 0, bossAttackTimer: 0, bossPattern: 0, lastShotTimer: 0, nextBrickId: 1, complete: false, gameOver: false,
   };
-  buildWave(state, 1);
+  state.wave = initialWave;
+  buildWave(state, initialWave);
   state.balls = [makeBall(state)];
   for (const id of runConfig.startingSkills) grantCanonicalSkill(state, id, "start");
   state.stepEvents.length = 0;
@@ -2096,6 +2143,7 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
       if (state.bossShield.life <= 0) {
         const expiredRuneIds = new Set(state.bossShield.runeIds);
         state.bricks = state.bricks.filter((brick) => !expiredRuneIds.has(brick.id));
+        rebuildCollisionGrid(state);
       }
       state.bossShield = { active: false, life: 0, maxLife: state.bossShield.maxLife, runeIds: [] };
     }
@@ -2303,7 +2351,7 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
         }
       }
     }
-    for (const brick of state.bricks) {
+    for (const brick of collisionCandidates(state, ball, previousBallX, previousBallY)) {
       if (!brick.alive) continue;
       const collision = circleRect(ball, brick);
       if (!collision) continue;
@@ -2435,6 +2483,7 @@ export function serializeCanonicalState(state: CanonicalState) {
 export function restoreCanonicalState(serialized: string): CanonicalState {
   const parsed = JSON.parse(serialized) as Omit<CanonicalState, "stepEvents">;
   const state = { ...parsed, stepEvents: [] } as CanonicalState;
+  state.collisionGrid = new Map();
   state.sharedSkillCooldowns ??= {};
   state.bossBarriers ??= [];
   state.bossWalls ??= [];
@@ -2504,6 +2553,7 @@ export function restoreCanonicalState(serialized: string): CanonicalState {
     ball.awaitingLaunch ??= false;
     ball.launchWaitTime ??= ball.awaitingLaunch ? 3 : 0;
   }
+  rebuildCollisionGrid(state);
   return state;
 }
 

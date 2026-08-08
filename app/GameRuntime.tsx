@@ -185,6 +185,72 @@ function SkillDescriptionText({ text }: { text: string }) {
 let activeSkillMap = skillConfigMap(DEFAULT_SKILLS);
 const DEFAULT_UPGRADES = createUpgradeCatalog(NORMAL_SKILLS);
 
+const INITIAL_ART_ASSETS = Array.from(new Set([
+  TITLE_LOGO_ASSET,
+  "/assets/ui/forged-core/title-background-v3.png",
+  "/assets/ui/forged-core/title-core-pulse.png",
+  "/assets/ui/forged-core/title-rune-energy.png",
+  "/assets/ui/forged-core/title-burst.png",
+  ...Object.values(STATUS_ICON_ASSETS),
+  ...Object.values(ITEM_ICON_ASSETS),
+  ...SKILL_SHEET_ASSETS,
+  RING_EXPLOSION_ASSET,
+  ...HIT_SPARK_ASSETS,
+  RADIAL_LIGHTNING_ASSET,
+  ...MAGE_SPELL_ASSETS,
+  "/assets/gameplay/backgrounds/wave-01-05-v7.png",
+  "/assets/gameplay/backgrounds/wave-06-10-v7.png",
+  "/assets/gameplay/backgrounds/wave-11-15-v7.png",
+  "/assets/gameplay/backgrounds/wave-16-20-v7.png",
+  "/assets/gameplay/blocks/standard.png",
+  "/assets/gameplay/blocks/guard.png",
+  "/assets/gameplay/blocks/explosive.png",
+  "/assets/gameplay/blocks/indestructible.png",
+  "/assets/gameplay/blocks/healer.png",
+  "/assets/gameplay/blocks/reflector.png",
+  "/assets/gameplay/props/ball.png",
+  "/assets/gameplay/props/paddle.png",
+  "/assets/gameplay/props/rune-ring.png",
+  "/assets/gameplay/items/multiball.png",
+  "/assets/gameplay/items/auto-barrier.png",
+  "/assets/gameplay/items/core-repair.png",
+  "/assets/gameplay/items/cooldown-reset.png",
+  "/assets/gameplay/boss-patterns/boss-rune-barrier.png",
+  "/assets/gameplay/boss-patterns/boss-wall-protrusion.png",
+  "/assets/gameplay/boss-patterns/boss-gravity-rune.png",
+  "/assets/gameplay/boss-patterns/boss-core-shield.png",
+  "/assets/gameplay/boss-patterns/boss-rune-ward.png",
+  "/assets/gameplay/boss-vfx/boss-barrier-sheet.png",
+  "/assets/gameplay/boss-vfx/boss-wall-sheet.png",
+  "/assets/gameplay/boss-vfx/boss-gravity-sheet.png",
+  "/assets/gameplay/boss-vfx/boss-shield-sheet.png",
+  ...["05", "10", "15", "20"].flatMap((wave) => [
+    `/assets/gameplay/boss-blocks/boss-core-2x2-wave-${wave}.png`,
+    ...Array.from({ length: 12 }, (_, index) => `/assets/gameplay/boss-blocks/boss-wave-${wave}-r${Math.floor(index / 4) + 1}c${index % 4 + 1}.png`),
+  ]),
+  ...DEFAULT_UPGRADES.map((skill) => `/assets/ui/skills/forged-core/${skill.category}/${skill.id}.png`),
+  ...["warrior", "archer", "mage", "common"].map((category) => `/assets/ui/forged-core/class-${category}.png`),
+]));
+
+function preloadInitialArt(onProgress: (progress: number) => void) {
+  if (typeof Image === "undefined") return Promise.resolve();
+  let completed = 0;
+  const total = INITIAL_ART_ASSETS.length;
+  onProgress(0);
+  return Promise.all(INITIAL_ART_ASSETS.map((src) => new Promise<void>((resolve) => {
+    const image = new Image();
+    image.decoding = "async";
+    const finish = () => {
+      completed += 1;
+      onProgress(Math.round(completed / total * 100));
+      resolve();
+    };
+    image.onload = finish;
+    image.onerror = finish;
+    image.src = src;
+  })));
+}
+
 function skillValue(id: UpgradeId, level: number) {
   const config = activeSkillMap[id];
   return level <= 0 || !config ? 0 : levelValue(level, config.levels);
@@ -544,6 +610,8 @@ export type GameRuntimeProps = { benchmarkMode?: boolean };
 
 export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [artReady, setArtReady] = useState(false);
+  const [artLoadProgress, setArtLoadProgress] = useState(0);
   const ringExplosionRef = useRef<HTMLImageElement | null>(null);
   const ringExplosionReadyRef = useRef(false);
   const hitSparkRefs = useRef<Array<HTMLImageElement | null>>([null, null]);
@@ -556,6 +624,18 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const skillSheetReadyRef = useRef([false, false, false]);
   const itemIconRefs = useRef<Partial<Record<ItemKind, HTMLImageElement | null>>>({});
   const itemIconReadyRef = useRef<Partial<Record<ItemKind, boolean>>>({});
+  useEffect(() => {
+    let cancelled = false;
+    preloadInitialArt((progress) => {
+      if (!cancelled) setArtLoadProgress(progress);
+    }).then(() => {
+      if (!cancelled) {
+        setArtLoadProgress(100);
+        setArtReady(true);
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
   const gameRef = useRef<GameState | null>(null);
   // Frame-scoped side effects are emitted by update code and consumed by the
   // canvas/audio boundary immediately before rendering the next frame.
@@ -1339,7 +1419,10 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
       game.flashes.push({ text: skillId === "original" ? "ORIGINAL // NO SKILLS" : `SKILL BENCH // ${level === 0 ? "BASELINE" : `${benchSkill?.name ?? skillId} LV${level}`}`, x: W / 2, y: H / 2, life: 1.8, color: level === 0 || !benchSkill ? "#8492a9" : benchSkill.color });
     } else {
       botSkillBenchVariantRef.current = null;
-      if (asBot) {
+      if (asBot && benchmarkMode && benchmarkConfigRef.current.startingSkills.length > 0) {
+        game.upgrades = [...benchmarkConfigRef.current.startingSkills];
+        game.balls.forEach((ball) => syncBallPayloadDisplay(ball, game.upgrades));
+      } else if (asBot) {
         const grantBotStartingSkill = (id: UpgradeId) => {
           const previousLevel = upgradeLevel(game.upgrades, id);
           game.upgrades.push(id);
@@ -1362,6 +1445,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
         balance: balanceConfigRef.current,
         skills: activeSkillConfigsRef.current,
         waves: getActiveWaveDefinitions(),
+        startWave: benchmarkMode ? benchmarkConfigRef.current.startWave : 1,
         targetWave: benchmarkMode ? benchmarkConfigRef.current.targetWave : MAX_WAVE,
         interactive: true,
         startingSkills: [...game.upgrades],
@@ -1871,17 +1955,35 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     localStorage.setItem(BENCHMARK_STORAGE_KEY, JSON.stringify(next));
   };
 
+  if (!artReady) {
+    return (
+      <main className="app-shell art-loading-shell" aria-busy="true" aria-live="polite">
+        <section className="art-loading-screen">
+          <div className="art-loading-core" aria-hidden="true"><span /></div>
+          <p className="art-loading-kicker">CORE BREAKER</p>
+          <h1>LOADING ART</h1>
+          <div className="art-loading-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={artLoadProgress}>
+            <span style={{ width: `${artLoadProgress}%` }} />
+          </div>
+          <small>{artLoadProgress}%</small>
+        </section>
+      </main>
+    );
+  }
+
   return (
-    <main onPointerOver={handleUiPointerOver} onClick={handleUiClick} data-replay-mode={replayRecorderRef.current?.log.mode ?? "idle"} data-replay-json={replayJson} className={`app-shell mode-${mode} ${mode === "transition" && transitionWave === 1 ? "first-game-entry" : ""} ${benchmarkMode ? "benchmark-shell" : "gameplay-shell"}`}>
+    <main onPointerOver={handleUiPointerOver} onClick={handleUiClick} data-replay-mode={replayRecorderRef.current?.log.mode ?? "idle"} data-replay-json={replayJson} className={`app-shell mode-${mode} ${mode === "transition" && transitionWave === 1 ? "first-game-entry" : ""} ${benchmarkMode ? "benchmark-shell gameplay-shell" : "gameplay-shell"}`}>
       <header className="topbar">
         <div className="brand-block">
           <span className="brand-mark">CB</span>
           <div><p className="eyebrow">{benchmarkMode ? `LIVE GAME RULES // TARGET W${benchmarkConfig.targetWave}` : "PLAYTEST BUILD 0.3 // LIVE GAMEPLAY"}</p><h1>{benchmarkMode ? "CORE BREAKER BENCH" : "CORE BREAKER"}</h1></div>
         </div>
         <div className="header-rule" />
-        <a className="lab-link" href={benchmarkMode ? appHref("/") : appHref("/benchmark")}>{benchmarkMode ? "GAMEPLAY" : "BENCHMARK"}</a>
-        <a className="lab-link" href={appHref("/skill-lab")}>SKILL LAB</a>
-        <a className="lab-link" href={appHref("/stage-lab")}>STAGE LAB</a>
+        <nav className="topbar-tabs" aria-label="Primary navigation">
+          <a className="lab-link" href={benchmarkMode ? appHref("/") : appHref("/benchmark")}>{benchmarkMode ? "GAMEPLAY" : "BENCHMARK"}</a>
+          <a className="lab-link" href={appHref("/skill-lab")}>SKILL LAB</a>
+          <a className="lab-link" href={appHref("/stage-lab")}>STAGE LAB</a>
+        </nav>
         <div className="audio-mixer" aria-label="Audio mixer">
           <label><span>SFX</span><input aria-label="Effects volume" type="range" min="0" max="1" step="0.01" value={sfxVolume} onChange={(event) => setSfxVolume(Number(event.target.value))} /><output>{Math.round(sfxVolume * 100)}%</output></label>
           <label><span>BGM</span><input aria-label="Music volume" type="range" min="0" max="1" step="0.01" value={musicVolume} onChange={(event) => setMusicVolume(Number(event.target.value))} /><output>{Math.round(musicVolume * 100)}%</output></label>
@@ -2079,28 +2181,40 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                       min="0"
                       max="1"
                       step="0.01"
-                      value={Math.max(sfxVolume, musicVolume)}
+                      value={sfxVolume}
                       onChange={(event) => {
                         const value = Number(event.target.value);
                         setSfxVolume(value);
-                        setMusicVolume(value);
                       }}
                     />
-                    <output>{Math.round(Math.max(sfxVolume, musicVolume) * 100)}%</output>
+                    <output>{Math.round(sfxVolume * 100)}%</output>
+                  </label>
+                  <label className="runtime-volume-control">
+                    <span>BGM</span>
+                    <input
+                      aria-label="Music volume"
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={musicVolume}
+                      onChange={(event) => setMusicVolume(Number(event.target.value))}
+                    />
+                    <output>{Math.round(musicVolume * 100)}%</output>
                   </label>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="build-tray">
+          {mode !== "lobby" && <div className="build-tray">
             <span className="tray-title">CURRENT BUILD</span>
             <div className="build-items">
               {(gameRef.current ? upgradeCounts(gameRef.current.upgrades) : []).map((u) => <span key={u.id} style={{ borderColor: u.color, color: u.color }}>{u.tag} <b>×{u.count}</b></span>)}
               {(!gameRef.current || gameRef.current.upgrades.length === 0) && <em>웨이브 보상을 선택하면 조합이 여기에 기록됩니다.</em>}
             </div>
             <div className="controls">MOVE <kbd>A</kbd><kbd>D</kbd> · AIM / MOUSE OR <kbd>←</kbd><kbd>→</kbd></div>
-          </div>
+          </div>}
         </div>
 
         {benchmarkMode && <aside className="benchmark-panel">
@@ -2195,7 +2309,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
           </div>
         </aside>}
       </section>
-      {benchmarkMode && (
+      {benchmarkMode && mode !== "lobby" && (
         <><BenchmarkDashboard
           visibleBotResults={visibleBotResults}
           benchmarkConfig={benchmarkConfig}
