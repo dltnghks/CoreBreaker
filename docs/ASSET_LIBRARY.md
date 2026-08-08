@@ -2,7 +2,9 @@
 
 > Initial curation · 2026-08-05  
 > Owner: Lead Art Direction  
-> Status: acquisition shortlist; no third-party binaries imported yet
+> Status: reference shortlist; selected third-party assets are documented separately in `docs/THIRD_PARTY_ASSETS.md`
+
+This document describes art-direction candidates and reference sources. It is not an inventory of imported runtime files. A candidate listed here should not be treated as used in the game unless it also appears in `docs/THIRD_PARTY_ASSETS.md` or is identified as a project original.
 
 ## Curation rule
 

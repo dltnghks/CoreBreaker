@@ -1,8 +1,19 @@
 # Third-party assets
 
-> Last audited: 2026-07-21
+> Last audited: 2026-08-09
 >
-> Runtime usage: combat VFX rendered from `app/page.tsx`; procedural Canvas effects remain as loading/error fallbacks.
+> Runtime usage: combat VFX are loaded by `app/GameRuntime.tsx` and rendered by `app/game-runtime-canvas.ts`; procedural Canvas effects remain as loading/error fallbacks.
+
+## BGM
+
+- File: `public/audio/BGM_LOOP.mp3`
+- Title: **Retro Arcade Game Music**
+- Creator: MondaMusic
+- Source: https://pixabay.com/music/video-games-retro-arcade-game-music-512837/
+- License: Pixabay Content License
+- Changes: Used as the looping gameplay BGM. The repository also contains `public/audio/BGM_LOOP.m4a` as an alternate encoded copy.
+
+Pixabay attribution is retained here for provenance. Redistribution remains subject to the Pixabay Content License.
 
 ## Ring Explosion
 

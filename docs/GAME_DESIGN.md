@@ -287,7 +287,7 @@ CORE는 패들 내부 숫자가 아니라 패들 아래에 남은 수만큼 개�
 | `app/benchmark-headless.ts` | 반복 실행, 스킬 선택, 결과 직렬화 |
 | `app/benchmark-worker.ts` | 병렬 Worker 진입점 |
 | `app/balance-config.ts` | 보스·HP·벤치 설정과 저장 키 |
-| `app/game-audio.ts` | 합성 사운드 시스템 |
+| `app/game-audio.ts` | Pixabay BGM 재생 및 합성/생성 SFX 관리 |
 | `tests/rendered-html.test.mjs` | 게임 규칙과 UI 회귀 테스트 |
 | `tests/benchmark-parity.test.mjs` | 결정론, 권한, 반사 공략, 엔진 메타데이터 테스트 |
 

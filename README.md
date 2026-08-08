@@ -68,6 +68,15 @@ node --test tests\rendered-html.test.mjs tests\benchmark-parity.test.mjs
 
 ## GitHub Pages
 
-The repository includes `.github/workflows/deploy-pages.yml`. Pushes to `nhn-ai` build the existing Jekyll blog from `main`, add the game under `/game/`, and deploy the combined site to GitHub Pages.
+The repository includes `.github/workflows/pages-deploy.yml`. Pushes to `nhn-ai` build the existing Jekyll blog from `main`, add the game under `/game/`, and deploy the combined site to GitHub Pages.
+
+## External assets
+
+The game uses the following external assets:
+
+- BGM: “Retro Arcade Game Music” by MondaMusic from [Pixabay](https://pixabay.com/music/video-games-retro-arcade-game-music-512837/)
+- Combat VFX: Ring Explosion, Spark effect, Radial lightning effect, and Pixel Art Spells from OpenGameArt.org
+
+Full attribution and license information is available in [docs/THIRD_PARTY_ASSETS.md](docs/THIRD_PARTY_ASSETS.md). The assets listed in [docs/ASSET_LIBRARY.md](docs/ASSET_LIBRARY.md) are reference candidates unless they also appear in the third-party asset record.
 
 In the repository settings, set **Pages → Build and deployment → Source** to **GitHub Actions**. The blog remains at the root URL and the game is available at `/game/`, including `/game/benchmark`, `/game/skill-lab`, and `/game/stage-lab`.
