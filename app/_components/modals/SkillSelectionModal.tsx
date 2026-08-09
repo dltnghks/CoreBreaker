@@ -99,10 +99,15 @@ export function SkillSelectionModal({
                 ))}
               </div>
               <div className="upgrade-tooltip" role="tooltip">
-                <span>발동 조건</span>
-                <b>{config!.trigger}</b>
-                <p>{resolveSkillSummary(config!, evolutionChoice ? 3 : Math.max(1, currentLevel + 1))}</p>
-                {evolutionChoice && config!.evolution && <p className="upgrade-evolution">{config!.evolution}</p>}
+                {evolutionChoice && config!.evolution ? (
+                  <p className="upgrade-evolution">{config!.evolution}</p>
+                ) : (
+                  <>
+                    <span>발동 조건</span>
+                    <b>{config!.trigger}</b>
+                    <p>{resolveSkillSummary(config!, Math.max(1, currentLevel + 1))}</p>
+                  </>
+                )}
               </div>
             </button>
           );

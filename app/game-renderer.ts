@@ -278,7 +278,10 @@ export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor
     if (healthFlashRatio > 0 && brick.healthFlashKind) {
       const flashColor = brick.healthFlashKind === "heal" ? "#72f1b8" : "#ff6b87";
       ctx.save(); ctx.globalAlpha = Math.min(.72, healthFlashRatio * .72); ctx.fillStyle = flashColor; trace(brick, 2); ctx.fill();
-      ctx.globalAlpha = Math.min(1, healthFlashRatio * 1.2); ctx.strokeStyle = flashColor; ctx.shadowColor = flashColor; ctx.shadowBlur = brick.healthFlashKind === "heal" ? 20 : 13; ctx.lineWidth = brick.healthFlashKind === "heal" ? 3 : 2; trace(brick, -2 * healthFlashRatio); ctx.stroke(); ctx.restore();
+      if (brick.healthFlashKind === "damage") {
+        ctx.globalAlpha = Math.min(1, healthFlashRatio * 1.2); ctx.strokeStyle = flashColor; ctx.shadowColor = flashColor; ctx.shadowBlur = 13; ctx.lineWidth = 2; trace(brick, -2 * healthFlashRatio); ctx.stroke();
+      }
+      ctx.restore();
     }
     ctx.restore();
   });
@@ -306,12 +309,12 @@ export function renderBalls({ ctx, game, getSkill, classSkillColor, mageSpells =
     const ballVisualColor = isExtraBall ? "#9a8cff" : "#fffdf4";
     const skillEffectAlpha = isExtraBall ? 0.38 : 1;
     ctx.save();
-    const trailSteps = 4 + Math.min(5, Math.floor(powerBoost));
+    const trailSteps = 4;
     for (let trail = trailSteps; trail >= 1; trail--) {
       ctx.globalAlpha = (0.035 + ((trailSteps + 1 - trail) / trailSteps) * 0.15) * ballAlpha;
       ctx.fillStyle = ballVisualColor;
       ctx.beginPath();
-      ctx.arc(ball.x - ball.vx / speed * trail * (7 + powerBoost), ball.y - ball.vy / speed * trail * (7 + powerBoost), Math.max(2, radius - trail * 1.05), 0, Math.PI * 2);
+      ctx.arc(ball.x - ball.vx / speed * trail * 7, ball.y - ball.vy / speed * trail * 7, Math.max(2, radius - trail * 1.05), 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalAlpha = ballAlpha;
@@ -567,7 +570,7 @@ export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor,
   draw(playerX, playerY, playerWidth, playerColor, 1, true);
   playerCores.forEach((core) => drawCoreCrystal(ctx, core.x, core.y, core.scale ?? 1, core.alpha ?? 1, core.danger ?? false));
   if (itemBarrierTime > 0) {
-    const maxBarrierTime = 10;
+    const maxBarrierTime = 5;
     const progress = Math.min(1, itemBarrierTime / maxBarrierTime);
     const warning = itemBarrierTime <= 1;
     const color = warning ? "#ff6b87" : "#65dcff";

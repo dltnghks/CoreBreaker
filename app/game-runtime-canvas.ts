@@ -195,7 +195,7 @@ renderWorldOverlays({ ctx, elapsed: game.elapsed, gravityWells: game.gravityWell
     ctx.globalAlpha = remaining * 0.9;
     ctx.strokeStyle = effect.color;
     ctx.shadowColor = effect.color;
-    ctx.shadowBlur = 18;
+    ctx.shadowBlur = 12;
     if (effect.kind === "skill") {
       const effectSkillId = effect.skillId;
       const skillVfx = effectSkillId ? SKILL_VFX_CONFIG[effectSkillId] : undefined;
@@ -218,51 +218,70 @@ renderWorldOverlays({ ctx, elapsed: game.elapsed, gravityWells: game.gravityWell
         const frameAspect = frameWidth / Math.max(1, frameHeight);
         const drawWidth = spriteSize * frameAspect;
         ctx.save();
-        ctx.shadowBlur = isArcherSkill ? 30 : 18;
-        ctx.filter = isArcherSkill ? "saturate(1.55) brightness(1.18)" : "none";
+        ctx.shadowBlur = isArcherSkill ? 20 : 14;
+        ctx.filter = isArcherSkill ? "saturate(1.25) brightness(1.06)" : "none";
         ctx.translate(effect.x, effect.y);
         if (skillVfx?.rotation === "direction" && (effect.x2 !== effect.x || effect.y2 !== effect.y)) {
           ctx.rotate(Math.atan2(effect.y2 - effect.y, effect.x2 - effect.x));
         } else if (skillVfx?.rotation === "spin") {
           ctx.rotate(progress * Math.PI * 2);
         }
-        ctx.globalAlpha = Math.min(1, remaining * 1.85 * skillOpacity);
+        ctx.globalAlpha = Math.min(0.88, remaining * 1.35 * skillOpacity);
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(spriteImage, frame * frameWidth, spriteRow.row * frameHeight, frameWidth, frameHeight, -drawWidth / 2, -spriteSize / 2, drawWidth, spriteSize);
         ctx.restore();
       } else {
-        ctx.globalAlpha = remaining * 0.9 * skillOpacity;
+        ctx.globalAlpha = remaining * 0.72 * skillOpacity;
         ctx.lineWidth = 3 + remaining * 4;
         ctx.beginPath();
         ctx.arc(effect.x, effect.y, effect.size * (0.2 + progress * 0.8), 0, Math.PI * 2);
         ctx.stroke();
       }
     } else if (effect.kind === "beam") {
-      const dx = effect.x2 - effect.x;
-      const dy = effect.y2 - effect.y;
-      const distance = Math.max(1, Math.hypot(dx, dy));
-      const unitX = dx / distance;
-      const unitY = dy / distance;
-      const beamGradient = ctx.createLinearGradient(effect.x, effect.y, effect.x2, effect.y2);
+      const beamPoints = effect.points && effect.points.length > 1
+        ? effect.points
+        : [{ x: effect.x, y: effect.y }, { x: effect.x2, y: effect.y2 }];
+      const firstPoint = beamPoints[0];
+      const lastPoint = beamPoints[beamPoints.length - 1];
+      const beamGradient = ctx.createLinearGradient(firstPoint.x, firstPoint.y, lastPoint.x, lastPoint.y);
       beamGradient.addColorStop(0, "rgba(255,255,255,.9)");
       beamGradient.addColorStop(0.2, effect.color);
       beamGradient.addColorStop(0.8, effect.color);
       beamGradient.addColorStop(1, "rgba(255,255,255,.9)");
       ctx.strokeStyle = beamGradient;
       ctx.lineCap = "round";
-      ctx.globalAlpha = Math.min(1, remaining * 1.8);
+      ctx.globalAlpha = Math.min(0.84, remaining * 1.35);
       ctx.lineWidth = Math.max(2, effect.size * (0.42 + remaining * 0.2));
       ctx.beginPath();
-      ctx.moveTo(effect.x, effect.y);
-      ctx.lineTo(effect.x2, effect.y2);
+      ctx.moveTo(firstPoint.x, firstPoint.y);
+      for (let pointIndex = 1; pointIndex < beamPoints.length; pointIndex += 1) {
+        const point = beamPoints[pointIndex];
+        ctx.lineTo(point.x, point.y);
+      }
       ctx.stroke();
-      const tracer = Math.min(distance, distance * progress);
-      ctx.strokeStyle = "rgba(255,255,255,.96)";
-      ctx.lineWidth = Math.max(2, effect.size * 0.32);
-      ctx.beginPath();
-      ctx.moveTo(effect.x + unitX * Math.max(0, tracer - 22), effect.y + unitY * Math.max(0, tracer - 22));
-      ctx.lineTo(effect.x + unitX * tracer, effect.y + unitY * tracer);
-      ctx.stroke();
+      if (effect.points && effect.points.length > 1) {
+        ctx.fillStyle = "rgba(255,255,255,.94)";
+        ctx.globalAlpha = Math.min(0.92, remaining * 1.6);
+        for (let pointIndex = 1; pointIndex < beamPoints.length; pointIndex += 1) {
+          const point = beamPoints[pointIndex];
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, 2 + remaining * 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        const dx = effect.x2 - effect.x;
+        const dy = effect.y2 - effect.y;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        const unitX = dx / distance;
+        const unitY = dy / distance;
+        const tracer = Math.min(distance, distance * progress);
+        ctx.strokeStyle = "rgba(255,255,255,.96)";
+        ctx.lineWidth = Math.max(2, effect.size * 0.32);
+        ctx.beginPath();
+        ctx.moveTo(effect.x + unitX * Math.max(0, tracer - 22), effect.y + unitY * Math.max(0, tracer - 22));
+        ctx.lineTo(effect.x + unitX * tracer, effect.y + unitY * tracer);
+        ctx.stroke();
+      }
     } else if (effect.kind === "ring") {
       ctx.lineWidth = 2 + remaining * 4;
       ctx.beginPath();

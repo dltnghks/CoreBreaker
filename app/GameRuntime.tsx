@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { GameAudio, type MusicState } from "./game-audio";
-import { canonicalUpgradeId, DEFAULT_SKILLS, levelValue, NORMAL_SKILLS, normalizeSkillConfigs, resolveSkillSummary, SKILL_BUILD_STORAGE_KEY, SKILL_COLORS, SKILL_MECHANIC_LABELS, SKILL_STORAGE_KEY, skillConfigMap, skillConfigSignature, type ClassSkillId, type SkillCategory, type SkillConfig, type UpgradeId } from "./skill-config";
+import { DEFAULT_SKILLS, levelValue, NORMAL_SKILLS, normalizeSkillConfigs, resolveSkillSummary, SKILL_BUILD_STORAGE_KEY, SKILL_COLORS, SKILL_MECHANIC_LABELS, SKILL_STORAGE_KEY, skillConfigMap, skillConfigSignature, type ClassSkillId, type SkillCategory, type SkillConfig, type UpgradeId } from "./skill-config";
 import { BALANCE_STORAGE_KEY, BOT_LIVE_STORAGE_KEY, BOT_RESULTS_STORAGE_KEY, DEFAULT_BALANCE_CONFIG, DEFAULT_SKILL_BENCH_CONFIG, DEFAULT_SKILL_BENCH_PROGRESS, normalizeBalanceConfig, normalizeSkillBenchConfig, normalizeSkillBenchProgress, SKILL_BENCH_PROGRESS_KEY, SKILL_BENCH_STORAGE_KEY, type BalanceConfig, type BotWaveSample, type SkillBenchConfig, type SkillBenchProgress } from "./balance-config";
 import { BENCHMARK_STORAGE_KEY, DEFAULT_BENCHMARK_CONFIG, normalizeBenchmarkConfig, type BenchmarkConfig } from "./benchmark-config";
 import { WAVE_CELL_SIZE, WAVE_COLUMNS, blocksFromPattern, getActiveWaveDefinitions, MAX_WAVE, waveDefinition } from "./wave-config";
@@ -311,8 +311,10 @@ function syncBallPayloadDisplay(ball: Ball, upgrades: UpgradeId[] = []) {
 
 function pickBrickDrop(): ItemKind | null {
   if (environmentRandom() >= 0.055) return null;
-  const utilityDrops: ItemKind[] = ["auto-barrier", "core-repair", "cooldown-reset"];
-  return utilityDrops[Math.floor(environmentRandom() * utilityDrops.length)];
+  const roll = environmentRandom();
+  if (roll < 2.55 / 5.5) return "auto-barrier";
+  if (roll < 2.95 / 5.5) return "core-repair";
+  return "cooldown-reset";
 }
 
 function hasScheduledMultiball(wave: number) {
@@ -325,7 +327,7 @@ function brickRuntimeState(trait: BrickTrait = "standard") {
 }
 
 function lateWaveHpMultiplier(waveNumber: number) {
-  return waveNumber >= 16 ? 2.5 : waveNumber >= 11 ? 1.9 : waveNumber >= 6 ? 1.45 : waveNumber >= 4 ? 1.15 : 1;
+  return waveNumber >= 16 ? 2.1 : waveNumber >= 11 ? 1.9 : waveNumber >= 6 ? 1.45 : waveNumber >= 4 ? 1.15 : 1;
 }
 
 function isDamageableBrick(brick: Brick) {
@@ -451,7 +453,7 @@ function makeBossBricks(stage: number, balance: BalanceConfig, waveHpMultiplier 
   const startY = 94;
   const bossHpMultiplier = [1, 0.85, 0.95, 1.05, 1.2][Math.min(4, stage)] ?? 0.85;
   const earlyBossHealthScale = stage <= 2 ? 0.4 : 1;
-  const coreHp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage * 0.55) * bossHpMultiplier * waveHpMultiplier * 0.5 * earlyBossHealthScale);
+  const coreHp = Math.round((balance.bossBaseHp + stage * balance.bossHpPerStage * 0.55) * bossHpMultiplier * waveHpMultiplier * 0.25 * earlyBossHealthScale);
   return [{
     x: startX, y: startY, w: width, h: height,
     hp: coreHp, maxHp: coreHp,
@@ -761,9 +763,19 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const [, setSelectedIds] = useState<string[]>([]);
   const [hud, setHudState] = useState<HudSnapshot>({ score: 0, time: 0, level: 1, combo: 0, bricks: 0, balls: 1, wave: 1, nextRow: STARTING_WAVE_ELAPSED, coreHp: MAX_CORE_HP, maxCoreHp: MAX_CORE_HP, barriers: 0, overdriveLevel: 0, overdriveMultiplier: 1, bossActive: false, bossPending: false, nextBossWave: BOSS_INTERVAL, bossTimeRemaining: 0, waveName: waveDefinition(1).name, aliveBricks: 0, skillLevels: [] });
   const [ownedSkillPage, setOwnedSkillPage] = useState(0);
+  const [coreFeedback, setCoreFeedback] = useState<{ kind: "damage" | "heal" | null; sequence: number }>({ kind: null, sequence: 0 });
+  const coreFeedbackSequenceRef = useRef(0);
   const lastHudSnapshotRef = useRef<HudSnapshot | null>(null);
   const setHud = useCallback((next: HudSnapshot) => {
-    if (hudSnapshotsEqual(lastHudSnapshotRef.current, next)) return;
+    const previous = lastHudSnapshotRef.current;
+    if (hudSnapshotsEqual(previous, next)) return;
+    if (previous && next.coreHp !== previous.coreHp) {
+      coreFeedbackSequenceRef.current += 1;
+      setCoreFeedback({
+        kind: next.coreHp < previous.coreHp ? "damage" : "heal",
+        sequence: coreFeedbackSequenceRef.current,
+      });
+    }
     lastHudSnapshotRef.current = next;
     setHudState(next);
   }, []);
@@ -781,9 +793,11 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const [rerollsLeft, setRerollsLeft] = useState(1);
   const [result, setResult] = useState<GameState | null>(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const settingsPausedRunRef = useRef(false);
   const [, setSavedMessage] = useState("");
   const [upgradeCatalog, setUpgradeCatalog] = useState<Upgrade[]>(DEFAULT_UPGRADES);
-  const { soundEnabled, sfxVolume, musicVolume, setSfxVolume, setMusicVolume, toggleSound } = useRuntimeSettings(audioRef, artReady);
+  const { sfxVolume, musicVolume, setSfxVolume, setMusicVolume } = useRuntimeSettings(audioRef, artReady);
   useEffect(() => {
     const boss = hud.bossActive || (gameRef.current?.bossStage ?? 0) > 0;
     let state: MusicState;
@@ -806,14 +820,25 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     if (control && (!(from instanceof Node) || !control.contains(from))) playUiSound("ui-hover", 0.45);
   }, [playUiSound]);
 
-  const togglePause = useCallback(() => {
-    if (botActiveRef.current || mode !== "playing") return;
-    const nextPaused = !isPaused;
-    setIsPaused(nextPaused);
-    runningRef.current = !nextPaused;
-    if (nextPaused) playUiSound("pause");
-    else resetLoopClockRef.current();
+  const openSettings = useCallback(() => {
+    const shouldPauseRun = mode === "playing" && !isPaused && !botActiveRef.current;
+    settingsPausedRunRef.current = shouldPauseRun;
+    if (shouldPauseRun) {
+      setIsPaused(true);
+      runningRef.current = false;
+      playUiSound("pause");
+    }
+    setIsSettingsOpen(true);
   }, [isPaused, mode, playUiSound]);
+  const closeSettings = useCallback(() => {
+    setIsSettingsOpen(false);
+    if (settingsPausedRunRef.current && mode === "playing") {
+      setIsPaused(false);
+      runningRef.current = true;
+      resetLoopClockRef.current();
+    }
+    settingsPausedRunRef.current = false;
+  }, [mode]);
   const handleUiClick = useCallback((event: ReactMouseEvent<HTMLElement>) => {
     if (!(event.target instanceof Element)) return;
     if (event.target.closest("button, a")) playUiSound("ui-click", 0.7);
@@ -1387,7 +1412,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     canonicalTerminalRef.current = null;
     const audio = audioRef.current ?? new GameAudio();
     audioRef.current = audio;
-    audio.setMuted(!soundEnabled);
+    audio.setMuted(false);
     audio.setMusicState({ active: true, state: "transition" });
     void audio.unlock().then(() => audio.play("start"));
     void audio.startMusic();
@@ -1511,14 +1536,26 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   }, [benchmarkMode]);
 
   useEffect(() => {
-    if (mode !== "lobby" || benchmarkMode) return;
+    if (mode !== "lobby" || benchmarkMode || isSettingsOpen) return;
     const onTitleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Tab" || event.key === "Shift" || event.key === "Control" || event.key === "Alt" || event.metaKey || event.ctrlKey) return;
+      if (event.key === "Escape" || event.key === "Tab" || event.key === "Shift" || event.key === "Control" || event.key === "Alt" || event.metaKey || event.ctrlKey) return;
       triggerTitleStart();
     };
     window.addEventListener("keydown", onTitleKeyDown);
     return () => window.removeEventListener("keydown", onTitleKeyDown);
-  }, [benchmarkMode, mode, triggerTitleStart]);
+  }, [benchmarkMode, isSettingsOpen, mode, triggerTitleStart]);
+
+  useEffect(() => {
+    if (benchmarkMode) return;
+    const toggleSettingsOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.repeat) return;
+      event.preventDefault();
+      if (isSettingsOpen) closeSettings();
+      else openSettings();
+    };
+    window.addEventListener("keydown", toggleSettingsOnEscape);
+    return () => window.removeEventListener("keydown", toggleSettingsOnEscape);
+  }, [benchmarkMode, closeSettings, isSettingsOpen, openSettings]);
 
   useEffect(() => {
     if (mode === "lobby") {
@@ -1820,6 +1857,8 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     stopLoop();
     gameRef.current = null;
     canonicalStateRef.current = null;
+    setIsSettingsOpen(false);
+    settingsPausedRunRef.current = false;
     setResult(null);
     setMode("lobby");
   };
@@ -1954,9 +1993,10 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const ownedSkillPages = Math.max(1, Math.ceil(hud.skillLevels.length / 12));
   const safeOwnedSkillPage = Math.min(ownedSkillPage, ownedSkillPages - 1);
   const visibleOwnedSkills = hud.skillLevels.slice(safeOwnedSkillPage * 12, safeOwnedSkillPage * 12 + 12);
-  useEffect(() => {
-    setOwnedSkillPage((page) => Math.min(page, Math.max(0, ownedSkillPages - 1)));
-  }, [ownedSkillPages]);
+  const displayedCoreHp = Math.max(0, Math.round(hud.coreHp));
+  const displayedMaxCoreHp = Math.max(1, Math.round(hud.maxCoreHp));
+  const coreHealthRatio = displayedCoreHp / displayedMaxCoreHp;
+  const coreHealthClass = coreHealthRatio <= 0.25 ? "is-critical" : coreHealthRatio <= 0.5 ? "is-warning" : "is-stable";
   const updateBenchmarkRuns = (runs: BenchmarkConfig["runs"]) => {
     const next = { ...benchmarkConfigRef.current, runs };
     benchmarkConfigRef.current = next;
@@ -1998,7 +2038,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
           <label><span>SFX</span><input aria-label="Effects volume" type="range" min="0" max="1" step="0.01" value={sfxVolume} onChange={(event) => setSfxVolume(Number(event.target.value))} /><output>{Math.round(sfxVolume * 100)}%</output></label>
           <label><span>BGM</span><input aria-label="Music volume" type="range" min="0" max="1" step="0.01" value={musicVolume} onChange={(event) => setMusicVolume(Number(event.target.value))} /><output>{Math.round(musicVolume * 100)}%</output></label>
         </div>
-        <button className="sound-toggle" type="button" aria-pressed={!soundEnabled} onClick={toggleSound}>{soundEnabled ? "SOUND ON" : "SOUND OFF"}</button>
         <div className="session-status"><span className={mode === "playing" ? "live-dot active" : "live-dot"} />{mode === "playing" ? "SESSION LIVE" : "SYSTEM READY"}</div>
       </header>
 
@@ -2050,6 +2089,17 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
               onPointerMove={(e) => onPointerMove(e.clientX, e.clientY)}
               onPointerDown={(e) => { onPointerMove(e.clientX, e.clientY); launchCanonicalBall(); }}
             />
+            {!benchmarkMode && (
+              <button
+                type="button"
+                className="settings-trigger"
+                aria-label="설정 열기"
+                aria-expanded={isSettingsOpen}
+                onClick={(event) => { event.stopPropagation(); openSettings(); }}
+              >
+                <img src="/assets/ui/core-breaker/icons/settings.png" alt="" aria-hidden="true" draggable={false} />
+              </button>
+            )}
             <output className="sr-only" aria-live="polite" aria-atomic="true">코어 체력 {hud.coreHp}/{hud.maxCoreHp}{hud.barriers > 0 ? `, 보호막 ${hud.barriers}개` : ""}</output>
             <div className="hud-badge hud-score" aria-label={`점수 ${formatScore(hud.score)}`}><i aria-hidden="true">✦</i><span><small>SCORE</small><strong>{formatScore(hud.score)}</strong></span></div>
             <div className="drop-legend" aria-label="아이템 블록 표시 안내">
@@ -2093,16 +2143,12 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                 <h2>BOSS REWARD</h2>
                 <div className="upgrade-grid">
                   {bossEnhancementCatalog.map((reward, index) => (
-                    <button key={reward.id} className={`upgrade-card class-${reward.category} boss-enhancement-card`} onClick={() => applyBossReward(reward.id)} style={{ "--accent": reward.color } as React.CSSProperties}>
+                    <button key={reward.id} className={`upgrade-card class-${reward.category} boss-enhancement-card evolution-card`} onClick={() => applyBossReward(reward.id)} style={{ "--accent": reward.color } as React.CSSProperties}>
                       <span className="upgrade-index">0{index + 1}</span>
                       <span className="upgrade-tag">{reward.tag}</span>
                       <span className="upgrade-icon" aria-hidden="true"><SkillIconArt id={reward.id} /></span>
                       <strong>{reward.name}</strong>
-                      <div className="upgrade-level-values">
-                        <span className="next"><small>LV3</small><b>EVOLVE</b></span>
-                      </div>
                       <p><strong className="skill-value-accent">{reward.evolution}</strong></p>
-                      <em>SKILL EVOLUTION</em>
                     </button>
                   ))}
                 </div>
@@ -2145,13 +2191,51 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                 </div>
               </div>
             )}
-            <div className="in-game-core-hud" aria-label={`CORE ${hud.coreHp}/${hud.maxCoreHp}`}>
-              <div className="core-pip-list" role="img" aria-label={`CORE ${hud.coreHp}/${hud.maxCoreHp}`}>
-                {Array.from({ length: Math.max(8, Math.ceil(hud.maxCoreHp)) }, (_, index) => {
-                  const filled = index < Math.ceil(Math.max(0, hud.coreHp) / Math.max(1, hud.maxCoreHp) * Math.max(8, Math.ceil(hud.maxCoreHp)));
-                  return <img key={index} className={`core-pip${filled ? " is-filled" : ""}`} src={STATUS_ICON_ASSETS.core} alt="" aria-hidden="true" />;
-                })}
+            {isSettingsOpen && (
+              <div className="settings-overlay" role="presentation" onClick={closeSettings}>
+                <section className="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={(event) => event.stopPropagation()}>
+                  <header>
+                    <div><small>CORE BREAKER</small><h2 id="settings-title">설정</h2></div>
+                    <button type="button" className="settings-close" aria-label="설정 닫기" onClick={closeSettings}>
+                      <img src="/assets/ui/core-breaker/icons/close.png" alt="" aria-hidden="true" draggable={false} />
+                    </button>
+                  </header>
+                  <div className="settings-audio-grid">
+                    <label className="settings-volume-control">
+                      <span>SFX</span>
+                      <input aria-label="효과음 볼륨" type="range" min="0" max="1" step="0.01" value={sfxVolume} onChange={(event) => setSfxVolume(Number(event.target.value))} />
+                      <output>{Math.round(sfxVolume * 100)}%</output>
+                    </label>
+                    <label className="settings-volume-control">
+                      <span>BGM</span>
+                      <input aria-label="배경음 볼륨" type="range" min="0" max="1" step="0.01" value={musicVolume} onChange={(event) => setMusicVolume(Number(event.target.value))} />
+                      <output>{Math.round(musicVolume * 100)}%</output>
+                    </label>
+                  </div>
+                  <div className="settings-control-guide" aria-label="조작 안내">
+                    <div><small>MOVE</small><strong><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd></strong></div>
+                    <div><small>AIM</small><strong>마우스</strong></div>
+                    <div><small>LAUNCH</small><strong>클릭</strong></div>
+                  </div>
+                </section>
               </div>
+            )}
+            <div
+              key={`core-hud-${coreFeedback.sequence}`}
+              className={`in-game-core-hud core-single-hud ${coreHealthClass}${coreFeedback.kind ? ` core-feedback-${coreFeedback.kind}` : ""}`}
+              role="status"
+              aria-live="polite"
+              aria-label={`코어 체력 ${displayedCoreHp}/${displayedMaxCoreHp}`}
+            >
+              <span className="core-single-icon" aria-hidden="true">
+                <img src={STATUS_ICON_ASSETS.core} alt="" />
+                <i className="core-single-crack" />
+              </span>
+              <strong className="core-single-value" aria-hidden="true">
+                <span className="current">{displayedCoreHp}</span>
+                <i>/</i>
+                <span className="maximum">{displayedMaxCoreHp}</span>
+              </strong>
             </div>
             </div>
 
@@ -2166,65 +2250,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                 <span><small>{hud.bossActive ? "BOSS WAVE" : "NEXT BOSS"}</small><strong>{hud.bossActive ? "NOW" : upcomingBossWave === null ? "—" : `${upcomingBossWave - hud.wave} WAVE`}</strong></span>
               </div>
               <div className="in-game-stat-card in-game-break-card"><div className="in-game-stat-main"><img className="in-game-stat-icon" src={STATUS_ICON_ASSETS.break} alt="" aria-hidden="true" /><span>BREAK</span></div><strong>{hud.bricks}</strong></div>
-              <div className="in-game-stat-card in-game-core-card">
-                <div className="core-pip-list" role="img" aria-label={`코어 ${hud.coreHp}/${hud.maxCoreHp}`}>
-                  {(() => {
-                    const iconCount = Math.max(8, Math.ceil(hud.maxCoreHp));
-                    return Array.from({ length: iconCount }, (_, index) => {
-                      const filled = index < Math.ceil(Math.max(0, hud.coreHp) / Math.max(1, hud.maxCoreHp) * iconCount);
-                      return <img key={index} className={`core-pip${filled ? " is-filled" : ""}`} src={STATUS_ICON_ASSETS.core} alt="" aria-hidden="true" />;
-                    });
-                  })()}
-                </div>
-              </div>
             </RightRailPanel>
-              {(
-                <RightRailPanel className="runtime-controls-panel" ariaLabel="게임 컨트롤">
-                  <button type="button" className="runtime-pause-button" onClick={togglePause} disabled={mode === "lobby" || botActiveRef.current} aria-pressed={isPaused}>
-                    {isPaused ? "계속하기" : "일시정지"}
-                  </button>
-                  <label className="runtime-volume-control">
-                    <span>사운드</span>
-                    <input
-                      aria-label="사운드 볼륨"
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={sfxVolume}
-                      onChange={(event) => {
-                        const value = Number(event.target.value);
-                        setSfxVolume(value);
-                      }}
-                    />
-                    <output>{Math.round(sfxVolume * 100)}%</output>
-                  </label>
-                  <label className="runtime-volume-control">
-                    <span>BGM</span>
-                    <input
-                      aria-label="Music volume"
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={musicVolume}
-                      onChange={(event) => setMusicVolume(Number(event.target.value))}
-                    />
-                    <output>{Math.round(musicVolume * 100)}%</output>
-                  </label>
-                  <div className="runtime-control-guide" aria-label="조작 안내">
-                    <span className="runtime-control-kicker">조작 안내</span>
-                    <strong>이동</strong>
-                    <div className="title-key-row"><kbd>A</kbd><kbd>D</kbd></div>
-                    <small>방향키 사용</small>
-                    <span className="runtime-control-kicker">입력 방식</span>
-                    <strong>조준</strong>
-                    <small>마우스</small>
-                    <strong>발사</strong>
-                    <small>클릭하여 시작</small>
-                  </div>
-                </RightRailPanel>
-              )}
             </div>
 
           </div>

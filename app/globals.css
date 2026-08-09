@@ -119,16 +119,6 @@ button {
    box-shadow: 0 0 12px var(--green)
 }
 
-.sound-toggle {
-   padding: 8px 10px;
-   border: 1px solid rgba(114, 241, 184, .28);
-   color: var(--green);
-   background: rgba(114, 241, 184, .06);
-   font: 800 9px monospace;
-   letter-spacing: .1em;
-   cursor: pointer
-}
-
 .audio-mixer {
    display: flex;
    align-items: center;
@@ -164,12 +154,6 @@ button {
       border-left: 0;
       padding: 4px 0;
    }
-}
-
-.sound-toggle[aria-pressed="true"] {
-   border-color: rgba(255, 107, 135, .3);
-   color: #ff8da1;
-   background: rgba(255, 107, 135, .06)
 }
 
 .workspace {
@@ -1739,14 +1723,13 @@ kbd {
 }
 
 .upgrade-level-values span.evolution {
-   border-color: #fff27a;
-   background: linear-gradient(145deg, rgba(255, 242, 122, .14), rgba(255, 107, 87, .08));
-   box-shadow: inset 0 0 14px rgba(255, 242, 122, .08)
+   border-color: rgba(255, 255, 255, .52);
+   background: rgba(255, 255, 255, .04);
+   box-shadow: inset 0 0 14px rgba(255, 255, 255, .06)
 }
 
 .upgrade-level-values span.evolution small:after {
-   content: " · 진화";
-   color: #fff27a
+   content: none
 }
 
 .upgrade-evolution {
@@ -1925,16 +1908,14 @@ body {
    background: linear-gradient(90deg, var(--line-strong), rgba(115, 184, 195, .12), transparent)
 }
 
-.lab-link,
-.sound-toggle {
+.lab-link {
    border-color: rgba(206, 211, 226, .16);
    color: #aeb6c5;
    background: linear-gradient(180deg, rgba(255, 255, 255, .025), rgba(255, 255, 255, 0));
    transition: border-color .18s, color .18s, background .18s
 }
 
-.lab-link:hover,
-.sound-toggle:hover {
+.lab-link:hover {
    border-color: rgba(226, 196, 119, .46);
    color: #ead59a;
    background: rgba(226, 196, 119, .055)
@@ -2541,66 +2522,6 @@ body {
    display: none
 }
 
-.fullscreen-toggle {
-   position: absolute;
-   z-index: 12;
-   top: 13px;
-   right: 15px;
-   width: 34px;
-   height: 34px;
-   border: 1px solid rgba(199, 173, 111, .44);
-   color: #d8bd7a;
-   background: rgba(8, 9, 12, .82);
-   font: 900 17px/1 monospace;
-   cursor: pointer;
-   transition: .16s
-}
-
-.fullscreen-toggle:hover {
-   color: #fff0bc;
-   border-color: #d8bd7a;
-   background: rgba(49, 39, 22, .9);
-   box-shadow: 0 0 16px rgba(216, 189, 122, .18)
-}
-
-.mode-playing .fullscreen-toggle {
-   top: 52px
-}
-
-:fullscreen body {
-   overflow: hidden
-}
-
-:fullscreen .gameplay-shell {
-   max-width: none;
-   width: 100vw;
-   height: 100vh;
-   padding: 12px;
-   display: grid;
-   place-items: center
-}
-
-:fullscreen .gameplay-shell .workspace {
-   width: 100%;
-   margin: 0
-}
-
-:fullscreen .gameplay-shell .game-frame {
-   width: min(calc(100vw - 24px), calc((100vh - 24px)*1.5));
-   max-height: calc(100vh - 24px)
-}
-
-@media(max-width:900px) {
-   .gameplay-shell .game-frame {
-      width: 100%;
-      max-height: none
-   }
-
-   .gameplay-shell .hud-wave {
-      min-width: 190px
-   }
-}
-
 .sr-only {
    position: absolute !important;
    width: 1px !important;
@@ -2848,8 +2769,8 @@ body {
 }
 
 .boss-enhancement-card {
-   border-color: #ffd166 !important;
-   box-shadow: 0 0 22px rgba(255, 209, 102, .16)
+   border-color: transparent !important;
+   box-shadow: 0 0 30px rgba(142, 120, 255, .3), inset 0 0 28px rgba(255, 255, 255, .05)
 }
 
 .boss-reward-overlay {
@@ -3213,80 +3134,25 @@ body {
 
 .primary-button,
 .secondary-button {
-   background-size: 100% 100%;
-   background-repeat: no-repeat;
-   border: 0;
    text-shadow: 0 1px 2px rgba(0, 0, 0, .8)
 }
 
 .primary-button {
-   color: #fff !important;
-   background-image: url("/assets/ui/core-breaker/buttons/start.png") !important;
-   background-color: transparent !important
+   color: #fff !important
 }
 
 .secondary-button {
-   color: #fff !important;
-   background-image: url("/assets/ui/core-breaker/buttons/confirm.png") !important;
-   background-color: transparent !important
-}
-
-.primary-button:disabled,
-.secondary-button:disabled {
-   background-image: url("/assets/ui/core-breaker/buttons/disabled.png") !important;
-   background-color: transparent !important
+   color: #fff !important
 }
 
 .upgrade-choice-actions button {
-   border: 0;
-   background-image: url("/assets/ui/core-breaker/buttons/confirm.png");
-   background-size: 100% 100%;
-   background-repeat: no-repeat;
-   background-color: transparent;
    text-shadow: 0 1px 2px rgba(0, 0, 0, .8)
 }
 
-.upgrade-choice-actions button:disabled {
-   background-image: url("/assets/ui/core-breaker/buttons/disabled.png");
-   background-color: transparent
-}
-
 .gameplay-shell.mode-lobby .lobby-overlay .primary-button {
-   background-image: url("/assets/ui/core-breaker/buttons/start.png") !important;
-   background-color: transparent !important;
-   border: 0;
    box-shadow: 0 12px 24px rgba(0, 0, 0, .35);
    clip-path: none;
-   aspect-ratio: 555 / 207;
    line-height: 1
-}
-
-/* Raster UI uses 9-slice borders so corners and metal trims stay pixel-crisp. */
-.primary-button,
-.secondary-button,
-.upgrade-choice-actions button {
-   background-image: none !important;
-   background-color: transparent !important;
-   border: 12px solid transparent;
-   border-image-slice: 28 fill;
-   border-image-width: 12px;
-   border-image-repeat: stretch;
-   box-sizing: border-box
-}
-
-.primary-button {
-   border-image-source: url("/assets/ui/core-breaker/buttons/start.png")
-}
-
-.secondary-button,
-.upgrade-choice-actions button {
-   border-image-source: url("/assets/ui/core-breaker/buttons/confirm.png")
-}
-
-.primary-button:disabled,
-.secondary-button:disabled,
-.upgrade-choice-actions button:disabled {
-   border-image-source: url("/assets/ui/core-breaker/buttons/disabled.png")
 }
 
 .gameplay-shell .hud-badge {
@@ -3345,17 +3211,6 @@ body {
    border-color: transparent;
    filter: grayscale(.7);
    opacity: .48
-}
-
-.gameplay-shell.mode-lobby .lobby-overlay .primary-button {
-   background-image: none !important;
-   background-color: transparent !important;
-   border: 12px solid transparent;
-   border-image-source: url("/assets/ui/core-breaker/buttons/start.png");
-   border-image-slice: 28 fill;
-   border-image-width: 12px;
-   border-image-repeat: stretch;
-   box-sizing: border-box
 }
 
 /* In-game skill UI has a smaller canvas than the lobby, so size these panels explicitly. */
@@ -3454,24 +3309,6 @@ body {
 .gameplay-shell .skill-loadout-entry i {
    width: 27px;
    height: 27px
-}
-
-/* In-game layout: owned skills / playfield / run status. */
-.gameplay-stage {
-   display: grid;
-   grid-template-columns: minmax(184px, 220px) minmax(0, 1fr) minmax(164px, 200px);
-   gap: 14px;
-   align-items: stretch;
-   width: 100%;
-   max-width: 1500px;
-   margin: 0 auto
-}
-
-.gameplay-stage .game-frame {
-   width: 100%;
-   max-width: none;
-   margin: 0;
-   min-width: 0
 }
 
 .in-game-side-panel {
@@ -3683,123 +3520,8 @@ body {
    transform: scale(1.08);
 }
 
-.gameplay-shell .runtime-controls-panel {
-   display: flex;
-   flex-direction: column;
-   gap: 10px;
-   margin-top: 8px;
-   padding: 10px 8px;
-   border: 8px solid transparent;
-   border-image-source: url("/assets/ui/core-breaker/panels/content.png");
-   border-image-slice: 32 fill;
-   border-image-width: 8px;
-   border-image-repeat: stretch;
-   background: rgba(5, 8, 18, .42);
-}
-
-.gameplay-shell .runtime-pause-button {
-   width: 100%;
-   min-height: 30px;
-   padding: 0 4px;
-   border: 1px solid rgba(226, 196, 119, .55);
-   color: #f1eadc;
-   background: rgba(226, 196, 119, .12);
-   font: 900 10px/1 var(--pixel-font);
-   cursor: pointer;
-}
-
-.gameplay-shell .runtime-pause-button:hover:not(:disabled),
-.gameplay-shell .runtime-pause-button[aria-pressed="true"] {
-   color: #07101b;
-   background: #e2c477;
-}
-
-.gameplay-shell .runtime-pause-button:disabled {
-   cursor: not-allowed;
-   opacity: .45;
-}
-
-.gameplay-shell .runtime-volume-control {
-   display: grid;
-   grid-template-columns: auto 1fr;
-   align-items: center;
-   gap: 6px;
-   color: #c4c9d4;
-   font: 800 12px/1 var(--pixel-font);
-}
-
-.gameplay-shell .runtime-volume-control input {
-   width: 100%;
-   min-width: 0;
-   accent-color: #e2c477;
-}
-
-.gameplay-shell .runtime-volume-control output {
-   grid-column: 2;
-   justify-self: end;
-   color: #e2c477;
-   font: 800 12px/1 monospace;
-}
-
-.gameplay-shell .runtime-controls-panel label.runtime-volume-control:nth-of-type(1)>span {
-   font-size: 0;
-}
-
-.gameplay-shell .runtime-controls-panel label.runtime-volume-control:nth-of-type(1)>span::after {
-   content: "SFX";
-   font-size: 12px;
-}
-
 .gameplay-shell .build-tray .controls {
    display: none;
-}
-
-.gameplay-shell .runtime-control-guide {
-   display: grid;
-   justify-items: center;
-   gap: 5px;
-   margin-top: 4px;
-   padding-top: 5px;
-   border-top: 1px solid rgba(226, 196, 119, .25);
-   color: #c4c9d4;
-   font: 800 8px/1.2 var(--pixel-font);
-}
-
-.gameplay-shell .runtime-control-guide .runtime-control-kicker {
-   color: #e2c477;
-   font: 900 8px/1 var(--pixel-font);
-   letter-spacing: .08em;
-}
-
-.gameplay-shell .runtime-control-guide strong {
-   color: #f1eadc;
-   font: 900 12px/1 var(--pixel-font);
-   letter-spacing: .06em;
-}
-
-.gameplay-shell .runtime-control-guide small {
-   color: #8793a8;
-   font: 800 8px/1.3 var(--pixel-font);
-}
-
-.gameplay-shell .runtime-control-guide .title-key-row {
-   display: flex;
-   gap: 6px;
-}
-
-.gameplay-shell .runtime-control-guide span {
-   display: flex;
-   align-items: center;
-   gap: 4px;
-}
-
-.gameplay-shell .runtime-control-guide kbd {
-   min-width: 14px;
-   padding: 2px 3px;
-   border: 1px solid rgba(226, 196, 119, .5);
-   color: #e2c477;
-   text-align: center;
-   font: 800 8px/1 monospace;
 }
 
 @media(max-width:760px) {
@@ -3815,13 +3537,6 @@ body {
       height: 26px;
    }
 
-   .gameplay-shell .runtime-controls-panel {
-      gap: 7px;
-      padding: 8px 6px;
-      right: 8px;
-      bottom: 8px;
-      width: min(180px, calc(100vw - 16px));
-   }
 }
 
 .gameplay-shell .right-rail-stack {
@@ -3835,26 +3550,7 @@ body {
    width: 100%;
 }
 
-.gameplay-shell:not(.mode-playing) .in-game-side-panel {
-   display: none
-}
-
-.gameplay-shell:not(.mode-playing) .gameplay-stage {
-   display: block;
-   max-width: 1500px
-}
-
-.gameplay-shell:not(.mode-playing) .gameplay-stage .game-frame {
-   width: 100%;
-   max-width: none
-}
-
 @media(max-width:1120px) {
-   .gameplay-stage {
-      grid-template-columns: 150px minmax(0, 1fr) 140px;
-      gap: 8px
-   }
-
    .in-game-side-panel {
       padding: 10px 6px
    }
@@ -3888,50 +3584,8 @@ body {
    }
 }
 
-/* Shared pixel-art panel frame for the central gameplay surface. */
-.gameplay-shell .game-frame {
-   border: 18px solid transparent;
-   border-image-source: url("/assets/ui/core-breaker/panels/content.png");
-   border-image-slice: 32 fill;
-   border-image-width: 18px;
-   border-image-repeat: stretch;
-   border-radius: 0;
-   box-shadow:
-      0 0 0 1px #171a20,
-      0 18px 54px rgba(0, 0, 0, .72),
-      inset 0 0 42px rgba(0, 0, 0, .72);
-}
-
 .gameplay-shell .game-frame::before {
    display: none;
-}
-
-/* Keep the frame artwork above the neighboring rails so its pixel corners are
-   never covered at the grid edges. */
-.gameplay-shell .gameplay-stage>.game-frame {
-   position: relative;
-   z-index: 3;
-}
-
-/* Dedicated wide frame: its corners are authored at gameplay scale instead of
-   stretching a small generic panel across the arena. */
-.gameplay-shell .gameplay-stage>.game-frame {
-   border: 2px solid rgba(133, 151, 178, .72);
-   border-image: none;
-   border-radius: 0;
-   background: #07080b;
-   box-shadow:
-      0 0 0 1px rgba(5, 8, 14, .96),
-      0 0 18px rgba(26, 61, 104, .18),
-      inset 0 0 42px rgba(0, 0, 0, .72);
-}
-
-/* The content panel artwork has ~48px source-corner plates. Use that exact
-   corner region so the owned-skills and run-info rails keep fixed corners. */
-.gameplay-shell .gameplay-stage>.in-game-side-panel {
-   border-image-slice: 48 fill;
-   border-image-width: 12px;
-   border-image-repeat: stretch;
 }
 
 /* Evolved owned skills use an E-prefixed level badge and a restrained rainbow
@@ -4000,51 +3654,6 @@ body {
 
    100% {
       background-position: 220% 50%
-   }
-}
-
-@media(max-width:760px) {
-   .gameplay-stage {
-      display: flex;
-      flex-direction: column;
-      gap: 8px
-   }
-
-   .gameplay-stage .game-frame {
-      order: 1
-   }
-
-   .in-game-skill-panel,
-   .in-game-stat-panel {
-      order: 2;
-      min-height: 0
-   }
-
-   .in-game-skill-panel {
-      display: none !important
-   }
-
-   .in-game-stat-panel {
-      display: grid !important;
-      grid-template-columns: repeat(3, 1fr);
-      padding: 6px
-   }
-
-   .in-game-stat-card {
-      min-height: 72px
-   }
-
-   .in-game-stat-card strong {
-      font-size: 24px
-   }
-
-   .in-game-time-card strong,
-   .in-game-core-card strong {
-      font-size: 18px
-   }
-
-   .in-game-core-card {
-      margin-top: 0
    }
 }
 
@@ -4149,71 +3758,6 @@ body {
    }
 }
 
-/* Skill selection keeps the same three-column stage geometry as gameplay.
-   The side panels remain reserved as invisible gutters so the modal does not expand into them. */
-.gameplay-shell.mode-initialskills .gameplay-stage,
-.gameplay-shell.mode-levelup .gameplay-stage {
-   display: grid;
-   grid-template-columns: minmax(184px, 220px) minmax(0, 1fr) minmax(164px, 200px);
-   gap: 14px;
-   max-width: 1500px
-}
-
-.gameplay-shell.mode-initialskills .in-game-side-panel,
-.gameplay-shell.mode-levelup .in-game-side-panel {
-   display: block !important;
-   visibility: visible;
-   pointer-events: auto
-}
-
-.gameplay-shell.mode-initialskills .gameplay-stage .game-frame,
-.gameplay-shell.mode-levelup .gameplay-stage .game-frame {
-   width: 100%;
-   max-width: none
-}
-
-@media(max-width:1120px) {
-
-   .gameplay-shell.mode-initialskills .gameplay-stage,
-   .gameplay-shell.mode-levelup .gameplay-stage {
-      grid-template-columns: 150px minmax(0, 1fr) 140px;
-      gap: 8px
-   }
-}
-
-@media(max-width:760px) {
-
-   .gameplay-shell.mode-initialskills .gameplay-stage,
-   .gameplay-shell.mode-levelup .gameplay-stage {
-      display: flex
-   }
-
-   .gameplay-shell.mode-initialskills .in-game-side-panel,
-   .gameplay-shell.mode-levelup .in-game-side-panel {
-      display: none !important
-   }
-}
-
-/* After entering the game, the stage frame and both information rails stay mounted
-   while only the center canvas/overlay changes between play, transition, rewards, and results. */
-.gameplay-shell:not(.mode-lobby) .gameplay-stage {
-   display: grid;
-   grid-template-columns: minmax(184px, 220px) minmax(0, 1fr) minmax(164px, 200px);
-   gap: 14px;
-   max-width: 1500px
-}
-
-.gameplay-shell:not(.mode-lobby) .in-game-side-panel {
-   display: block !important;
-   visibility: visible;
-   pointer-events: auto
-}
-
-.gameplay-shell:not(.mode-lobby) .gameplay-stage .game-frame {
-   width: 100%;
-   max-width: none
-}
-
 .in-game-skill-row {
    position: relative;
    cursor: help;
@@ -4274,25 +3818,12 @@ body {
 }
 
 @media(max-width:1120px) {
-   .gameplay-shell:not(.mode-lobby) .gameplay-stage {
-      grid-template-columns: 150px minmax(0, 1fr) 140px;
-      gap: 8px
-   }
-
    .in-game-skill-tooltip {
       width: 205px
    }
 }
 
 @media(max-width:760px) {
-   .gameplay-shell:not(.mode-lobby) .gameplay-stage {
-      display: flex
-   }
-
-   .gameplay-shell:not(.mode-lobby) .in-game-skill-panel {
-      display: none !important
-   }
-
    .in-game-skill-tooltip {
       left: auto;
       right: 0;
@@ -4483,49 +4014,6 @@ body {
 .gameplay-shell.mode-initialskills .skill-loadout-hud,
 .gameplay-shell.mode-levelup .skill-loadout-hud {
    display: none !important
-}
-
-/* Match the title frame to the same center-column width used in gameplay. */
-.gameplay-shell.mode-lobby .gameplay-stage {
-   display: grid;
-   grid-template-columns: minmax(184px, 220px) minmax(0, 1fr) minmax(164px, 200px);
-   gap: 14px;
-   max-width: 1500px
-}
-
-.gameplay-shell.mode-lobby .in-game-side-panel {
-   display: block !important;
-   visibility: hidden;
-   pointer-events: none
-}
-
-.gameplay-shell.mode-lobby .gameplay-stage .game-frame {
-   width: min(100%, calc((100vh - 28px) * 1.5));
-   max-width: calc((100vh - 28px) * 1.5);
-   aspect-ratio: 3 / 2;
-   margin: 0 auto
-}
-
-@media(max-width:1120px) {
-   .gameplay-shell.mode-lobby .gameplay-stage {
-      grid-template-columns: 150px minmax(0, 1fr) 140px;
-      gap: 8px
-   }
-}
-
-@media(max-width:760px) {
-   .gameplay-shell.mode-lobby .gameplay-stage {
-      display: block
-   }
-
-   .gameplay-shell.mode-lobby .in-game-side-panel {
-      display: none !important
-   }
-
-   .gameplay-shell.mode-lobby .gameplay-stage .game-frame {
-      width: min(100%, calc((100vh - 28px) * 1.5));
-      max-width: calc((100vh - 28px) * 1.5)
-   }
 }
 
 .gameplay-shell.mode-lobby .title-start-hint {
@@ -4996,37 +4484,6 @@ body {
    white-space: nowrap
 }
 
-/* One shared viewport component for lobby, gameplay, wave transitions and
-   skill selection. Side rails keep their geometry while only the center
-   .game-frame content changes. */
-.gameplay-shell.mode-initialskills .gameplay-stage,
-.gameplay-shell.mode-levelup .gameplay-stage,
-.gameplay-shell.mode-transition .gameplay-stage {
-   display: grid;
-   grid-template-columns: minmax(184px, 220px) minmax(0, 1fr) minmax(164px, 200px);
-   gap: 14px;
-   align-items: stretch;
-   width: 100%;
-   max-width: 1500px;
-   margin: 0 auto
-}
-
-.gameplay-shell.mode-initialskills .in-game-side-panel,
-.gameplay-shell.mode-levelup .in-game-side-panel,
-.gameplay-shell.mode-transition .in-game-side-panel {
-   display: block !important;
-   visibility: visible
-}
-
-.gameplay-shell.mode-initialskills .gameplay-stage .game-frame,
-.gameplay-shell.mode-levelup .gameplay-stage .game-frame,
-.gameplay-shell.mode-transition .gameplay-stage .game-frame {
-   width: 100%;
-   max-width: none;
-   margin: 0;
-   min-width: 0
-}
-
 .gameplay-shell.mode-initialskills .level-overlay,
 .gameplay-shell.mode-levelup .level-overlay {
    inset: 0;
@@ -5049,72 +4506,6 @@ body {
 
 .gameplay-shell.mode-transition .wave-transition-overlay .wave-transition-copy {
    z-index: 1
-}
-
-@media(max-width:1120px) {
-
-   .gameplay-shell.mode-initialskills .gameplay-stage,
-   .gameplay-shell.mode-levelup .gameplay-stage,
-   .gameplay-shell.mode-transition .gameplay-stage {
-      grid-template-columns: 150px minmax(0, 1fr) 140px;
-      gap: 8px
-   }
-}
-
-@media(max-width:760px) {
-
-   .gameplay-shell.mode-initialskills .gameplay-stage,
-   .gameplay-shell.mode-levelup .gameplay-stage,
-   .gameplay-shell.mode-transition .gameplay-stage {
-      display: flex;
-      flex-direction: column;
-      gap: 8px
-   }
-
-   .gameplay-shell.mode-initialskills .in-game-skill-panel,
-   .gameplay-shell.mode-levelup .in-game-skill-panel {
-      display: none !important
-   }
-
-   .gameplay-shell.mode-initialskills .in-game-stat-panel,
-   .gameplay-shell.mode-levelup .in-game-stat-panel {
-      display: grid !important
-   }
-}
-
-/* Final shared-frame sizing: lobby uses the same compact rail widths as the
-   in-game and skill-selection states, so the center panel never resizes on
-   the title -> WAVE 1 -> first-skill transition. */
-.gameplay-shell.mode-lobby .gameplay-stage {
-   grid-template-columns: 112px minmax(0, 1fr) 150px
-}
-
-@media(max-width:1120px) {
-   .gameplay-shell.mode-lobby .gameplay-stage {
-      grid-template-columns: 96px minmax(0, 1fr) 132px
-   }
-}
-
-/* Game-entry reveal: the center frame is the foreground surface, while the
-   side rails start tucked behind it and slide outward into their slots. */
-.gameplay-shell.first-game-entry .gameplay-stage>.game-frame {
-   position: relative;
-   z-index: 3
-}
-
-.gameplay-shell.first-game-entry .gameplay-stage>.in-game-side-panel {
-   position: relative;
-   z-index: 2;
-   animation: side-rail-reveal .52s cubic-bezier(.2, .82, .25, 1) both
-}
-
-.gameplay-shell.first-game-entry .gameplay-stage>.in-game-skill-panel {
-   animation-name: left-rail-reveal
-}
-
-.gameplay-shell.first-game-entry .gameplay-stage>.in-game-stat-panel {
-   animation-name: right-rail-reveal;
-   animation-delay: .05s
 }
 
 @keyframes left-rail-reveal {
@@ -5142,12 +4533,6 @@ body {
       opacity: 1;
       transform: translateX(0) scaleX(1);
       transform-origin: left center
-   }
-}
-
-@media(prefers-reduced-motion:reduce) {
-   .gameplay-shell.first-game-entry .gameplay-stage>.in-game-side-panel {
-      animation: none !important
    }
 }
 
@@ -5330,39 +4715,9 @@ select {
    overflow-y: auto
 }
 
-/* Lobby must not inherit the non-playing single-column expansion rules. */
-.gameplay-shell.mode-lobby:not(.mode-playing) .gameplay-stage {
-   display: grid;
-   grid-template-columns: minmax(184px, 220px) minmax(0, 1fr) minmax(164px, 200px);
-   gap: 14px;
-   align-items: stretch
-}
-
-.gameplay-shell.mode-lobby:not(.mode-playing) .gameplay-stage .game-frame {
-   width: min(100%, calc((100vh - 28px) * 1.5));
-   max-width: calc((100vh - 28px) * 1.5);
-   aspect-ratio: 3 / 2;
-   margin: 0 auto
-}
-
-.gameplay-shell.mode-lobby:not(.mode-playing) .in-game-side-panel {
-   display: block !important;
-   visibility: hidden;
-   height: 0;
-   min-height: 0;
-   padding: 0;
-   border-width: 0;
-   overflow: hidden;
-}
-
 /* The navigation component is unavailable on the title screen; it returns during gameplay. */
 .app-shell.mode-lobby>.topbar .topbar-tabs {
    display: none
-}
-
-/* In-game rails: owned skills only reserve room for the two-column icon grid. */
-.gameplay-shell.mode-playing .gameplay-stage {
-   grid-template-columns: 112px minmax(0, 1fr) 150px
 }
 
 .gameplay-shell.mode-playing .in-game-skill-panel {
@@ -5452,10 +4807,6 @@ select {
 }
 
 @media(max-width:1120px) {
-   .gameplay-shell.mode-playing .gameplay-stage {
-      grid-template-columns: 96px minmax(0, 1fr) 132px
-   }
-
    .gameplay-shell.mode-playing .in-game-skill-icon {
       width: 34px;
       height: 34px
@@ -5468,11 +4819,6 @@ select {
    .gameplay-shell.mode-playing .in-game-stat-card strong {
       font-size: 20px
    }
-}
-
-/* Keep selection overlays and live gameplay on the same three-column HUD frame. */
-.gameplay-shell:not(.mode-lobby) .gameplay-stage {
-   grid-template-columns: 112px minmax(0, 1fr) 150px
 }
 
 .gameplay-shell:not(.mode-lobby) .in-game-skill-panel {
@@ -5580,10 +4926,6 @@ select {
 }
 
 @media(max-width:1120px) {
-   .gameplay-shell:not(.mode-lobby) .gameplay-stage {
-      grid-template-columns: 96px minmax(0, 1fr) 132px
-   }
-
    .gameplay-shell:not(.mode-lobby) .in-game-skill-icon {
       width: 34px;
       height: 34px
@@ -5795,13 +5137,6 @@ select {
    }
 }
 
-/* Full-screen reference layout: three-column owned-skills / arena / run-info. */
-.gameplay-shell:not(.mode-lobby) .gameplay-stage {
-   grid-template-columns: 260px minmax(0, 1fr) 238px !important;
-   gap: 16px !important;
-   max-width: 1680px !important;
-}
-
 .gameplay-shell:not(.mode-lobby) .in-game-skill-panel {
    padding: 14px 12px !important;
    border-width: 12px;
@@ -5947,38 +5282,12 @@ select {
    background: rgba(125, 23, 56, .5);
 }
 
-.gameplay-shell:not(.mode-lobby) .runtime-controls-panel {
-   margin-top: 10px;
-   padding: 10px 10px 11px;
-   border-width: 8px;
-   background: rgba(4, 8, 16, .78);
-}
-
-.gameplay-shell .runtime-controls-panel {
-   position: static;
-   width: 100%;
-   box-sizing: border-box;
-   margin: 0;
-   pointer-events: auto;
-}
-
-.gameplay-shell.mode-lobby .title-controls {
-   display: none;
-}
-
 @media(max-width:760px) {
 
    .gameplay-shell:not(.mode-lobby) .in-game-stat-panel h2,
    .run-info-divider {
       display: none;
    }
-}
-
-/* Compact gameplay rails: preserve the original arena footprint while keeping the side information readable. */
-.gameplay-shell:not(.mode-lobby) .gameplay-stage {
-   grid-template-columns: 112px minmax(0, 1fr) 150px !important;
-   gap: 14px !important;
-   max-width: 1500px !important;
 }
 
 .gameplay-shell:not(.mode-lobby) .in-game-skill-panel {
@@ -6168,13 +5477,6 @@ select {
    display: none;
 }
 
-/* The stat rail lives inside right-rail-stack, so it needs its own first-entry reveal target. */
-.gameplay-shell.first-game-entry .gameplay-stage>.right-rail-stack>.in-game-stat-panel {
-   position: relative;
-   z-index: 2;
-   animation: right-rail-reveal .52s cubic-bezier(.2, .82, .25, 1) .05s both;
-}
-
 .art-loading-shell {
    min-height: 100vh;
    display: grid;
@@ -6264,191 +5566,845 @@ select {
    }
 }
 
-/* PC layout authority: one final geometry for the arena and its information rails. */
+/* Canonical PC game UI. This is the single geometry source for the title,
+   transitions, skill selection, gameplay and results. */
 .gameplay-shell {
-   --pc-left-rail: 168px;
-   --pc-arena-width: 1000px;
-   --pc-arena-height: 667px;
-   --pc-right-rail: 192px;
-   --pc-stage-gap: 12px;
-   padding-top: 0 !important
+   --game-ui-max-width: 1600px;
+   --game-ui-left-rail: 176px;
+   --game-ui-right-rail: 208px;
+   --game-ui-rail-gap: 14px;
+   --game-ui-stage-top: 16px;
+   --game-ui-frame-bottom-space: 66px;
+   --game-ui-border: rgba(126, 146, 174, .76);
+   --game-ui-border-dark: #0b111b;
+   width: 100%;
+   min-width: 1180px;
+   max-width: none !important;
+   padding: 0 28px 28px !important;
 }
 
 html {
    scrollbar-gutter: stable
 }
 
-.benchmark-shell {
+.benchmark-shell,
+.benchmark-shell > .workspace {
+   margin-top: 0;
    padding-top: 0 !important
 }
 
-.benchmark-shell > .workspace {
-   margin-top: 0
+.gameplay-shell > .solo-workspace,
+.gameplay-shell .game-column {
+   width: 100%;
+   max-width: none !important;
+   margin: 0 !important
 }
 
 .gameplay-shell .gameplay-stage,
-.gameplay-shell:not(.mode-lobby) .gameplay-stage {
-   grid-template-columns: var(--pc-left-rail) minmax(0, 1fr) var(--pc-right-rail) !important;
-   gap: var(--pc-stage-gap) !important;
-   margin-top: 16px !important;
-   width: calc(100vw - 32px) !important;
+.gameplay-shell:not(.mode-lobby) .gameplay-stage,
+.gameplay-shell.mode-lobby .gameplay-stage,
+.gameplay-shell.mode-transition .gameplay-stage,
+.gameplay-shell.mode-initialskills .gameplay-stage,
+.gameplay-shell.mode-levelup .gameplay-stage {
+   position: relative;
+   display: grid !important;
+   grid-template-columns: var(--game-ui-left-rail) minmax(0, 1fr) var(--game-ui-right-rail) !important;
+   align-items: start;
+   gap: var(--game-ui-rail-gap) !important;
+   width: min(100%, var(--game-ui-max-width)) !important;
+   min-width: 0 !important;
+   max-width: var(--game-ui-max-width) !important;
+   margin: var(--game-ui-stage-top) auto 0 !important;
+}
+
+.gameplay-shell .gameplay-stage > .game-frame,
+.gameplay-shell.mode-lobby .gameplay-stage > .game-frame,
+.gameplay-shell.mode-transition .gameplay-stage > .game-frame,
+.gameplay-shell.mode-initialskills .gameplay-stage > .game-frame,
+.gameplay-shell.mode-levelup .gameplay-stage > .game-frame,
+.gameplay-shell.mode-playing .gameplay-stage > .game-frame {
+   grid-column: 2;
+   grid-row: 1;
+   width: 100% !important;
    min-width: 0 !important;
    max-width: none !important;
-   margin-left: auto !important;
-   margin-right: auto !important;
+   height: auto !important;
+   max-height: none !important;
+   aspect-ratio: 3 / 2;
+   margin: 0 0 var(--game-ui-frame-bottom-space) !important;
+   transform: none !important;
+   transition: none !important;
+   animation: none !important;
+   overflow: visible;
+}
+
+.gameplay-shell .gameplay-stage > .in-game-skill-panel {
+   grid-column: 1;
+   grid-row: 1;
+   position: relative !important;
+   inset: auto !important;
+   width: 100% !important;
+}
+
+.gameplay-shell .gameplay-stage > .right-rail-stack {
+   grid-column: 3;
+   grid-row: 1;
+   position: relative !important;
+   inset: auto !important;
+   width: 100% !important;
+}
+
+.gameplay-shell.mode-lobby .gameplay-stage > .in-game-skill-panel,
+.gameplay-shell.mode-lobby .gameplay-stage > .right-rail-stack {
+   display: block !important;
+   visibility: hidden !important;
+   opacity: 0;
+   pointer-events: none
+}
+
+.gameplay-shell:not(.mode-lobby) .gameplay-stage > .in-game-skill-panel,
+.gameplay-shell:not(.mode-lobby) .gameplay-stage > .right-rail-stack {
+   display: block !important;
+   visibility: visible !important;
+   opacity: 1;
+   pointer-events: auto
+}
+
+.gameplay-shell.first-game-entry .gameplay-stage > .in-game-skill-panel {
+   animation: left-rail-reveal .52s cubic-bezier(.2, .82, .25, 1) both
+}
+
+.gameplay-shell.first-game-entry .gameplay-stage > .right-rail-stack {
+   animation: right-rail-reveal .52s cubic-bezier(.2, .82, .25, 1) .05s both
+}
+
+.gameplay-shell.first-game-entry .gameplay-stage > .right-rail-stack > .in-game-stat-panel {
+   animation: none !important
+}
+
+/* Purpose-specific connected 9-slice frames. */
+.gameplay-shell .gameplay-stage > .game-frame,
+.gameplay-shell .gameplay-stage > .in-game-skill-panel,
+.gameplay-shell .gameplay-stage > .right-rail-stack > .in-game-stat-panel,
+.settings-dialog {
+   border: 12px solid transparent !important;
+   border-image-slice: 16 fill !important;
+   border-image-width: 12px !important;
+   border-image-outset: 0 !important;
+   border-image-repeat: stretch !important;
+   border-radius: 0 !important;
+   box-shadow: 0 14px 34px rgba(0, 0, 0, .42) !important;
+   image-rendering: pixelated
 }
 
 .gameplay-shell .gameplay-stage > .game-frame {
-   width: 100% !important;
-   height: auto !important;
-   min-width: 0 !important;
-   max-width: none !important;
-   max-height: none !important;
-   align-self: start;
-   aspect-ratio: 3 / 2;
-   margin: 0 auto 43px !important;
+   border-image-source: url("/assets/ui/core-breaker/frames/frame-playfield-9slice.png") !important
 }
 
-/* More readable PC HUD scale. */
+.gameplay-shell .gameplay-stage > .in-game-skill-panel {
+   border-image-source: url("/assets/ui/core-breaker/frames/frame-skills-9slice.png") !important
+}
+
+.gameplay-shell .gameplay-stage > .right-rail-stack > .in-game-stat-panel {
+   border-image-source: url("/assets/ui/core-breaker/frames/frame-run-info-9slice.png") !important
+}
+
+.settings-dialog {
+   border-image-source: url("/assets/ui/core-breaker/frames/frame-settings-9slice.png") !important
+}
+
+.gameplay-shell .upgrade-card {
+   border: 10px solid transparent !important;
+   border-image-source: url("/assets/ui/core-breaker/frames/frame-card-common-9slice.png") !important;
+   border-image-slice: 16 fill !important;
+   border-image-width: 10px !important;
+   border-image-outset: 0 !important;
+   border-image-repeat: stretch !important;
+   border-radius: 0 !important;
+   image-rendering: pixelated
+}
+
+.gameplay-shell .upgrade-card.class-warrior {
+   border-image-source: url("/assets/ui/core-breaker/frames/frame-card-warrior-9slice.png") !important
+}
+
+.gameplay-shell .upgrade-card.class-archer {
+   border-image-source: url("/assets/ui/core-breaker/frames/frame-card-archer-9slice.png") !important
+}
+
+.gameplay-shell .upgrade-card.class-mage {
+   border-image-source: url("/assets/ui/core-breaker/frames/frame-card-mage-9slice.png") !important
+}
+
+.gameplay-shell .upgrade-card.class-common {
+   border-image-source: url("/assets/ui/core-breaker/frames/frame-card-common-9slice.png") !important
+}
+
+.gameplay-shell .upgrade-card.evolution-card,
+.gameplay-shell .upgrade-card.boss-enhancement-card {
+   border-image-source: url("/assets/ui/core-breaker/frames/frame-card-evolution-9slice.png") !important
+}
+
+.gameplay-shell .gameplay-stage > .game-frame {
+   background: #050912 !important
+}
+
 .gameplay-shell:not(.mode-lobby) .in-game-skill-panel {
-   width: 168px;
-   min-height: 420px;
-   height: 420px;
-   padding: 12px 9px !important;
+   z-index: 60;
+   height: 432px !important;
+   min-height: 432px !important;
+   padding: 14px 12px 38px !important;
+   background: linear-gradient(180deg, rgba(13, 19, 30, .96), rgba(6, 10, 18, .94)) !important;
+   overflow: visible
 }
 
 .gameplay-shell:not(.mode-lobby) .in-game-skill-panel h2 {
-   margin-bottom: 12px;
-   font-size: 12px;
+   margin: 0 0 12px !important;
+   color: #e8cc84;
+   font-size: 13px !important;
+   letter-spacing: .05em
+}
+
+.gameplay-shell:not(.mode-lobby) .in-game-skill-list {
+   grid-template-columns: repeat(2, minmax(0, 1fr));
+   gap: 6px !important
 }
 
 .gameplay-shell:not(.mode-lobby) .in-game-skill-row {
-   min-height: 52px;
-   height: 52px;
+   min-height: 52px !important;
+   height: 52px !important;
+   padding: 3px !important
 }
 
 .gameplay-shell:not(.mode-lobby) .in-game-skill-icon {
-   width: 42px;
-   height: 42px;
+   width: 42px !important;
+   height: 42px !important
 }
 
 .gameplay-shell:not(.mode-lobby) .in-game-skill-level {
-   min-width: 16px;
-   height: 16px;
-   font-size: 10px;
+   min-width: 16px !important;
+   height: 16px !important;
+   font-size: 10px !important
+}
+
+.gameplay-shell .right-rail-panel,
+.gameplay-shell:not(.mode-lobby) .in-game-stat-panel {
+   width: 100% !important;
+   box-sizing: border-box
 }
 
 .gameplay-shell:not(.mode-lobby) .in-game-stat-panel {
-   padding: 14px 12px 16px;
+   min-height: 0 !important;
+   padding: 16px 14px 18px !important;
+   background: linear-gradient(180deg, rgba(13, 19, 30, .96), rgba(6, 10, 18, .94)) !important
+}
+
+.gameplay-shell:not(.mode-lobby) .in-game-stat-panel h2 {
+   margin: 0 0 13px;
+   color: #e8cc84;
+   font-size: 14px !important;
+   letter-spacing: .08em
+}
+
+.gameplay-shell:not(.mode-lobby) .run-info-divider {
+   display: block;
+   height: 1px;
+   margin: 0 0 5px;
+   background: linear-gradient(90deg, transparent, rgba(226, 196, 119, .46), transparent)
 }
 
 .gameplay-shell:not(.mode-lobby) .in-game-stat-panel .in-game-stat-card {
-   min-height: 48px;
-   padding: 6px 2px;
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   min-height: 58px !important;
+   padding: 8px 2px !important;
+   border: 0 !important;
+   border-bottom: 1px solid rgba(132, 151, 180, .18) !important;
+   background: transparent !important
 }
 
-.gameplay-shell:not(.mode-lobby) .in-game-stat-panel .in-game-stat-card span,
-.gameplay-shell:not(.mode-lobby) .in-game-stat-panel h2 {
-   font-size: 11px;
+.gameplay-shell:not(.mode-lobby) .in-game-stat-main {
+   display: flex;
+   align-items: center;
+   gap: 8px
+}
+
+.gameplay-shell:not(.mode-lobby) .in-game-stat-panel .in-game-stat-icon {
+   width: 30px !important;
+   height: 30px !important;
+   margin: 0 !important;
+   image-rendering: pixelated
+}
+
+.gameplay-shell:not(.mode-lobby) .in-game-stat-main span {
+   color: #ddc27d;
+   font-size: 12px !important
 }
 
 .gameplay-shell:not(.mode-lobby) .in-game-stat-panel .in-game-stat-card strong {
-   font-size: 19px;
+   margin: 0;
+   color: #f3efe4;
+   font-size: 22px !important
 }
 
-/* Both right-rail surfaces share one component and one geometry. */
-.gameplay-shell:not(.mode-lobby) .right-rail-panel {
-   width: var(--pc-right-rail);
-   align-self: stretch;
-   box-sizing: border-box;
+.gameplay-shell:not(.mode-lobby) .in-game-stat-panel .in-game-time-card strong {
+   font-size: 17px !important
 }
 
-/* The title screen uses its otherwise empty side rails as a compact control legend. */
-.gameplay-shell.mode-lobby .gameplay-stage {
-   position: relative;
+.gameplay-shell:not(.mode-lobby) .in-game-next-boss {
+   min-height: 62px !important;
+   gap: 9px !important;
+   margin: 0 !important;
+   padding: 9px 2px !important;
+   border-bottom: 1px solid rgba(132, 151, 180, .18)
 }
 
-.gameplay-shell.mode-lobby .title-controls {
-   position: absolute;
-   top: 50%;
-   z-index: 4;
-   display: grid;
-   justify-items: center;
-   gap: 8px;
-   padding: 14px 10px;
-   color: #d8d4c7;
-   border: 1px solid rgba(226, 196, 119, .24);
-   background: linear-gradient(180deg, rgba(10, 14, 24, .82), rgba(5, 8, 16, .62));
-   box-shadow: inset 0 1px rgba(255, 255, 255, .04), 0 10px 24px rgba(0, 0, 0, .18);
-   text-align: center;
-   transform: translateY(-50%);
-   pointer-events: none;
+.gameplay-shell:not(.mode-lobby) .in-game-next-boss-icon {
+   width: 32px !important;
+   height: 32px !important
 }
 
-.gameplay-shell.mode-lobby .title-controls-left {
-   left: 0;
-   width: var(--pc-left-rail);
+.gameplay-shell:not(.mode-lobby) .in-game-next-boss small {
+   font-size: 10px
 }
 
-.gameplay-shell.mode-lobby .title-controls-right {
-   right: 0;
-   width: var(--pc-right-rail);
+.gameplay-shell:not(.mode-lobby) .in-game-next-boss strong {
+   font-size: 15px !important
 }
 
-.gameplay-shell.mode-lobby .title-controls-kicker {
-   color: #e2c477;
-   font: 900 9px/1 var(--pixel-font);
-   letter-spacing: .12em;
-}
-
-.gameplay-shell.mode-lobby .title-controls strong {
-   color: #f1eadc;
-   font: 900 15px/1 var(--pixel-font);
-   letter-spacing: .08em;
-}
-
-.gameplay-shell.mode-lobby .title-controls small {
-   color: #8793a8;
-   font: 800 8px/1.4 var(--pixel-font);
-   letter-spacing: .04em;
-}
-
-.gameplay-shell.mode-lobby .title-key-row {
+.gameplay-shell:not(.mode-lobby) .game-frame .in-game-core-hud {
+   --core-accent: #69d9ff;
+   --core-glow: rgba(58, 179, 255, .52);
+   bottom: -62px;
    display: flex;
+   flex-direction: row !important;
+   align-items: center;
+   gap: 11px;
+   width: auto;
+   min-width: 0;
+   height: 52px;
+   padding: 0;
+   border: 0;
+   background: transparent;
+   box-shadow: none;
+   isolation: isolate
+}
+
+.gameplay-shell:not(.mode-lobby) .game-frame .in-game-core-hud::before,
+.gameplay-shell:not(.mode-lobby) .game-frame .in-game-core-hud::after {
+   display: none
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-icon {
+   position: relative;
+   display: grid;
+   place-items: center;
+   width: 48px;
+   height: 48px;
+   flex: 0 0 48px
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-icon::before {
+   content: "";
+   position: absolute;
+   z-index: 0;
+   inset: 8px;
+   border-radius: 50%;
+   background: var(--core-glow);
+   filter: blur(8px);
+   opacity: .78
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-icon img {
+   position: relative;
+   z-index: 1;
+   width: 44px;
+   height: 44px;
+   object-fit: contain;
+   image-rendering: pixelated;
+   filter: drop-shadow(0 0 4px var(--core-accent)) drop-shadow(0 0 9px var(--core-glow));
+   transform: scale(1.04)
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-crack {
+   position: absolute;
+   z-index: 2;
+   top: 10px;
+   left: 23px;
+   width: 2px;
+   height: 23px;
+   background: #fff4d2;
+   box-shadow: 0 0 4px var(--core-accent);
+   opacity: 0;
+   transform: rotate(17deg);
+   transform-origin: top center
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-crack::before,
+.gameplay-shell:not(.mode-lobby) .core-single-crack::after {
+   content: "";
+   position: absolute;
+   width: 2px;
+   height: 9px;
+   background: inherit;
+   box-shadow: inherit;
+   transform-origin: top center
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-crack::before {
+   top: 7px;
+   left: -1px;
+   transform: rotate(58deg)
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-crack::after {
+   top: 14px;
+   right: -1px;
+   transform: rotate(-54deg)
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-value {
+   display: flex;
+   align-items: baseline;
    gap: 6px;
+   min-width: 76px;
+   color: #d7e5f5;
+   font: 900 18px/1 var(--pixel-font);
+   letter-spacing: .04em;
+   text-shadow: 0 2px 0 #05080d, 0 0 8px rgba(63, 161, 222, .25)
 }
 
-.gameplay-shell.mode-lobby .title-controls kbd {
-   min-width: 28px;
-   padding: 6px 5px 5px;
-   color: #07101b;
-   border: 1px solid #d6b566;
-   background: linear-gradient(180deg, #f0d58c, #b58e42);
-   box-shadow: 0 3px 0 rgba(0, 0, 0, .36);
-   font: 900 12px/1 var(--pixel-font);
+.gameplay-shell:not(.mode-lobby) .core-single-value .current {
+   color: #f3fbff;
+   font-size: 25px
 }
 
-@media (max-width: 1231px) {
+.gameplay-shell:not(.mode-lobby) .core-single-value i {
+   color: #718096;
+   font-size: 14px;
+   font-style: normal
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-value .maximum {
+   color: #aab7c8;
+   font-size: 17px
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-hud.is-warning {
+   --core-accent: #ffd166;
+   --core-glow: rgba(255, 168, 56, .52)
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-hud.is-warning .core-single-icon img {
+   filter: sepia(1) saturate(3.2) hue-rotate(350deg) brightness(1.2) drop-shadow(0 0 7px var(--core-glow))
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-hud.is-warning .core-single-crack {
+   opacity: .58
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-hud.is-warning .core-single-value .current {
+   color: #ffdd82
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-hud.is-critical {
+   --core-accent: #ff6577;
+   --core-glow: rgba(255, 55, 82, .62)
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-hud.is-critical .core-single-icon {
+   animation: core-critical-pulse 1.05s steps(2, end) infinite
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-hud.is-critical .core-single-icon img {
+   filter: sepia(1) saturate(6) hue-rotate(300deg) brightness(1.12) drop-shadow(0 0 8px var(--core-glow))
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-hud.is-critical .core-single-crack {
+   opacity: .92
+}
+
+.gameplay-shell:not(.mode-lobby) .core-single-hud.is-critical .core-single-value .current {
+   color: #ff7182
+}
+
+.gameplay-shell:not(.mode-lobby) .core-feedback-damage {
+   animation: core-hud-damage .48s steps(2, end)
+}
+
+.gameplay-shell:not(.mode-lobby) .core-feedback-damage .core-single-icon::after,
+.gameplay-shell:not(.mode-lobby) .core-feedback-heal .core-single-icon::after {
+   content: "";
+   position: absolute;
+   z-index: 3;
+   inset: -4px;
+   border: 2px solid #ff6577;
+   opacity: 0;
+   animation: core-feedback-ring .58s ease-out
+}
+
+.gameplay-shell:not(.mode-lobby) .core-feedback-heal .core-single-icon::after {
+   border-color: #73f1a8
+}
+
+.gameplay-shell:not(.mode-lobby) .core-feedback-damage .core-single-value .current {
+   animation: core-number-damage .52s ease-out
+}
+
+.gameplay-shell:not(.mode-lobby) .core-feedback-heal .core-single-value .current {
+   animation: core-number-heal .62s ease-out
+}
+
+@keyframes core-critical-pulse {
+   0%, 100% { transform: scale(1); filter: brightness(1) }
+   50% { transform: scale(1.1); filter: brightness(1.35) }
+}
+
+@keyframes core-hud-damage {
+   0%, 100% { transform: translateX(-50%) }
+   25% { transform: translateX(calc(-50% - 5px)) scale(1.06) }
+   50% { transform: translateX(calc(-50% + 5px)) scale(1.03) }
+   75% { transform: translateX(calc(-50% - 3px)) }
+}
+
+@keyframes core-feedback-ring {
+   0% { opacity: .9; transform: scale(.72) }
+   100% { opacity: 0; transform: scale(1.5) }
+}
+
+@keyframes core-number-damage {
+   0%, 45% { color: #fff; text-shadow: 0 0 14px #ff3f59; transform: scale(1.28) }
+   100% { transform: scale(1) }
+}
+
+@keyframes core-number-heal {
+   0%, 45% { color: #9bffc0; text-shadow: 0 0 14px #58e991; transform: translateY(-3px) scale(1.2) }
+   100% { transform: translateY(0) scale(1) }
+}
+
+.gameplay-shell.mode-lobby .lobby-logo-stage {
+   width: min(540px, 52%) !important;
+   max-height: 64% !important
+}
+
+.gameplay-shell.mode-lobby .lobby-logo-stage .lobby-title-logo {
+   width: 100% !important
+}
+
+.gameplay-shell.mode-lobby .title-start-hint {
+   margin-top: 18px !important;
+   font-size: 14px !important;
+   letter-spacing: .16em !important
+}
+
+.settings-trigger {
+   position: absolute;
+   z-index: 120;
+   top: 12px;
+   right: 12px;
+   width: 38px;
+   height: 38px;
+   display: grid;
+   place-items: center;
+   padding: 0;
+   border: 0;
+   color: #e5cf94;
+   background-color: transparent;
+   box-shadow: none;
+   cursor: pointer
+}
+
+.settings-trigger img {
+   width: 23px;
+   height: 23px;
+   display: block;
+   pointer-events: none;
+   image-rendering: pixelated
+}
+
+.settings-trigger:hover,
+.settings-trigger:focus-visible {
+   color: #fff1bd;
+   filter: brightness(1.15)
+}
+
+.settings-overlay {
+   position: absolute;
+   z-index: 200;
+   inset: 0;
+   display: grid;
+   place-items: center;
+   background: rgba(2, 5, 11, .8);
+   backdrop-filter: blur(2px)
+}
+
+.settings-dialog {
+   width: min(440px, calc(100% - 64px));
+   padding: 20px;
+   color: #eef2f7;
+   background: linear-gradient(180deg, #111927, #080d17 72%)
+}
+
+.settings-dialog > header {
+   display: flex;
+   align-items: flex-start;
+   justify-content: space-between;
+   padding-bottom: 13px;
+   border-bottom: 1px solid rgba(132, 151, 180, .22)
+}
+
+.settings-dialog header small {
+   color: #6fc7e5;
+   font-size: 9px;
+   letter-spacing: .16em
+}
+
+.settings-dialog header h2 {
+   margin: 5px 0 0;
+   color: #e8cc84;
+   font-size: 22px
+}
+
+.settings-close {
+   width: 32px;
+   height: 32px;
+   display: grid;
+   place-items: center;
+   padding: 0;
+   border: 0;
+   color: #cfd8e5;
+   background-color: transparent;
+   cursor: pointer
+}
+
+.settings-close img {
+   width: 18px;
+   height: 18px;
+   display: block;
+   pointer-events: none;
+   image-rendering: pixelated
+}
+
+.settings-audio-grid {
+   display: grid;
+   gap: 13px;
+   margin-top: 18px
+}
+
+.settings-volume-control {
+   display: grid;
+   grid-template-columns: 42px minmax(0, 1fr) 48px;
+   align-items: center;
+   gap: 10px;
+   color: #d8bd7a;
+   font-size: 11px
+}
+
+.settings-volume-control input {
+   width: 100%;
+   accent-color: #67bddd
+}
+
+.settings-volume-control output {
+   color: #e7edf6;
+   text-align: right;
+   font-size: 11px
+}
+
+.settings-control-guide {
+   display: grid;
+   grid-template-columns: repeat(3, 1fr);
+   gap: 8px;
+   margin-top: 16px
+}
+
+.settings-control-guide > div {
+   min-height: 64px;
+   display: grid;
+   align-content: center;
+   justify-items: center;
+   gap: 6px;
+   border: 1px solid rgba(132, 151, 180, .2);
+   background: rgba(4, 8, 15, .48)
+}
+
+.settings-control-guide small {
+   color: #6fc7e5;
+   font-size: 9px
+}
+
+.settings-control-guide strong {
+   color: #eef2f7;
+   font-size: 11px
+}
+
+.settings-control-guide kbd {
+   margin: 0 2px
+}
+
+/* Standalone button images: every control renders at its authored pixel size. */
+.primary-button,
+.secondary-button,
+.upgrade-choice-actions button {
+   border: 0 !important;
+   border-image: none !important;
+   background-color: transparent !important;
+   background-repeat: no-repeat !important;
+   background-position: center !important;
+   background-size: 100% 100% !important;
+   border-radius: 0 !important;
+   clip-path: none !important;
+   box-sizing: border-box;
+   image-rendering: pixelated
+}
+
+.primary-button {
+   width: 256px;
+   min-width: 256px;
+   height: 64px;
+   padding: 0 24px !important;
+   background-image: url("/assets/ui/core-breaker/buttons/button-retry.png") !important
+}
+
+.secondary-button,
+.upgrade-choice-actions button {
+   width: 192px;
+   min-width: 192px;
+   height: 48px;
+   padding: 0 18px !important;
+   background-image: url("/assets/ui/core-breaker/buttons/button-reroll.png") !important
+}
+
+.owned-skills-pagination button {
+   width: 22px !important;
+   height: 22px !important;
+   padding: 0 !important;
+   border: 0 !important;
+   border-image: none !important;
+   background-color: transparent !important;
+   background-image: url("/assets/ui/core-breaker/buttons/button-page.png") !important;
+   background-repeat: no-repeat !important;
+   background-position: center !important;
+   background-size: 22px 22px !important;
+   border-radius: 0 !important;
+   clip-path: none !important;
+   box-sizing: border-box;
+   image-rendering: pixelated
+}
+
+.settings-trigger,
+.settings-close {
+   border: 0 !important;
+   border-image: none !important;
+   background: transparent !important;
+   border-radius: 0 !important;
+   box-shadow: none !important
+}
+
+/* Standalone button interaction frames. */
+.secondary-button:not(:disabled):hover,
+.secondary-button:not(:disabled):focus-visible,
+.upgrade-choice-actions button:not(:disabled):hover,
+.upgrade-choice-actions button:not(:disabled):focus-visible {
+   background-image: url("/assets/ui/core-breaker/buttons/button-reroll-hover.png") !important;
+   transform: translateY(-1px) !important
+}
+
+.secondary-button:not(:disabled):active,
+.upgrade-choice-actions button:not(:disabled):active {
+   background-image: url("/assets/ui/core-breaker/buttons/button-reroll-pressed.png") !important;
+   transform: translateY(1px) !important
+}
+
+.primary-button:not(:disabled):hover,
+.primary-button:not(:disabled):focus-visible {
+   background-image: url("/assets/ui/core-breaker/buttons/button-retry-hover.png") !important;
+   transform: translateY(-1px) !important
+}
+
+.primary-button:not(:disabled):active {
+   background-image: url("/assets/ui/core-breaker/buttons/button-retry-pressed.png") !important;
+   transform: translateY(1px) !important
+}
+
+.gameplay-shell.mode-lobby .lobby-overlay .primary-button:not(:disabled):hover,
+.gameplay-shell.mode-lobby .lobby-overlay .primary-button:not(:disabled):focus-visible {
+   transform: translate(-50%, -1px) !important
+}
+
+.gameplay-shell.mode-lobby .lobby-overlay .primary-button:not(:disabled):active {
+   transform: translate(-50%, 1px) !important
+}
+
+.settings-trigger:not(:disabled):hover,
+.settings-trigger:not(:disabled):focus-visible,
+.settings-close:not(:disabled):hover,
+.settings-close:not(:disabled):focus-visible {
+   filter: brightness(1.2);
+   transform: translateY(-1px) !important
+}
+
+.settings-trigger:not(:disabled):active,
+.settings-close:not(:disabled):active {
+   filter: brightness(.76);
+   transform: translateY(1px) !important
+}
+
+.owned-skills-pagination button:not(:disabled):hover,
+.owned-skills-pagination button:not(:disabled):focus-visible {
+   background-image: url("/assets/ui/core-breaker/buttons/button-page-hover.png") !important;
+   transform: translateY(-1px) !important
+}
+
+.owned-skills-pagination button:not(:disabled):active {
+   background-image: url("/assets/ui/core-breaker/buttons/button-page.png") !important;
+   transform: translateY(1px) !important
+}
+
+.primary-button:focus-visible,
+.secondary-button:focus-visible,
+.upgrade-choice-actions button:focus-visible,
+.settings-trigger:focus-visible,
+.settings-close:focus-visible,
+.owned-skills-pagination button:focus-visible {
+   outline: 1px solid #83dcff !important;
+   outline-offset: 2px
+}
+
+.primary-button:disabled,
+.secondary-button:disabled,
+.upgrade-choice-actions button:disabled,
+.settings-trigger:disabled,
+.settings-close:disabled,
+.owned-skills-pagination button:disabled {
+   filter: saturate(.25) brightness(.72) !important;
+   transform: none !important;
+   cursor: not-allowed
+}
+
+.secondary-button:disabled,
+.upgrade-choice-actions button:disabled {
+   background-image: url("/assets/ui/core-breaker/buttons/button-reroll-disabled.png") !important
+}
+
+.owned-skills-pagination button:disabled {
+   background-image: url("/assets/ui/core-breaker/buttons/button-page-disabled.png") !important
+}
+
+@media(max-width:1280px) {
    .gameplay-shell {
-      --pc-left-rail: 140px;
-      --pc-right-rail: 160px;
+      --game-ui-left-rail: 160px;
+      --game-ui-right-rail: 184px;
+      --game-ui-rail-gap: 10px;
+      padding-left: 18px !important;
+      padding-right: 18px !important
    }
+}
 
-   .gameplay-shell .gameplay-stage {
-      grid-template-columns: var(--pc-left-rail) minmax(0, 1fr) var(--pc-right-rail) !important;
-      width: calc(100vw - 32px) !important;
-      max-width: calc(100vw - 32px) !important;
-   }
-
-   .gameplay-shell .gameplay-stage > .game-frame {
-      width: 100% !important;
-      max-width: none !important;
-      height: auto !important;
-      max-height: none !important;
-   }
-
-   .gameplay-shell:not(.mode-lobby) .in-game-skill-panel,
-   .gameplay-shell:not(.mode-lobby) .right-rail-panel {
-      width: auto;
+@media(prefers-reduced-motion:reduce) {
+   .gameplay-shell.first-game-entry .gameplay-stage > .in-game-skill-panel,
+   .gameplay-shell.first-game-entry .gameplay-stage > .right-rail-stack {
+      animation: none !important
    }
 }

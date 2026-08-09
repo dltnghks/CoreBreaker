@@ -2,13 +2,11 @@ import { useCallback, useEffect, useState, type RefObject } from "react";
 import { GameAudio } from "./game-audio";
 import { applyWaveDefinitions, WAVE_STORAGE_KEY } from "./wave-config";
 
-const SOUND_STORAGE_KEY = "echo-breaker-sound-v1";
 const SFX_VOLUME_STORAGE_KEY = "echo-breaker-sfx-volume-v1";
 const MUSIC_VOLUME_STORAGE_KEY = "echo-breaker-music-volume-v1";
 
 /** Owns browser-backed runtime settings that are applied before a run starts. */
 export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>, ready = true) {
-  const [soundEnabled, setSoundEnabled] = useState(true);
   const [sfxVolume, setSfxVolumeState] = useState(1);
   const [musicVolume, setMusicVolumeState] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -27,7 +25,6 @@ export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>, ready 
 
   useEffect(() => {
     if (!ready) return;
-    const enabled = localStorage.getItem(SOUND_STORAGE_KEY) !== "off";
     const storedSfx = Number(localStorage.getItem(SFX_VOLUME_STORAGE_KEY));
     const storedMusic = Number(localStorage.getItem(MUSIC_VOLUME_STORAGE_KEY));
     const nextSfx = Number.isFinite(storedSfx) ? Math.max(0, Math.min(1, storedSfx)) : 1;
@@ -35,7 +32,7 @@ export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>, ready 
     const audio = new GameAudio();
     audio.setSfxVolume(nextSfx * 1.0);
     audio.setMusicVolume(nextMusic * 0.3);
-    audio.setMuted(!enabled);
+    audio.setMuted(false);
     audioRef.current = audio;
     // Try immediately for browsers that allow autoplay. Browsers that block
     // it keep the decoded transport ready and resume it on the first gesture.
@@ -48,7 +45,6 @@ export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>, ready 
     window.addEventListener("pointerdown", unlockTitleMusic, { once: true });
     window.addEventListener("keydown", unlockTitleMusic, { once: true });
     const timer = window.setTimeout(() => {
-      setSoundEnabled(enabled);
       setSfxVolumeState(nextSfx);
       setMusicVolumeState(nextMusic);
     }, 0);
@@ -59,19 +55,6 @@ export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>, ready 
       audio.close();
     };
   }, [audioRef, ready]);
-
-  const toggleSound = useCallback(() => {
-    const next = !soundEnabled;
-    setSoundEnabled(next);
-    localStorage.setItem(SOUND_STORAGE_KEY, next ? "on" : "off");
-    const audio = audioRef.current ?? new GameAudio();
-    audioRef.current = audio;
-    audio.setMuted(!next);
-    if (next) {
-      audio.setMusicState({ active: true, state: "title" });
-      void audio.startMusic().then(() => audio.play("item"));
-    }
-  }, [audioRef, soundEnabled]);
 
   const setSfxVolume = useCallback((value: number) => {
     const next = Math.max(0, Math.min(1, value));
@@ -96,5 +79,5 @@ export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>, ready 
     else await document.documentElement.requestFullscreen();
   }, []);
 
-  return { soundEnabled, sfxVolume, musicVolume, setSfxVolume, setMusicVolume, isFullscreen, toggleSound, toggleFullscreen };
+  return { sfxVolume, musicVolume, setSfxVolume, setMusicVolume, isFullscreen, toggleFullscreen };
 }
