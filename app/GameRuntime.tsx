@@ -2041,15 +2041,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
               )}
             </aside>
 
-            {mode === "lobby" && (
-              <div className="title-controls title-controls-left" aria-label="이동 조작">
-                <span className="title-controls-kicker">조작 안내</span>
-                <strong>이동</strong>
-                <div className="title-key-row"><kbd>A</kbd><kbd>D</kbd></div>
-                <small>방향키 사용</small>
-              </div>
-            )}
-
             <div className="game-frame">
             <canvas
               ref={canvasRef}
@@ -2187,9 +2178,9 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                 </div>
               </div>
             </RightRailPanel>
-              {mode !== "lobby" && (
+              {(
                 <RightRailPanel className="runtime-controls-panel" ariaLabel="게임 컨트롤">
-                  <button type="button" className="runtime-pause-button" onClick={togglePause} disabled={botActiveRef.current} aria-pressed={isPaused}>
+                  <button type="button" className="runtime-pause-button" onClick={togglePause} disabled={mode === "lobby" || botActiveRef.current} aria-pressed={isPaused}>
                     {isPaused ? "계속하기" : "일시정지"}
                   </button>
                   <label className="runtime-volume-control">
@@ -2221,19 +2212,21 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                     />
                     <output>{Math.round(musicVolume * 100)}%</output>
                   </label>
+                  <div className="runtime-control-guide" aria-label="조작 안내">
+                    <span className="runtime-control-kicker">조작 안내</span>
+                    <strong>이동</strong>
+                    <div className="title-key-row"><kbd>A</kbd><kbd>D</kbd></div>
+                    <small>방향키 사용</small>
+                    <span className="runtime-control-kicker">입력 방식</span>
+                    <strong>조준</strong>
+                    <small>마우스</small>
+                    <strong>발사</strong>
+                    <small>클릭하여 시작</small>
+                  </div>
                 </RightRailPanel>
               )}
             </div>
 
-            {mode === "lobby" && (
-              <div className="title-controls title-controls-right" aria-label="조준 조작">
-                <span className="title-controls-kicker">입력 방식</span>
-                <strong>조준</strong>
-                <small>마우스</small>
-                <strong>발사</strong>
-                <small>클릭하여 시작</small>
-              </div>
-            )}
           </div>
 
           {mode !== "lobby" && <div className="build-tray">

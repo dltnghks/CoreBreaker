@@ -3725,7 +3725,7 @@ body {
    align-items: center;
    gap: 6px;
    color: #c4c9d4;
-   font: 800 8px/1 var(--pixel-font);
+   font: 800 12px/1 var(--pixel-font);
 }
 
 .gameplay-shell .runtime-volume-control input {
@@ -3738,7 +3738,7 @@ body {
    grid-column: 2;
    justify-self: end;
    color: #e2c477;
-   font: 800 8px/1 monospace;
+   font: 800 12px/1 monospace;
 }
 
 .gameplay-shell .runtime-controls-panel label.runtime-volume-control:nth-of-type(1)>span {
@@ -3747,7 +3747,59 @@ body {
 
 .gameplay-shell .runtime-controls-panel label.runtime-volume-control:nth-of-type(1)>span::after {
    content: "SFX";
-   font-size: 8px;
+   font-size: 12px;
+}
+
+.gameplay-shell .build-tray .controls {
+   display: none;
+}
+
+.gameplay-shell .runtime-control-guide {
+   display: grid;
+   justify-items: center;
+   gap: 5px;
+   margin-top: 4px;
+   padding-top: 5px;
+   border-top: 1px solid rgba(226, 196, 119, .25);
+   color: #c4c9d4;
+   font: 800 8px/1.2 var(--pixel-font);
+}
+
+.gameplay-shell .runtime-control-guide .runtime-control-kicker {
+   color: #e2c477;
+   font: 900 8px/1 var(--pixel-font);
+   letter-spacing: .08em;
+}
+
+.gameplay-shell .runtime-control-guide strong {
+   color: #f1eadc;
+   font: 900 12px/1 var(--pixel-font);
+   letter-spacing: .06em;
+}
+
+.gameplay-shell .runtime-control-guide small {
+   color: #8793a8;
+   font: 800 8px/1.3 var(--pixel-font);
+}
+
+.gameplay-shell .runtime-control-guide .title-key-row {
+   display: flex;
+   gap: 6px;
+}
+
+.gameplay-shell .runtime-control-guide span {
+   display: flex;
+   align-items: center;
+   gap: 4px;
+}
+
+.gameplay-shell .runtime-control-guide kbd {
+   min-width: 14px;
+   padding: 2px 3px;
+   border: 1px solid rgba(226, 196, 119, .5);
+   color: #e2c477;
+   text-align: center;
+   font: 800 8px/1 monospace;
 }
 
 @media(max-width:760px) {
@@ -3766,6 +3818,9 @@ body {
    .gameplay-shell .runtime-controls-panel {
       gap: 7px;
       padding: 8px 6px;
+      right: 8px;
+      bottom: 8px;
+      width: min(180px, calc(100vw - 16px));
    }
 }
 
@@ -5899,6 +5954,18 @@ select {
    background: rgba(4, 8, 16, .78);
 }
 
+.gameplay-shell .runtime-controls-panel {
+   position: static;
+   width: 100%;
+   box-sizing: border-box;
+   margin: 0;
+   pointer-events: auto;
+}
+
+.gameplay-shell.mode-lobby .title-controls {
+   display: none;
+}
+
 @media(max-width:760px) {
 
    .gameplay-shell:not(.mode-lobby) .in-game-stat-panel h2,
@@ -6221,21 +6288,22 @@ html {
 
 .gameplay-shell .gameplay-stage,
 .gameplay-shell:not(.mode-lobby) .gameplay-stage {
-   grid-template-columns: var(--pc-left-rail) minmax(0, var(--pc-arena-width)) var(--pc-right-rail) !important;
+   grid-template-columns: var(--pc-left-rail) minmax(0, 1fr) var(--pc-right-rail) !important;
    gap: var(--pc-stage-gap) !important;
-   width: calc(var(--pc-left-rail) + var(--pc-arena-width) + var(--pc-right-rail) + (var(--pc-stage-gap) * 2)) !important;
-   min-width: calc(var(--pc-left-rail) + var(--pc-arena-width) + var(--pc-right-rail) + (var(--pc-stage-gap) * 2)) !important;
-   max-width: calc(100vw - 16px) !important;
+   margin-top: 16px !important;
+   width: calc(100vw - 32px) !important;
+   min-width: 0 !important;
+   max-width: none !important;
    margin-left: auto !important;
    margin-right: auto !important;
 }
 
 .gameplay-shell .gameplay-stage > .game-frame {
-   width: var(--pc-arena-width) !important;
-   height: var(--pc-arena-height) !important;
+   width: 100% !important;
+   height: auto !important;
    min-width: 0 !important;
-   max-width: var(--pc-arena-width) !important;
-   max-height: var(--pc-arena-height) !important;
+   max-width: none !important;
+   max-height: none !important;
    align-self: start;
    aspect-ratio: 3 / 2;
    margin: 0 auto 43px !important;

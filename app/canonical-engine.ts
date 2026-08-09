@@ -586,6 +586,27 @@ function collisionCandidates(state: CanonicalState, ball: CanonicalBall, previou
   return [...candidateSet].sort((a, b) => a.id - b.id);
 }
 
+function rangeCandidates(state: CanonicalState, x: number, y: number, radius: number) {
+  const startCol = Math.floor((x - radius) / WAVE_CELL_SIZE);
+  const endCol = Math.floor((x + radius) / WAVE_CELL_SIZE);
+  const startRow = Math.floor((y - radius) / WAVE_CELL_SIZE);
+  const endRow = Math.floor((y + radius) / WAVE_CELL_SIZE);
+  const candidateSet = new Set<CanonicalBrick>();
+  for (let row = startRow; row <= endRow; row += 1) {
+    for (let col = startCol; col <= endCol; col += 1) {
+      for (const brick of state.collisionGrid.get(`${col}:${row}`) ?? []) candidateSet.add(brick);
+    }
+  }
+  return [...candidateSet];
+}
+
+function bricksInRadius(state: CanonicalState, x: number, y: number, radius: number) {
+  return rangeCandidates(state, x, y, radius).filter((brick) => {
+    if (!brick.alive || brick.trait === "indestructible") return false;
+    return Math.hypot(brick.x + brick.w / 2 - x, brick.y + brick.h / 2 - y) <= radius;
+  });
+}
+
 function scheduledMultiball(wave: number) { return [2, 4, 6, 8, 11, 13, 16, 18].includes(wave); }
 
 function buildWave(state: CanonicalState, wave: number) {
@@ -847,10 +868,9 @@ function resolveBrickDestruction(state: CanonicalState, brick: CanonicalBrick, a
     const blastX = brick.x + brick.w / 2;
     const blastY = brick.y + brick.h / 2;
     emitCanonicalEvent(state, { type: "brick-exploded", brickIndex: brick.id, x: blastX, y: blastY, radius: EXPLOSION_RADIUS, color: "#ff8a3d" });
-    for (const near of state.bricks) {
-      if (!near.alive || near === brick || near.trait === "indestructible") continue;
-      const distance = Math.hypot(near.x + near.w / 2 - blastX, near.y + near.h / 2 - blastY);
-      if (distance < EXPLOSION_RADIUS) applyBrickDamage(state, near, { amount: 1, damageType: "physical", delivery: "environment", sourceBall, respectGuard: true });
+    for (const near of bricksInRadius(state, blastX, blastY, EXPLOSION_RADIUS)) {
+      if (near === brick) continue;
+      applyBrickDamage(state, near, { amount: 1, damageType: "physical", delivery: "environment", sourceBall, respectGuard: true });
     }
     if (sourceBall) {
       const dx = sourceBall.x - blastX;
@@ -867,11 +887,9 @@ function resolveBrickDestruction(state: CanonicalState, brick: CanonicalBrick, a
     const blastY = brick.y + brick.h / 2;
     const range = 60 + blastLevel * 20;
     emitCanonicalVisual(state, { kind: "impact", skillId: "original" as UpgradeId, x: blastX, y: blastY, radius: range, duration: 0.55, color: "#ff6b87" });
-    for (const near of state.bricks) {
-      if (!near.alive || near === brick || near.trait === "indestructible") continue;
-      if (Math.hypot(near.x + near.w / 2 - blastX, near.y + near.h / 2 - blastY) <= range) {
-        applyBrickDamage(state, near, { amount: blastLevel >= 3 ? 2 : 1, damageType: "physical", delivery: "environment", sourceBall, respectGuard: true });
-      }
+    for (const near of bricksInRadius(state, blastX, blastY, range)) {
+      if (near === brick) continue;
+      applyBrickDamage(state, near, { amount: blastLevel >= 3 ? 2 : 1, damageType: "physical", delivery: "environment", sourceBall, respectGuard: true });
     }
   }
 }
@@ -993,12 +1011,8 @@ function applySkillStatuses(state: CanonicalState, result: SkillResult, sourceSk
 function applySkillGlobalEffects(state: CanonicalState, result: SkillResult) {
   if (result.barrier) {
     const charges = Math.max(0, result.barrier.charges ?? 0);
-    // Base Iron Wall only maintains one guard. Its evolution unlocks stacking,
-    // capped at four guards for the current wave.
-    state.barrierCharges = result.barrier.stackable
-      ? Math.min(4, state.barrierCharges + charges)
-      : Math.max(state.barrierCharges, Math.min(1, charges));
-    state.barrierTime = 0;
+    state.barrierCharges = Math.max(state.barrierCharges, Math.min(1, charges));
+    state.barrierTime = Math.max(0, Number(result.barrier.duration ?? 0));
   }
   if (result.summon) {
     for (let i = 0; i < result.summon.count; i++) state.balls.push(makeBall(state, state.paddleX, result.summon.temporary ?? true));
@@ -1023,7 +1037,7 @@ function chainPriority(id: UpgradeId, brick: CanonicalBrick) {
 }
 
 function applyShockwave(state: CanonicalState, ball: CanonicalBall, origin: CanonicalBrick, radius: number, packet: { amount: number; damageType: SkillDamageType }) {
-  const targets = state.bricks.filter((target) => target.alive && target.trait !== "indestructible" && brickDistance(target, origin) <= radius);
+  const targets = bricksInRadius(state, origin.x + origin.w / 2, origin.y + origin.h / 2, radius);
   let damage = 0;
   let kills = 0;
   for (const target of targets) {
@@ -1037,8 +1051,8 @@ function applyShockwave(state: CanonicalState, ball: CanonicalBall, origin: Cano
 }
 
 function applyRicochetSkill(state: CanonicalState, ball: CanonicalBall, origin: CanonicalBrick, count: number, radius: number) {
-  const targets = state.bricks
-    .filter((target) => target.alive && target !== origin && target.trait !== "indestructible" && brickDistance(target, origin) <= radius)
+  const targets = bricksInRadius(state, origin.x + origin.w / 2, origin.y + origin.h / 2, radius)
+    .filter((target) => target !== origin)
     .sort((a, b) => chainPriority("archer-ricochet", a) - chainPriority("archer-ricochet", b) || brickDistance(a, origin) - brickDistance(b, origin))
     .slice(0, count);
   let damage = 0;
@@ -1060,8 +1074,8 @@ function applyRicochetSkill(state: CanonicalState, ball: CanonicalBall, origin: 
 }
 
 function applyLightningSkill(state: CanonicalState, ball: CanonicalBall, origin: CanonicalBrick, count: number, radius: number) {
-  const targets = state.bricks
-    .filter((target) => target.alive && target.trait !== "indestructible" && target !== origin && brickDistance(target, origin) <= radius)
+  const targets = bricksInRadius(state, origin.x + origin.w / 2, origin.y + origin.h / 2, radius)
+    .filter((target) => target !== origin)
     .sort((a, b) => brickDistance(a, origin) - brickDistance(b, origin))
     .slice(0, count);
   const evolvedLightning = evolved(state, "mage-lightning");
@@ -1093,8 +1107,8 @@ function customTriggerMatches(config: SkillConfig, context: CollisionSkillTrigge
 }
 
 function applyCustomCollisionSkill(state: CanonicalState, ball: CanonicalBall, hit: CanonicalBrick, config: SkillConfig, radius: number, trigger: SkillEffectTriggerFilter) {
-  const nearby = state.bricks
-    .filter((target) => target.alive && target.trait !== "indestructible" && target.id !== hit.id)
+  const nearby = bricksInRadius(state, hit.x + hit.w / 2, hit.y + hit.h / 2, radius)
+    .filter((target) => target.id !== hit.id)
     .sort((a, b) => brickDistance(a, hit) - brickDistance(b, hit));
   const applyDamage = (target: CanonicalBrick, kind: SkillTrait) => {
     const packet = traitDamagePacket(state, config.id, kind);
@@ -1184,7 +1198,9 @@ function effectDamage(state: CanonicalState, config: SkillConfig, effect: SkillE
 
 function resolveEffectBricks(state: CanonicalState, origin: CanonicalBrick, effect: SkillEffectConfig, radius: number) {
   if (effect.target === "self" || effect.target === "paddle" || effect.target === "core") return [];
-  const candidates = state.bricks.filter((brick) => brick.alive && brick.trait !== "indestructible");
+  const candidates = ["all-enemies", "nearest", "same-trait"].includes(effect.target)
+    ? state.bricks.filter((brick) => brick.alive && brick.trait !== "indestructible")
+    : bricksInRadius(state, origin.x + origin.w / 2, origin.y + origin.h / 2, Math.max(0, radius));
   const distance = (brick: CanonicalBrick) => brickDistance(brick, origin);
   if (effect.target === "hit") return origin.alive ? [origin] : [];
   if (effect.target === "nearest") return candidates.sort((a, b) => distance(a) - distance(b)).slice(0, 1);
@@ -1259,7 +1275,9 @@ function runConfiguredEffectEvents(state: CanonicalState, sourceBall: CanonicalB
 }
 
 function activeEffectTargets(state: CanonicalState, well: CanonicalGravityWell, effect: CanonicalActiveEffect) {
-  const candidates = state.bricks.filter((brick) => brick.alive && brick.trait !== "indestructible");
+  const candidates = ["all-enemies", "nearest", "hit"].includes(effect.target)
+    ? state.bricks.filter((brick) => brick.alive && brick.trait !== "indestructible")
+    : bricksInRadius(state, well.x, well.y, well.radius);
   const distance = (brick: CanonicalBrick) => Math.hypot(brick.x + brick.w / 2 - well.x, brick.y + brick.h / 2 - well.y);
   if (effect.target === "all-enemies") return candidates;
   if (effect.target === "nearest" || effect.target === "hit") return candidates.sort((a, b) => distance(a) - distance(b)).slice(0, 1);
@@ -1280,12 +1298,7 @@ function triggerCollisionSkills(state: CanonicalState, ball: CanonicalBall, hit:
     if (config.id === "mage-mana-blast" && !(triggerContext.originalTrait === "guard" || hit.guardReady || hit.trait === "healer" || hit.trait === "reflector")) continue;
     const remaining = skillCooldownRemaining(state, ball, config.id);
     if (remaining > 0) continue;
-    // Iron Wall's displayed 15/12/8 second value is its activation interval.
-    // Boss enhancement improves that interval instead of shortening a guard
-    // lifetime (stored charges deliberately have no lifetime).
-    const baseCooldown = config.id === "warrior-guard"
-      ? skillValue(state, config.id)
-      : Number(config.cooldown[level - 1] ?? 1);
+    const baseCooldown = Number(config.cooldown[level - 1] ?? 1);
     const cooldown = Math.max(0.2, baseCooldown * state.combatStats.skillCooldownMultiplier);
     setSkillCooldown(state, ball, config.id, cooldown);
     if (evolved(state, "common-cooldown") && canonicalRandom(state, "world") < 0.2) setSkillCooldown(state, ball, config.id, 0);
@@ -1299,7 +1312,9 @@ function triggerCollisionSkills(state: CanonicalState, ball: CanonicalBall, hit:
       + (config.id === "archer-ricochet" && evolved(state, config.id) ? 50 : 0);
     const radius = (config.category === "warrior" ? 105 : config.category === "mage" ? 125 : 85) * rangeMultiplier + rangePadding;
     runConfiguredEffectEvents(state, ball, hit, config, "on-cast", radius, canonicalSkillDamagePacket(state, config.id).amount);
-    const targets = state.bricks.filter((brick) => brick.alive && brick.trait !== "indestructible").sort((a, b) => Math.hypot(a.x - hit.x, a.y - hit.y) - Math.hypot(b.x - hit.x, b.y - hit.y));
+    const targetSearchRadius = Math.max(radius, Number(traitValue(state, config.id, "splash") || 0) * rangeMultiplier + rangePadding);
+    const targets = bricksInRadius(state, hit.x + hit.w / 2, hit.y + hit.h / 2, targetSearchRadius)
+      .sort((a, b) => brickDistance(a, hit) - brickDistance(b, hit));
     const chainBonus = state.combatStats.chainBonus;
     const count = Math.max(1, 1 + chainBonus);
     const effectTrigger: SkillEffectTriggerFilter = triggerContext.destroyed ? ["on-hit", "on-direct-hit", "on-break"] : ["on-hit", "on-direct-hit"];
@@ -1315,8 +1330,7 @@ function triggerCollisionSkills(state: CanonicalState, ball: CanonicalBall, hit:
       applySkillResult(state, result, ball, config.id, affected);
       resultApplied = true;
     } else if (config.id === "warrior-guard" && hasTrait(state, config, "barrier", effectTrigger)) {
-      const stackable = evolved(state, config.id);
-      result.barrier = { charges: 1, stackable };
+      result.barrier = { charges: 1, duration: evolved(state, config.id) ? 0 : skillValue(state, config.id) };
       applySkillResult(state, result, ball, config.id, []);
       resultApplied = true;
     } else if (config.id === "archer-rapid" && hasTrait(state, config, "rapid-fire", effectTrigger)) {
@@ -1610,8 +1624,8 @@ function applyLinkedPayload(state: CanonicalState, context: DirectHitContext) {
   if (linkLevel <= 0 || !context.brick.alive) return;
   const radius = 100 + (linkLevel - 1) * 30;
   const count = Math.max(1, Math.floor(skillValue(state, "link")));
-  const linked = state.bricks
-    .filter((target) => target.alive && target !== context.brick && target.kind !== "boss-core" && target.trait !== "indestructible")
+  const linked = bricksInRadius(state, context.brick.x + context.brick.w / 2, context.brick.y + context.brick.h / 2, radius)
+    .filter((target) => target !== context.brick && target.kind !== "boss-core")
     .map((target) => ({ target, distance: Math.hypot(target.x - context.brick.x, target.y - context.brick.y) }))
     .filter((entry) => entry.distance <= radius)
     .sort((a, b) => a.distance - b.distance)
@@ -2052,7 +2066,10 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
     state.overdriveLevel = nextOverdriveLevel;
   }
   state.itemBarrierTime = Math.max(0, state.itemBarrierTime - step);
-  state.barrierTime = Math.max(0, state.barrierTime - step);
+  if (state.barrierTime > 0) {
+    state.barrierTime = Math.max(0, state.barrierTime - step);
+    if (state.barrierTime <= 0) state.barrierCharges = 0;
+  }
   const moveMultiplier = 1 + (skillValue(state, "common-move-speed") + (evolved(state, "common-move-speed") ? 20 : 0)) / 100;
   if (evolved(state, "common-move-speed") && controls.move !== 0 && state.lastMove !== 0 && controls.move !== state.lastMove) state.moveBoostTime = 0.35;
   state.moveBoostTime = Math.max(0, state.moveBoostTime - step);
@@ -2073,8 +2090,8 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
       const spreadDamage = traitDamagePacket(state, "mage-freeze", "freeze").amount;
       const spreadDuration = skillDuration(state, traitValue(state, "mage-freeze", "freeze"));
       const spreadRadius = 125 * state.combatStats.skillRangeMultiplier + (evolved(state, "common-skill-range") ? 50 : 0);
-      for (const target of state.bricks) {
-        if (!target.alive || target === brick || target.trait === "indestructible" || brickDistance(target, brick) > spreadRadius) continue;
+      for (const target of bricksInRadius(state, brick.x + brick.w / 2, brick.y + brick.h / 2, spreadRadius)) {
+        if (target === brick) continue;
         target.traitLockTime = Math.max(target.traitLockTime, spreadDuration);
         target.frostVulnerability = Math.max(target.frostVulnerability, spreadDamage);
         target.frostSourceSkillId = "mage-freeze";
@@ -2090,10 +2107,10 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
         const healerCenterX = brick.x + brick.w / 2;
         const healerCenterY = brick.y + brick.h / 2;
         let healed = false;
-        for (const near of state.bricks) {
+        for (const near of bricksInRadius(state, healerCenterX, healerCenterY, 135)) {
           const nearCenterX = near.x + near.w / 2;
           const nearCenterY = near.y + near.h / 2;
-          if (near.alive && near !== brick && near.healBlockTime <= 0 && Math.hypot(nearCenterX - healerCenterX, nearCenterY - healerCenterY) < 135) {
+          if (near !== brick && near.healBlockTime <= 0) {
             const previousHp = near.hp;
             near.hp = Math.min(near.maxHp, near.hp + 1);
             const restored = near.hp - previousHp;
@@ -2158,8 +2175,7 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
     }
     if (well.damagePerSecond > 0 && well.damageTick <= 0) {
       well.damageTick += 1;
-      for (const brick of state.bricks) {
-        if (!brick.alive || brick.trait === "indestructible") continue;
+      for (const brick of bricksInRadius(state, well.x, well.y, well.radius)) {
         if (Math.hypot(brick.x + brick.w / 2 - well.x, brick.y + brick.h / 2 - well.y) <= well.radius) applyBrickDamage(state, brick, { amount: well.damagePerSecond, damageType: well.damageType ?? "magic", delivery: "dot", sourceBall: state.balls[0], sourceSkillId: well.sourceSkillId, respectGuard: true });
       }
     }
