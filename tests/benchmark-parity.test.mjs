@@ -1695,3 +1695,32 @@ test("legacy common upgrade aliases resolve to class skill ids without touching 
   assert.equal(skills.canonicalUpgradeId("damage"), "common-damage");
   assert.equal(skills.canonicalUpgradeId("pierce"), "pierce");
 });
+
+test("high-speed balls reflect from adjacent block seams instead of tunneling through the row", () => {
+  const state = engine.createCanonicalState({ seed: 20260819, targetWave: 1 });
+  const firstRowY = Math.min(...state.bricks.map((brick) => brick.y));
+  const row = state.bricks.filter((brick) => brick.y === firstRowY).sort((a, b) => a.x - b.x);
+  const [left, right] = row;
+  assert.ok(left && right && right.x > left.x + left.w, "the fixture needs two adjacent blocks with a seam");
+  state.bricks.forEach((brick) => { brick.alive = brick === left || brick === right; });
+  left.hp = left.maxHp = 999;
+  right.hp = right.maxHp = 999;
+
+  const ball = state.balls[0];
+  const speed = 708;
+  const horizontalRatio = 0.735;
+  ball.x = left.x + 41;
+  ball.y = left.y - 24;
+  ball.vx = speed * horizontalRatio;
+  ball.vy = speed * Math.sqrt(1 - horizontalRatio * horizontalRatio);
+
+  let reflectedUpward = false;
+  for (let tick = 0; tick < 13; tick += 1) {
+    engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+    reflectedUpward ||= ball.vy < 0;
+  }
+
+  assert.equal(reflectedUpward, true);
+  assert.ok(ball.vy < 0, "the ball must still be travelling away from the block row");
+  assert.ok(ball.y + ball.radius < left.y + left.h, "the ball must not emerge below the block row");
+});

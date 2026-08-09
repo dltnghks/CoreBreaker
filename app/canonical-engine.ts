@@ -1,7 +1,7 @@
 import { DEFAULT_BALANCE_CONFIG, type BalanceConfig, type BotWaveSample } from "./balance-config";
 import { DEFAULT_SKILLS, normalizeSkillConfigs, resolveSkillDescription, SKILL_MECHANIC_LABELS, SKILL_TRAIT_PRIORITY, SKILL_VFX_CONFIG, type LegacyUpgradeId, type SkillConfig, type SkillDamageType, type SkillEffectConfig, type SkillTrait, type UpgradeId } from "./skill-config";
 import { WAVE_CELL_SIZE, WAVE_COLUMNS, WAVE_DEFINITIONS, blocksFromPattern, waveDefinitionFrom, type WaveDefinition } from "./wave-config";
-import { circleRectangleCollision, sweptPaddleContact } from "./collision-physics";
+import { circleRectangleCollision, separateAndReflectBall, sweptPaddleContact } from "./collision-physics";
 import type { GameEvent } from "./game-events";
 import type { Upgrade, UpgradeChoice } from "./_types/game";
 
@@ -1685,14 +1685,11 @@ function resolveDestructibleDirectHit(state: CanonicalState, ball: CanonicalBall
   return context;
 }
 
-function circleRect(ball: CanonicalBall, brick: CanonicalBrick) {
-  const closestX = Math.max(brick.x, Math.min(ball.x, brick.x + brick.w));
-  const closestY = Math.max(brick.y, Math.min(ball.y, brick.y + brick.h));
-  const dx = ball.x - closestX;
-  const dy = ball.y - closestY;
-  if (dx * dx + dy * dy > ball.radius * ball.radius) return null;
-  if (Math.abs(dx) > Math.abs(dy)) return { nx: Math.sign(dx) || 1, ny: 0 };
-  return { nx: 0, ny: Math.sign(dy) || 1 };
+function circleRect(ball: CanonicalBall, brick: CanonicalBrick, previousX = ball.x, previousY = ball.y) {
+  const collision = circleRectangleCollision(ball, brick, previousX, previousY);
+  return collision
+    ? { nx: collision.normalX, ny: collision.normalY, penetration: collision.penetration }
+    : null;
 }
 
 function normalizeBallAngle(ball: CanonicalBall) {
@@ -2405,14 +2402,28 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
         }
       }
     }
+    let brickCollision: { brick: CanonicalBrick; collision: { nx: number; ny: number; penetration: number }; approachSpeed: number } | null = null;
     for (const brick of collisionCandidates(state, ball, previousBallX, previousBallY)) {
       if (!brick.alive) continue;
       if (ball.piercingBrickId === brick.id) {
         if (circleRect(ball, brick)) continue;
         ball.piercingBrickId = null;
       }
-      const collision = circleRect(ball, brick);
+      const collision = circleRect(ball, brick, previousBallX, previousBallY);
       if (!collision) continue;
+      const approachSpeed = ball.vx * collision.nx + ball.vy * collision.ny;
+      // At a seam the ball can overlap two blocks at once. Resolve the face
+      // that the ball is moving into instead of whichever block has the lower
+      // id, otherwise a harmless side contact can hide the blocking face.
+      if (!brickCollision
+        || approachSpeed < brickCollision.approachSpeed
+        || (approachSpeed === brickCollision.approachSpeed && collision.penetration > brickCollision.collision.penetration)
+        || (approachSpeed === brickCollision.approachSpeed && collision.penetration === brickCollision.collision.penetration && brick.id < brickCollision.brick.id)) {
+        brickCollision = { brick, collision, approachSpeed };
+      }
+    }
+    if (brickCollision) {
+      const { brick, collision } = brickCollision;
       const indestructible = brick.trait === "indestructible";
       if (indestructible) {
         emitCanonicalVisual(state, { kind: "impact", skillId: "original" as UpgradeId, x: brick.x + brick.w / 2, y: brick.y + brick.h / 2, radius: 34, duration: 0.35, color: "#aeb8ca" });
@@ -2446,32 +2457,25 @@ export function stepCanonicalEngine(state: CanonicalState, controls: CanonicalCo
         ball.y += collision.ny * 1.6;
         ball.piercingBrickId = brick.id;
       } else {
-        if (collision.nx) ball.vx = collision.nx * Math.abs(ball.vx); else ball.vy = collision.ny * Math.abs(ball.vy);
-        ball.x += collision.nx * 1.5;
-        ball.y += collision.ny * 1.5;
+        separateAndReflectBall(ball, { normalX: collision.nx, normalY: collision.ny, penetration: collision.penetration });
       }
       normalizeBallAngle(ball);
-      break;
     }
-    const bossBarrier = state.bossBarriers.find((barrier) => barrier.telegraph <= 0 && circleRect(ball, barrier as unknown as CanonicalBrick));
+    const bossBarrier = state.bossBarriers.find((barrier) => barrier.telegraph <= 0 && circleRect(ball, barrier as unknown as CanonicalBrick, previousBallX, previousBallY));
     if (bossBarrier) {
-      const collision = circleRect(ball, bossBarrier as unknown as CanonicalBrick);
+      const collision = circleRect(ball, bossBarrier as unknown as CanonicalBrick, previousBallX, previousBallY);
       if (collision) {
-        if (collision.nx) ball.vx = collision.nx * Math.abs(ball.vx); else ball.vy = collision.ny * Math.abs(ball.vy);
-        ball.x += collision.nx * 2;
-        ball.y += collision.ny * 2;
+        separateAndReflectBall(ball, { normalX: collision.nx, normalY: collision.ny, penetration: collision.penetration });
         bossBarrier.hitCount++;
         emitCanonicalVisual(state, { kind: "impact", skillId: "original" as UpgradeId, x: bossBarrier.x, y: bossBarrier.y + bossBarrier.h / 2, radius: 38, duration: 0.3, color: "#e7c56f" });
         normalizeBallAngle(ball);
       }
     } else {
-      const bossWall = state.bossWalls.find((wall) => wall.telegraph <= 0 && circleRect(ball, wall as unknown as CanonicalBrick));
+      const bossWall = state.bossWalls.find((wall) => wall.telegraph <= 0 && circleRect(ball, wall as unknown as CanonicalBrick, previousBallX, previousBallY));
       if (bossWall) {
-        const collision = circleRect(ball, bossWall as unknown as CanonicalBrick);
+        const collision = circleRect(ball, bossWall as unknown as CanonicalBrick, previousBallX, previousBallY);
         if (collision) {
-          if (collision.nx) ball.vx = collision.nx * Math.abs(ball.vx); else ball.vy = collision.ny * Math.abs(ball.vy);
-          ball.x += collision.nx * 2;
-          ball.y += collision.ny * 2;
+          separateAndReflectBall(ball, { normalX: collision.nx, normalY: collision.ny, penetration: collision.penetration });
           bossWall.hp--;
           emitCanonicalVisual(state, { kind: "impact", skillId: "original" as UpgradeId, x: bossWall.x + bossWall.w / 2, y: bossWall.y + bossWall.h / 2, radius: 34, duration: 0.28, color: "#b5d8ff" });
           normalizeBallAngle(ball);
