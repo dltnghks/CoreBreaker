@@ -5686,7 +5686,7 @@ html {
 .gameplay-shell .gameplay-stage > .game-frame,
 .gameplay-shell .gameplay-stage > .in-game-skill-panel,
 .gameplay-shell .gameplay-stage > .right-rail-stack > .in-game-stat-panel,
-.settings-dialog {
+.gameplay-shell .gameplay-stage > .right-rail-stack > .runtime-controls-panel {
    border: 12px solid transparent !important;
    border-image-slice: 16 fill !important;
    border-image-width: 12px !important;
@@ -5709,8 +5709,8 @@ html {
    border-image-source: url("/assets/ui/core-breaker/frames/frame-run-info-9slice.png") !important
 }
 
-.settings-dialog {
-   border-image-source: url("/assets/ui/core-breaker/frames/frame-settings-9slice.png") !important
+.gameplay-shell .gameplay-stage > .right-rail-stack > .runtime-controls-panel {
+   border-image-source: url("/assets/ui/core-breaker/frames/frame-controls-9slice.png") !important
 }
 
 .gameplay-shell .upgrade-card {
@@ -6098,149 +6098,159 @@ html {
    letter-spacing: .16em !important
 }
 
-.settings-trigger {
-   position: absolute;
-   z-index: 120;
-   top: 12px;
-   right: 12px;
-   width: 38px;
-   height: 38px;
-   display: grid;
-   place-items: center;
-   padding: 0;
-   border: 0;
-   color: #e5cf94;
-   background-color: transparent;
-   box-shadow: none;
-   cursor: pointer
+.gameplay-shell:not(.mode-lobby) .gameplay-stage > .right-rail-stack {
+   display: flex !important;
+   flex-direction: column;
+   align-self: stretch;
+   height: calc(100% - var(--game-ui-frame-bottom-space));
+   gap: 12px
 }
 
-.settings-trigger img {
-   width: 23px;
-   height: 23px;
-   display: block;
-   pointer-events: none;
-   image-rendering: pixelated
-}
-
-.settings-trigger:hover,
-.settings-trigger:focus-visible {
-   color: #fff1bd;
-   filter: brightness(1.15)
-}
-
-.settings-overlay {
-   position: absolute;
-   z-index: 200;
-   inset: 0;
-   display: grid;
-   place-items: center;
-   background: rgba(2, 5, 11, .8);
-   backdrop-filter: blur(2px)
-}
-
-.settings-dialog {
-   width: min(440px, calc(100% - 64px));
-   padding: 20px;
+.gameplay-shell:not(.mode-lobby) .runtime-controls-panel {
+   margin-top: auto;
+   padding: 14px 12px 16px !important;
    color: #eef2f7;
-   background: linear-gradient(180deg, #111927, #080d17 72%)
+   background: linear-gradient(180deg, rgba(15, 22, 32, .97), rgba(6, 10, 17, .96)) !important
 }
 
-.settings-dialog > header {
-   display: flex;
-   align-items: flex-start;
-   justify-content: space-between;
-   padding-bottom: 13px;
-   border-bottom: 1px solid rgba(132, 151, 180, .22)
-}
-
-.settings-dialog header small {
-   color: #6fc7e5;
-   font-size: 9px;
-   letter-spacing: .16em
-}
-
-.settings-dialog header h2 {
-   margin: 5px 0 0;
+.gameplay-shell:not(.mode-lobby) .runtime-controls-panel h2 {
+   margin: 0 0 10px;
    color: #e8cc84;
-   font-size: 22px
+   font-size: 13px;
+   letter-spacing: .08em
 }
 
-.settings-close {
-   width: 32px;
-   height: 32px;
-   display: grid;
-   place-items: center;
-   padding: 0;
+.controls-divider {
+   display: block;
+   height: 1px;
+   margin: 0 0 11px;
+   background: linear-gradient(90deg, transparent, rgba(226, 196, 119, .46), transparent)
+}
+
+.runtime-pause-button {
+   width: 160px;
+   height: 40px;
+   display: block;
+   margin: 0 auto 13px;
+   padding: 0 20px 0 36px;
    border: 0;
-   color: #cfd8e5;
+   border-radius: 0;
+   color: #f1e6ca;
    background-color: transparent;
+   background-image: url("/assets/ui/core-breaker/buttons/button-pause.png");
+   background-repeat: no-repeat;
+   background-position: center;
+   background-size: 160px 40px;
+   font: 700 11px/1 var(--pixel-font);
+   image-rendering: pixelated;
    cursor: pointer
 }
 
-.settings-close img {
-   width: 18px;
-   height: 18px;
-   display: block;
-   pointer-events: none;
-   image-rendering: pixelated
+.runtime-pause-button[aria-pressed="true"] {
+   background-image: url("/assets/ui/core-breaker/buttons/button-resume.png")
 }
 
-.settings-audio-grid {
-   display: grid;
-   gap: 13px;
-   margin-top: 18px
+.runtime-pause-button:not(:disabled):hover,
+.runtime-pause-button:not(:disabled):focus-visible {
+   color: #fff7df;
+   background-image: url("/assets/ui/core-breaker/buttons/button-pause-hover.png");
+   transform: translateY(-1px)
 }
 
-.settings-volume-control {
+.runtime-pause-button[aria-pressed="true"]:not(:disabled):hover,
+.runtime-pause-button[aria-pressed="true"]:not(:disabled):focus-visible {
+   background-image: url("/assets/ui/core-breaker/buttons/button-resume-hover.png")
+}
+
+.runtime-pause-button:not(:disabled):active {
+   background-image: url("/assets/ui/core-breaker/buttons/button-pause-pressed.png");
+   transform: translateY(1px)
+}
+
+.runtime-pause-button[aria-pressed="true"]:not(:disabled):active {
+   background-image: url("/assets/ui/core-breaker/buttons/button-resume-pressed.png")
+}
+
+.runtime-pause-button:disabled {
+   color: #78818c;
+   background-image: url("/assets/ui/core-breaker/buttons/button-pause-disabled.png");
+   cursor: not-allowed
+}
+
+.runtime-volume-control {
    display: grid;
-   grid-template-columns: 42px minmax(0, 1fr) 48px;
+   grid-template-columns: 30px minmax(0, 1fr) 34px;
    align-items: center;
-   gap: 10px;
-   color: #d8bd7a;
-   font-size: 11px
-}
-
-.settings-volume-control input {
-   width: 100%;
-   accent-color: #67bddd
-}
-
-.settings-volume-control output {
-   color: #e7edf6;
-   text-align: right;
-   font-size: 11px
-}
-
-.settings-control-guide {
-   display: grid;
-   grid-template-columns: repeat(3, 1fr);
-   gap: 8px;
-   margin-top: 16px
-}
-
-.settings-control-guide > div {
-   min-height: 64px;
-   display: grid;
-   align-content: center;
-   justify-items: center;
    gap: 6px;
-   border: 1px solid rgba(132, 151, 180, .2);
-   background: rgba(4, 8, 15, .48)
-}
-
-.settings-control-guide small {
-   color: #6fc7e5;
+   min-height: 28px;
+   color: #d8bd7a;
    font-size: 9px
 }
 
-.settings-control-guide strong {
-   color: #eef2f7;
-   font-size: 11px
+.runtime-volume-control input {
+   width: 100%;
+   min-width: 0;
+   accent-color: #67bddd
 }
 
-.settings-control-guide kbd {
-   margin: 0 2px
+.runtime-volume-control output {
+   color: #e7edf6;
+   text-align: right;
+   font-size: 9px
+}
+
+.pause-screen-overlay {
+   position: absolute;
+   z-index: 180;
+   inset: 0;
+   display: grid;
+   place-items: center;
+   color: #f4ead2;
+   background: rgba(2, 5, 11, .82);
+   backdrop-filter: blur(1px);
+   animation: pause-screen-enter .14s steps(3, end) both;
+   pointer-events: auto
+}
+
+.pause-screen-copy {
+   min-width: 300px;
+   padding: 24px 38px 22px;
+   text-align: center;
+   border-top: 1px solid rgba(221, 190, 112, .58);
+   border-bottom: 1px solid rgba(221, 190, 112, .58);
+   background: linear-gradient(90deg, transparent, rgba(8, 14, 24, .88) 18%, rgba(8, 14, 24, .88) 82%, transparent)
+}
+
+.pause-screen-copy small,
+.pause-screen-copy strong,
+.pause-screen-copy span {
+   display: block
+}
+
+.pause-screen-copy small {
+   margin-bottom: 10px;
+   color: #63c8e5;
+   font-size: 9px;
+   letter-spacing: .2em
+}
+
+.pause-screen-copy strong {
+   color: #f0d48c;
+   font-size: 28px;
+   letter-spacing: .12em;
+   text-shadow: 0 2px 0 #050912, 0 0 14px rgba(224, 190, 105, .22)
+}
+
+.pause-screen-copy span {
+   margin-top: 13px;
+   color: #aeb9ca;
+   font-size: 10px;
+   letter-spacing: .04em
+}
+
+@keyframes pause-screen-enter {
+   from { opacity: 0 }
+   to { opacity: 1 }
 }
 
 /* Standalone button images: every control renders at its authored pixel size. */
@@ -6293,15 +6303,6 @@ html {
    image-rendering: pixelated
 }
 
-.settings-trigger,
-.settings-close {
-   border: 0 !important;
-   border-image: none !important;
-   background: transparent !important;
-   border-radius: 0 !important;
-   box-shadow: none !important
-}
-
 /* Standalone button interaction frames. */
 .secondary-button:not(:disabled):hover,
 .secondary-button:not(:disabled):focus-visible,
@@ -6337,20 +6338,6 @@ html {
    transform: translate(-50%, 1px) !important
 }
 
-.settings-trigger:not(:disabled):hover,
-.settings-trigger:not(:disabled):focus-visible,
-.settings-close:not(:disabled):hover,
-.settings-close:not(:disabled):focus-visible {
-   filter: brightness(1.2);
-   transform: translateY(-1px) !important
-}
-
-.settings-trigger:not(:disabled):active,
-.settings-close:not(:disabled):active {
-   filter: brightness(.76);
-   transform: translateY(1px) !important
-}
-
 .owned-skills-pagination button:not(:disabled):hover,
 .owned-skills-pagination button:not(:disabled):focus-visible {
    background-image: url("/assets/ui/core-breaker/buttons/button-page-hover.png") !important;
@@ -6365,8 +6352,7 @@ html {
 .primary-button:focus-visible,
 .secondary-button:focus-visible,
 .upgrade-choice-actions button:focus-visible,
-.settings-trigger:focus-visible,
-.settings-close:focus-visible,
+.runtime-pause-button:focus-visible,
 .owned-skills-pagination button:focus-visible {
    outline: 1px solid #83dcff !important;
    outline-offset: 2px
@@ -6375,8 +6361,6 @@ html {
 .primary-button:disabled,
 .secondary-button:disabled,
 .upgrade-choice-actions button:disabled,
-.settings-trigger:disabled,
-.settings-close:disabled,
 .owned-skills-pagination button:disabled {
    filter: saturate(.25) brightness(.72) !important;
    transform: none !important;
@@ -6405,6 +6389,10 @@ html {
 @media(prefers-reduced-motion:reduce) {
    .gameplay-shell.first-game-entry .gameplay-stage > .in-game-skill-panel,
    .gameplay-shell.first-game-entry .gameplay-stage > .right-rail-stack {
+      animation: none !important
+   }
+
+   .pause-screen-overlay {
       animation: none !important
    }
 }

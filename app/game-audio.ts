@@ -75,6 +75,7 @@ export class GameAudio {
   private sfxBuffers: Partial<Record<GameSound, AudioBuffer>> = {};
   private sfxLoadPromise: Promise<void> | null = null;
   private musicStarted = false;
+  private paused = false;
   private musicState: AdaptiveMusicState = { active: false, state: "title" };
   private sfxVolume = 0.28;
   private musicVolume = 0.24;
@@ -97,7 +98,7 @@ export class GameAudio {
       this.musicMaster.connect(this.compressor);
     }
     if (!this.sfxLoadPromise) this.sfxLoadPromise = this.loadSfxBuffers();
-    if (this.context.state === "suspended") await this.context.resume();
+    if (this.context.state === "suspended" && !this.paused) await this.context.resume();
   }
 
   async startMusic() {
@@ -158,6 +159,19 @@ export class GameAudio {
       this.master.gain.setTargetAtTime(muted ? 0 : this.sfxVolume, this.context.currentTime, 0.015);
       this.musicMaster?.gain.setTargetAtTime(muted ? 0 : this.musicVolume, this.context.currentTime, 0.015);
     }
+  }
+
+  async setPaused(paused: boolean) {
+    this.paused = paused;
+    const context = this.context;
+    if (!context) return;
+    if (paused) {
+      this.musicElement?.pause();
+      if (context.state === "running") await context.suspend();
+      return;
+    }
+    if (context.state === "suspended") await context.resume();
+    if (this.musicStarted && this.musicElement) void this.musicElement.play().catch(() => undefined);
   }
 
   play(sound: GameSound, intensity = 1) {
@@ -258,6 +272,7 @@ export class GameAudio {
     });
     this.musicLayers = {};
     this.musicStarted = false;
+    this.paused = false;
     this.musicElement?.pause();
     this.musicElement = null;
     void this.context?.close();

@@ -793,8 +793,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const [rerollsLeft, setRerollsLeft] = useState(1);
   const [result, setResult] = useState<GameState | null>(null);
   const [isPaused, setIsPaused] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const settingsPausedRunRef = useRef(false);
   const [, setSavedMessage] = useState("");
   const [upgradeCatalog, setUpgradeCatalog] = useState<Upgrade[]>(DEFAULT_UPGRADES);
   const { sfxVolume, musicVolume, setSfxVolume, setMusicVolume } = useRuntimeSettings(audioRef, artReady);
@@ -813,6 +811,14 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   const playUiSound = useCallback((sound: Parameters<GameAudio["play"]>[0], intensity = 1) => {
     audioRef.current?.play(sound, intensity);
   }, [audioRef]);
+  const togglePause = useCallback(() => {
+    if (botActiveRef.current || mode !== "playing") return;
+    const nextPaused = !isPaused;
+    setIsPaused(nextPaused);
+    runningRef.current = !nextPaused;
+    void audioRef.current?.setPaused(nextPaused);
+    if (!nextPaused) resetLoopClockRef.current();
+  }, [audioRef, isPaused, mode]);
   const handleUiPointerOver = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (!(event.target instanceof Element)) return;
     const control = event.target.closest("button, a");
@@ -820,25 +826,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     if (control && (!(from instanceof Node) || !control.contains(from))) playUiSound("ui-hover", 0.45);
   }, [playUiSound]);
 
-  const openSettings = useCallback(() => {
-    const shouldPauseRun = mode === "playing" && !isPaused && !botActiveRef.current;
-    settingsPausedRunRef.current = shouldPauseRun;
-    if (shouldPauseRun) {
-      setIsPaused(true);
-      runningRef.current = false;
-      playUiSound("pause");
-    }
-    setIsSettingsOpen(true);
-  }, [isPaused, mode, playUiSound]);
-  const closeSettings = useCallback(() => {
-    setIsSettingsOpen(false);
-    if (settingsPausedRunRef.current && mode === "playing") {
-      setIsPaused(false);
-      runningRef.current = true;
-      resetLoopClockRef.current();
-    }
-    settingsPausedRunRef.current = false;
-  }, [mode]);
   const handleUiClick = useCallback((event: ReactMouseEvent<HTMLElement>) => {
     if (!(event.target instanceof Element)) return;
     if (event.target.closest("button, a")) playUiSound("ui-click", 0.7);
@@ -1412,6 +1399,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     canonicalTerminalRef.current = null;
     const audio = audioRef.current ?? new GameAudio();
     audioRef.current = audio;
+    void audio.setPaused(false);
     audio.setMuted(false);
     audio.setMusicState({ active: true, state: "transition" });
     void audio.unlock().then(() => audio.play("start"));
@@ -1536,26 +1524,25 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
   }, [benchmarkMode]);
 
   useEffect(() => {
-    if (mode !== "lobby" || benchmarkMode || isSettingsOpen) return;
+    if (mode !== "lobby" || benchmarkMode) return;
     const onTitleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" || event.key === "Tab" || event.key === "Shift" || event.key === "Control" || event.key === "Alt" || event.metaKey || event.ctrlKey) return;
       triggerTitleStart();
     };
     window.addEventListener("keydown", onTitleKeyDown);
     return () => window.removeEventListener("keydown", onTitleKeyDown);
-  }, [benchmarkMode, isSettingsOpen, mode, triggerTitleStart]);
+  }, [benchmarkMode, mode, triggerTitleStart]);
 
   useEffect(() => {
     if (benchmarkMode) return;
-    const toggleSettingsOnEscape = (event: KeyboardEvent) => {
+    const togglePauseOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.repeat) return;
       event.preventDefault();
-      if (isSettingsOpen) closeSettings();
-      else openSettings();
+      togglePause();
     };
-    window.addEventListener("keydown", toggleSettingsOnEscape);
-    return () => window.removeEventListener("keydown", toggleSettingsOnEscape);
-  }, [benchmarkMode, closeSettings, isSettingsOpen, openSettings]);
+    window.addEventListener("keydown", togglePauseOnEscape);
+    return () => window.removeEventListener("keydown", togglePauseOnEscape);
+  }, [benchmarkMode, togglePause]);
 
   useEffect(() => {
     if (mode === "lobby") {
@@ -1855,10 +1842,10 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
     setClearedWave(null);
     runningRef.current = false;
     stopLoop();
+    void audioRef.current?.setPaused(false);
     gameRef.current = null;
     canonicalStateRef.current = null;
-    setIsSettingsOpen(false);
-    settingsPausedRunRef.current = false;
+    setIsPaused(false);
     setResult(null);
     setMode("lobby");
   };
@@ -2089,17 +2076,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
               onPointerMove={(e) => onPointerMove(e.clientX, e.clientY)}
               onPointerDown={(e) => { onPointerMove(e.clientX, e.clientY); launchCanonicalBall(); }}
             />
-            {!benchmarkMode && (
-              <button
-                type="button"
-                className="settings-trigger"
-                aria-label="설정 열기"
-                aria-expanded={isSettingsOpen}
-                onClick={(event) => { event.stopPropagation(); openSettings(); }}
-              >
-                <img src="/assets/ui/core-breaker/icons/settings.png" alt="" aria-hidden="true" draggable={false} />
-              </button>
-            )}
             <output className="sr-only" aria-live="polite" aria-atomic="true">코어 체력 {hud.coreHp}/{hud.maxCoreHp}{hud.barriers > 0 ? `, 보호막 ${hud.barriers}개` : ""}</output>
             <div className="hud-badge hud-score" aria-label={`점수 ${formatScore(hud.score)}`}><i aria-hidden="true">✦</i><span><small>SCORE</small><strong>{formatScore(hud.score)}</strong></span></div>
             <div className="drop-legend" aria-label="아이템 블록 표시 안내">
@@ -2107,6 +2083,15 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
             </div>
             {benchmarkMode && benchmarkRunMode === "watch" && botRunning && mode === "playing" && (
               <div className="watch-run-badge" aria-label="실시간 봇 관찰 상태"><i />LIVE BOT · {botSpeed}× · W{hud.wave}</div>
+            )}
+            {isPaused && mode === "playing" && (
+              <div className="pause-screen-overlay" role="status" aria-live="polite" aria-label="게임 일시정지">
+                <div className="pause-screen-copy">
+                  <small>CORE BREAKER</small>
+                  <strong>일시정지</strong>
+                  <span>ESC 또는 우측 버튼으로 계속하기</span>
+                </div>
+              </div>
             )}
 
             {mode === "lobby" && (
@@ -2191,35 +2176,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                 </div>
               </div>
             )}
-            {isSettingsOpen && (
-              <div className="settings-overlay" role="presentation" onClick={closeSettings}>
-                <section className="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={(event) => event.stopPropagation()}>
-                  <header>
-                    <div><small>CORE BREAKER</small><h2 id="settings-title">설정</h2></div>
-                    <button type="button" className="settings-close" aria-label="설정 닫기" onClick={closeSettings}>
-                      <img src="/assets/ui/core-breaker/icons/close.png" alt="" aria-hidden="true" draggable={false} />
-                    </button>
-                  </header>
-                  <div className="settings-audio-grid">
-                    <label className="settings-volume-control">
-                      <span>SFX</span>
-                      <input aria-label="효과음 볼륨" type="range" min="0" max="1" step="0.01" value={sfxVolume} onChange={(event) => setSfxVolume(Number(event.target.value))} />
-                      <output>{Math.round(sfxVolume * 100)}%</output>
-                    </label>
-                    <label className="settings-volume-control">
-                      <span>BGM</span>
-                      <input aria-label="배경음 볼륨" type="range" min="0" max="1" step="0.01" value={musicVolume} onChange={(event) => setMusicVolume(Number(event.target.value))} />
-                      <output>{Math.round(musicVolume * 100)}%</output>
-                    </label>
-                  </div>
-                  <div className="settings-control-guide" aria-label="조작 안내">
-                    <div><small>MOVE</small><strong><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd></strong></div>
-                    <div><small>AIM</small><strong>마우스</strong></div>
-                    <div><small>LAUNCH</small><strong>클릭</strong></div>
-                  </div>
-                </section>
-              </div>
-            )}
             <div
               key={`core-hud-${coreFeedback.sequence}`}
               className={`in-game-core-hud core-single-hud ${coreHealthClass}${coreFeedback.kind ? ` core-feedback-${coreFeedback.kind}` : ""}`}
@@ -2250,6 +2206,29 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                 <span><small>{hud.bossActive ? "BOSS WAVE" : "NEXT BOSS"}</small><strong>{hud.bossActive ? "NOW" : upcomingBossWave === null ? "—" : `${upcomingBossWave - hud.wave} WAVE`}</strong></span>
               </div>
               <div className="in-game-stat-card in-game-break-card"><div className="in-game-stat-main"><img className="in-game-stat-icon" src={STATUS_ICON_ASSETS.break} alt="" aria-hidden="true" /><span>BREAK</span></div><strong>{hud.bricks}</strong></div>
+            </RightRailPanel>
+            <RightRailPanel className="in-game-side-panel runtime-controls-panel" ariaLabel="GAME CONTROLS">
+              <h2>CONTROLS</h2>
+              <span className="controls-divider" aria-hidden="true" />
+              <button
+                type="button"
+                className="runtime-pause-button"
+                onClick={togglePause}
+                disabled={mode !== "playing" || botActiveRef.current}
+                aria-pressed={isPaused}
+              >
+                {isPaused ? "계속하기" : "일시정지"}
+              </button>
+              <label className="runtime-volume-control">
+                <span>SFX</span>
+                <input aria-label="효과음 볼륨" type="range" min="0" max="1" step="0.01" value={sfxVolume} onChange={(event) => setSfxVolume(Number(event.target.value))} />
+                <output>{Math.round(sfxVolume * 100)}%</output>
+              </label>
+              <label className="runtime-volume-control">
+                <span>BGM</span>
+                <input aria-label="배경음 볼륨" type="range" min="0" max="1" step="0.01" value={musicVolume} onChange={(event) => setMusicVolume(Number(event.target.value))} />
+                <output>{Math.round(musicVolume * 100)}%</output>
+              </label>
             </RightRailPanel>
             </div>
 

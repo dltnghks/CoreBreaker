@@ -25,8 +25,10 @@ export function useRuntimeSettings(audioRef: RefObject<GameAudio | null>, ready 
 
   useEffect(() => {
     if (!ready) return;
-    const storedSfx = Number(localStorage.getItem(SFX_VOLUME_STORAGE_KEY));
-    const storedMusic = Number(localStorage.getItem(MUSIC_VOLUME_STORAGE_KEY));
+    const storedSfxValue = localStorage.getItem(SFX_VOLUME_STORAGE_KEY);
+    const storedMusicValue = localStorage.getItem(MUSIC_VOLUME_STORAGE_KEY);
+    const storedSfx = storedSfxValue === null ? Number.NaN : Number(storedSfxValue);
+    const storedMusic = storedMusicValue === null ? Number.NaN : Number(storedMusicValue);
     const nextSfx = Number.isFinite(storedSfx) ? Math.max(0, Math.min(1, storedSfx)) : 1;
     const nextMusic = Number.isFinite(storedMusic) ? Math.max(0, Math.min(1, storedMusic)) : 1;
     const audio = new GameAudio();
