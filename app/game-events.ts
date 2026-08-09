@@ -42,8 +42,10 @@ type GameEventPayload =
     }
   | { type: "upgrade-chosen"; skillId: UpgradeId; level: number; source: "start" | "wave" | "boss" }
   | { type: "brick-damaged"; brickIndex: number; damage: number; x: number; y: number; color: string; source?: UpgradeId; damageType?: "physical" | "magic"; delivery?: "ball" | "skill" | "dot" | "skill-projectile" | "environment" }
+  | { type: "skill-chain"; skillId: UpgradeId; color: string; points: Array<{ brickIndex: number; x: number; y: number }> }
+  | { type: "brick-heal-pulse"; x: number; y: number; radius: number; amount: number }
   | { type: "brick-healed"; brickIndex: number; amount: number; hp: number; maxHp: number; x: number; y: number }
-  | { type: "brick-destroyed"; brickIndex: number; x: number; y: number; color: string; combo: number; points: number; source?: UpgradeId; damageType?: "physical" | "magic" }
+  | { type: "brick-destroyed"; brickIndex: number; x: number; y: number; color: string; combo: number; points: number; source?: UpgradeId; damageType?: "physical" | "magic"; delivery?: "ball" | "skill" | "dot" | "skill-projectile" | "environment" }
   | { type: "brick-exploded"; brickIndex: number; x: number; y: number; radius: number; color: string }
   | { type: "item-dropped"; itemId: number; kind: string; x: number; y: number }
   | { type: "item-collected"; kind: string; x: number; y: number }

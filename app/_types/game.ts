@@ -125,7 +125,7 @@ export type Brick = {
   traitLockTime: number;
   healthFlashTime?: number;
   healthFlashDuration?: number;
-  healthFlashKind?: "damage" | "heal" | null;
+  healthFlashKind?: "damage" | "area-damage" | "heal" | null;
   bossRow?: number;
   bossCol?: number;
 };
@@ -146,7 +146,7 @@ export type BossWall = { id: number; x: number; y: number; w: number; h: number;
 export type BossShield = { active: boolean; life: number; maxLife: number; runeIds: number[] };
 export type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
 export type Flash = { text: string; x: number; y: number; life: number; color: string; emphasis?: "damage" | "heal" };
-export type GameEffect = { kind: "ring" | "beam" | "blast" | "drop" | "spark" | "lightning" | "skill"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string; variant: number; skillId: ClassSkillId | null };
+export type GameEffect = { kind: "ring" | "beam" | "blast" | "drop" | "spark" | "lightning" | "skill"; x: number; y: number; x2: number; y2: number; size: number; life: number; maxLife: number; color: string; variant: number; skillId: ClassSkillId | null; points?: Array<{ x: number; y: number }> };
 export type PaddleCounter = { reflections: number; barrierReflections: number; missileReflections: number; safetyTimer: number; gravityTimer: number; directKills: number; pierceKills: number; feverMilestone: number; lastShotTimer: number; combo: number; comboTimer: number; skillCooldowns: Partial<Record<ClassSkillId, number>>; skillReflections?: Partial<Record<ClassSkillId, number>>; chargePulse?: number; chargeColor?: string };
 
 export type GameState = {

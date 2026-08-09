@@ -32,12 +32,12 @@ function pushParticle(game: GameState, values: Particle) {
 function pushEffect(game: GameState, values: GameEffect) {
   if (game.effects.length >= MAX_ACTIVE_EFFECTS) {
     const index = game.effectPoolCursor % game.effects.length;
-    Object.assign(game.effects[index], values, { maxLife: values.life });
+    Object.assign(game.effects[index], values, { maxLife: values.life, points: values.points });
     game.effectPoolCursor = (index + 1) % game.effects.length;
     return;
   }
   const effect = game.effectPool.pop() ?? { ...values };
-  Object.assign(effect, values, { maxLife: values.life });
+  Object.assign(effect, values, { maxLife: values.life, points: values.points });
   game.effects.push(effect);
 }
 
@@ -106,6 +106,7 @@ export function useGamePresentation(options: PresentationAdapters) {
     };
 
     const damageSlots = new Map<string, number>();
+    const secondaryBreakAudio = new Set<string>();
     for (const event of drainGameEvents(eventsRef.current)) {
       if (event.type === "upgrade-chosen") {
         const skill = getSkill(event.skillId);
@@ -137,6 +138,25 @@ export function useGamePresentation(options: PresentationAdapters) {
         });
         game.flashes.push({ text: event.text ?? `SKILL // ${event.skillId}`, x: event.x, y: event.y - Math.max(18, event.radius * 0.15), life: 0.8, color });
         setImpact(game, 4 + event.level * 0.5, color, 0.2, 0.1);
+      } else if (event.type === "skill-chain") {
+        const first = event.points[0];
+        const last = event.points[event.points.length - 1];
+        if (first && last && event.points.length > 1) {
+          pushEffect(game, {
+            kind: "beam",
+            x: first.x,
+            y: first.y,
+            x2: last.x,
+            y2: last.y,
+            size: event.skillId === "mage-lightning" ? 5 : 3.5,
+            life: event.skillId === "mage-lightning" ? 0.34 : 0.28,
+            maxLife: event.skillId === "mage-lightning" ? 0.34 : 0.28,
+            color: event.color,
+            variant: 0,
+            skillId: event.skillId as ClassSkillId,
+            points: event.points.map((point) => ({ x: point.x, y: point.y })),
+          });
+        }
       } else if (event.type === "combat-impact") {
         const color = event.color ?? "#fff3d6";
         pushEffect(game, { kind: "spark", x: event.x, y: event.y, x2: event.x, y2: event.y, size: event.radius, life: 0.35, maxLife: 0.35, color, variant: 0, skillId: null });
@@ -160,7 +180,8 @@ export function useGamePresentation(options: PresentationAdapters) {
       } else if (event.type === "shake") {
         setImpact(game, event.strength, undefined, event.duration);
       } else if (event.type === "brick-damaged") {
-        playAudio("brick-hit", event.damage);
+        const secondaryDamage = event.delivery === "skill" || event.delivery === "dot" || event.delivery === "skill-projectile";
+        if (!secondaryDamage) playAudio("brick-hit", event.damage);
         const roundedDamage = Math.abs(event.damage - Math.round(event.damage)) < 0.05
           ? String(Math.round(event.damage))
           : event.damage.toFixed(1);
@@ -173,7 +194,8 @@ export function useGamePresentation(options: PresentationAdapters) {
         if (brick) {
           brick.healthFlashDuration = 0.28;
           brick.healthFlashTime = brick.healthFlashDuration;
-          brick.healthFlashKind = "damage";
+          if (secondaryDamage) brick.healthFlashKind = "area-damage";
+          else brick.healthFlashKind = "damage";
         }
         game.flashes.push({
           text: isMagic ? `✦-${roundedDamage}` : `-${roundedDamage}`,
@@ -183,19 +205,21 @@ export function useGamePresentation(options: PresentationAdapters) {
           color: isMagic ? "#b996ff" : event.damage >= 3 ? "#ffcf4a" : "#ffffff",
           emphasis: "damage",
         });
+      } else if (event.type === "brick-heal-pulse") {
+        const color = "#72f1b8";
+        pushEffect(game, { kind: "ring", x: event.x, y: event.y, x2: event.x, y2: event.y, size: event.radius, life: 0.55, maxLife: 0.55, color, variant: 0, skillId: null });
+        for (let index = 0; index < 4; index += 1) {
+          const angle = (Math.PI * 2 * index) / 4;
+          pushParticle(game, { x: event.x, y: event.y, vx: Math.cos(angle) * 65, vy: Math.sin(angle) * 65, life: 0.4, color });
+        }
+        game.flashes.push({ text: `HEAL PULSE +${event.amount}`, x: event.x, y: event.y - 8, life: 0.65, color, emphasis: "heal" });
       } else if (event.type === "brick-healed") {
         const brick = game.bricks.find((entry) => Math.abs(entry.x + entry.w / 2 - event.x) < 1 && Math.abs(entry.y + entry.h / 2 - event.y) < 1);
         if (brick) {
-          brick.healthFlashDuration = 0.5;
+          brick.healthFlashDuration = 0.28;
           brick.healthFlashTime = brick.healthFlashDuration;
           brick.healthFlashKind = "heal";
         }
-        pushEffect(game, { kind: "ring", x: event.x, y: event.y, x2: event.x, y2: event.y, size: 30, life: 0.48, maxLife: 0.48, color: "#72f1b8", variant: 0, skillId: null });
-        for (let index = 0; index < 6; index += 1) {
-          const angle = (Math.PI * 2 * index) / 6;
-          pushParticle(game, { x: event.x, y: event.y, vx: Math.cos(angle) * 42, vy: -55 - Math.abs(Math.sin(angle)) * 35, life: 0.52, color: "#72f1b8" });
-        }
-        game.flashes.push({ text: `+${event.amount}`, x: event.x, y: event.y - 8, life: 0.85, color: "#72f1b8", emphasis: "heal" });
       } else if (event.type === "brick-destroyed") {
         const destroyedBrick = game.bricks.find((brick) => Math.abs(brick.x + brick.w / 2 - event.x) < 1 && Math.abs(brick.y + brick.h / 2 - event.y) < 1);
         const isBossCore = destroyedBrick?.kind === "boss-core";
@@ -212,9 +236,17 @@ export function useGamePresentation(options: PresentationAdapters) {
           setImpact(game, 12, "#ff6b87", 0.7, 0.35);
           return;
         }
-        playAudio(isShieldRune ? "skill-impact" : "brick-break", isShieldRune ? 0.8 : event.combo);
+        const secondaryDamage = event.delivery === "skill" || event.delivery === "dot" || event.delivery === "skill-projectile";
+        const breakAudioKey = `${event.source ?? "unknown"}:${event.delivery ?? "unknown"}`;
+        if (isShieldRune) {
+          playAudio("skill-impact", 0.8);
+        } else if (!secondaryDamage || !secondaryBreakAudio.has(breakAudioKey)) {
+          playAudio("brick-break", event.combo);
+          if (secondaryDamage) secondaryBreakAudio.add(breakAudioKey);
+        }
         pushEffect(game, { kind: "spark", x: event.x, y: event.y, x2: event.x, y2: event.y, size: isShieldRune ? 24 : 38, life: isShieldRune ? 0.28 : 0.42, maxLife: isShieldRune ? 0.28 : 0.42, color: event.color, variant: event.brickIndex % 2, skillId: null });
-        for (let index = 0; index < (isShieldRune ? 3 : 7); index += 1) {
+        const particleCount = isShieldRune ? 3 : secondaryDamage ? 3 : 7;
+        for (let index = 0; index < particleCount; index += 1) {
           pushParticle(game, {
             x: event.x,
             y: event.y,
@@ -257,7 +289,7 @@ export function useGamePresentation(options: PresentationAdapters) {
         const label = event.kind === "multiball"
           ? "MULTI BALL +1"
           : event.kind === "auto-barrier"
-            ? "AUTO BARRIER // 10s"
+            ? "AUTO BARRIER // 5s"
             : event.kind === "core-repair"
               ? "CORE REPAIR // +1"
               : "SKILL COOLDOWN // READY";

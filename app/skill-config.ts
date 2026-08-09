@@ -203,21 +203,21 @@ export type SkillVfxConfig = {
 
 /** Presentation tuning shared by the canonical event producer and canvas renderer. */
 export const SKILL_VFX_CONFIG: Partial<Record<ClassSkillId, SkillVfxConfig>> = {
-  "warrior-smash": { scale: 0.92, opacity: 0.78, duration: 0.42, anchor: "brick", rotation: "none" },
-  "warrior-shockwave": { scale: 1.1, opacity: 0.72, duration: 0.62, anchor: "brick", rotation: "none" },
-  "warrior-execute": { scale: 0.95, opacity: 0.8, duration: 0.45, anchor: "brick", rotation: "none" },
-  "warrior-crush": { scale: 1, opacity: 0.76, duration: 0.48, anchor: "brick", rotation: "none" },
-  "warrior-guard": { scale: 0.9, opacity: 0.68, duration: 0.75, anchor: "paddle", rotation: "none" },
-  "archer-rapid": { scale: 1.02, opacity: 0.92, duration: 0.5, anchor: "trajectory", rotation: "direction" },
-  "archer-pierce": { scale: 1.38, opacity: 1, duration: 0.42, anchor: "trajectory", rotation: "direction" },
-  "archer-ricochet": { scale: 1.18, opacity: 0.98, duration: 0.52, anchor: "trajectory", rotation: "direction" },
-  "archer-focus": { scale: 1.1, opacity: 0.96, duration: 0.45, anchor: "brick", rotation: "none" },
-  "archer-weakpoint": { scale: 1.14, opacity: 1, duration: 0.45, anchor: "brick", rotation: "none" },
-  "mage-fireball": { scale: 1, opacity: 0.78, duration: 0.72, anchor: "brick", rotation: "none" },
-  "mage-lightning": { scale: 1.05, opacity: 0.7, duration: 0.48, anchor: "trajectory", rotation: "none" },
-  "mage-freeze": { scale: 1, opacity: 0.68, duration: 0.55, anchor: "brick", rotation: "none" },
-  "mage-black-hole": { scale: 1, opacity: 0.6, duration: 4, anchor: "field", rotation: "spin" },
-  "mage-mana-blast": { scale: 1, opacity: 0.74, duration: 0.5, anchor: "brick", rotation: "none" },
+  "warrior-smash": { scale: 0.82, opacity: 0.7, duration: 0.42, anchor: "brick", rotation: "none" },
+  "warrior-shockwave": { scale: 0.94, opacity: 0.66, duration: 0.62, anchor: "brick", rotation: "none" },
+  "warrior-execute": { scale: 0.86, opacity: 0.72, duration: 0.45, anchor: "brick", rotation: "none" },
+  "warrior-crush": { scale: 0.88, opacity: 0.68, duration: 0.48, anchor: "brick", rotation: "none" },
+  "warrior-guard": { scale: 0.8, opacity: 0.58, duration: 0.75, anchor: "paddle", rotation: "none" },
+  "archer-rapid": { scale: 0.92, opacity: 0.82, duration: 0.5, anchor: "trajectory", rotation: "direction" },
+  "archer-pierce": { scale: 1.12, opacity: 0.9, duration: 0.42, anchor: "trajectory", rotation: "direction" },
+  "archer-ricochet": { scale: 1, opacity: 0.86, duration: 0.52, anchor: "trajectory", rotation: "direction" },
+  "archer-focus": { scale: 0.92, opacity: 0.82, duration: 0.45, anchor: "brick", rotation: "none" },
+  "archer-weakpoint": { scale: 0.96, opacity: 0.88, duration: 0.45, anchor: "brick", rotation: "none" },
+  "mage-fireball": { scale: 0.88, opacity: 0.68, duration: 0.72, anchor: "brick", rotation: "none" },
+  "mage-lightning": { scale: 0.9, opacity: 0.62, duration: 0.48, anchor: "trajectory", rotation: "none" },
+  "mage-freeze": { scale: 0.86, opacity: 0.6, duration: 0.55, anchor: "brick", rotation: "none" },
+  "mage-black-hole": { scale: 0.72, opacity: 0.42, duration: 4, anchor: "field", rotation: "spin" },
+  "mage-mana-blast": { scale: 0.9, opacity: 0.65, duration: 0.5, anchor: "brick", rotation: "none" },
 };
 
 export type LegacyUpgradeId =
@@ -602,7 +602,11 @@ const skill = (
   evolutionTraits: [],
   effects: [...createTraitEffects(createTraitConfigs(id, builtinTraits(id), levels, unit)), ...builtinEffects()],
   evolutionEffects: builtinEvolutionEffects(id),
-  trigger: SKILL_COOLDOWNS[id][0] > 0 ? "공별 쿨타임 완료 후 블록 타격" : trigger,
+  trigger: id === "archer-focus"
+    ? "같은 블록 반복 타격 시 발동"
+    : id === "warrior-crush" || id === "mage-mana-blast"
+      ? "특수 블록 타격 시 발동"
+      : SKILL_COOLDOWNS[id][0] > 0 ? "쿨타임 완료 후 블록 타격" : trigger,
   effect,
   description,
   evolution: SKILL_EVOLUTIONS[id] ?? null,
@@ -687,7 +691,7 @@ export const DEFAULT_SKILLS: SkillConfig[] = [
   passiveSkill("common-move-speed", "패들 가속", "패들 이동속도 증가", "패들의 좌우 이동속도를 증가시키는 패시브입니다. 이동속도가 {levels}% 증가하고, 진화 시 추가로 +{evolutionMove}% 증가합니다.", [15, 25, 40], "percent"),
   passiveSkill("common-xp", "코어 강화", "CORE 최대 체력 증가", "CORE 최대 체력과 현재 체력을 함께 증가시키는 패시브입니다. 체력이 +{levels}HP 증가하고, 진화 시 웨이브 시작 시 CORE가 +{evolutionHeal}HP 회복됩니다.", [1, 2, 3], "health"),
   passiveSkill("common-skill-range", "범위 증폭", "광역 스킬 범위 증가", "광역 스킬의 적용 범위를 증가시키는 패시브입니다. 범위가 {levels}% 증가하고, 진화 시 추가로 +{evolutionRange}px 증가합니다.", [20, 40, 60], "percent"),
-  passiveSkill("common-chain", "연계 증폭", "스킬 연계 횟수 증가", "연쇄 스킬의 연결 대상 수를 증가시키는 패시브입니다. 기본 연결 대상 수가 +{levels}개 증가하고, 진화 시 추가로 +{evolutionTargets}개 증가합니다.", [1, 1, 1], "count"),
+  passiveSkill("common-chain", "연계 증폭", "스킬 연계 횟수 증가", "연쇄 스킬의 연결 대상 수를 증가시키는 패시브입니다. 기본 연결 대상 수가 +{levels}개 증가하고, 진화 시 추가로 +{evolutionTargets}개 증가합니다.", [1, 2, 3], "count"),
   passiveSkill("common-damage", "공격 강화", "물리 피해 증가", "모든 물리 스킬 피해를 증가시키는 패시브입니다. 일반 공 피해와 물리 스킬 피해가 +{levels} 증가하고, 진화 시 추가로 +{evolutionPhysicalBonus} 증가합니다.", [1, 2, 3], "damage"),
   passiveSkill("common-magic", "마력 강화", "마법 피해 증가", "모든 마법 스킬 피해를 증가시키는 패시브입니다. 마법 스킬 피해가 +{levels} 증가하고, 퍼센트 배율은 사용하지 않으며, 진화 시 추가로 +{evolutionMagicBonus} 증가합니다.", [1, 2, 3], "damage"),
   passiveSkill("common-cooldown", "재사용 가속", "스킬 쿨타임 감소", "모든 액티브 스킬의 쿨타임을 감소시키는 패시브입니다. 쿨타임이 {levels}% 감소하고, 진화 시 액티브 스킬 발동 시 {resetChance}% 확률로 즉시 초기화됩니다.", [10, 20, 30], "percent"),
@@ -866,6 +870,7 @@ function normalizeCommonSkillFields(saved: Partial<SkillConfig>, base: SkillConf
     configVersion: SKILL_CONFIG_VERSION,
     enabled: saved.enabled !== false,
     applicationScope: saved.applicationScope === "shared" ? "shared" : "per-ball",
+    trigger: base.builtIn ? base.trigger : (typeof saved.trigger === "string" && saved.trigger.trim() ? saved.trigger : base.trigger),
     triggerType,
     traits: normalizedTraits,
     traitConfigs,
