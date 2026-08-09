@@ -114,15 +114,42 @@ test("brick health changes use distinct compact damage and recovery feedback", (
   const events = fs.readFileSync(new URL("../app/game-events.ts", import.meta.url), "utf8");
   const presentation = fs.readFileSync(new URL("../app/useGamePresentation.ts", import.meta.url), "utf8");
   const renderer = fs.readFileSync(new URL("../app/game-renderer.ts", import.meta.url), "utf8");
+  const healPulseBranch = presentation.match(/event\.type === "brick-heal-pulse"\) \{([\s\S]*?)\} else if \(event\.type === "brick-healed"/);
+  const healBranch = presentation.match(/event\.type === "brick-healed"\) \{([\s\S]*?)\} else if \(event\.type === "brick-destroyed"/);
+  assert.match(events, /type: "brick-heal-pulse"/);
   assert.match(events, /type: "brick-healed"/);
   assert.match(presentation, /healthFlashKind = "damage"/);
   assert.match(presentation, /healthFlashKind = "heal"/);
-  assert.match(presentation, /emphasis: "heal"/);
-  assert.match(renderer, /ctx\.font = "1000 15px monospace"/);
+  assert.ok(healPulseBranch);
+  assert.match(healPulseBranch[1], /kind: "ring"/);
+  assert.match(healPulseBranch[1], /index < 4/);
+  assert.match(healPulseBranch[1], /emphasis: "heal"/);
+  assert.ok(healBranch);
+  assert.match(healBranch[1], /healthFlashDuration = 0\.28/);
+  assert.doesNotMatch(healBranch[1], /pushEffect|pushParticle|game\.flashes\.push/);
+  assert.match(renderer, /const healthFlashRatio =/);
   assert.match(renderer, /const damageRatio =/);
   assert.match(renderer, /const crackCount =/);
-  assert.match(renderer, /barWidth \* healthRatio/);
   assert.match(renderer, /brick\.healthFlashKind === "heal"/);
+  assert.match(renderer, /if \(brick\.healthFlashKind === "damage"\)/);
+});
+
+test("area damage keeps target information while consolidating repeated decoration", () => {
+  const events = fs.readFileSync(new URL("../app/game-events.ts", import.meta.url), "utf8");
+  const engine = fs.readFileSync(new URL("../app/canonical-engine.ts", import.meta.url), "utf8");
+  const presentation = fs.readFileSync(new URL("../app/useGamePresentation.ts", import.meta.url), "utf8");
+  const canvas = fs.readFileSync(new URL("../app/game-runtime-canvas.ts", import.meta.url), "utf8");
+
+  assert.match(events, /type: "skill-chain"/);
+  assert.match(events, /delivery\?: "ball" \| "skill" \| "dot" \| "skill-projectile" \| "environment"/);
+  assert.match(engine, /function emitSkillChainPath/);
+  assert.match(engine, /packet\.delivery === "ball" \|\| packet\.delivery === "environment"/);
+  assert.match(presentation, /event\.type === "skill-chain"/);
+  assert.match(presentation, /if \(!secondaryDamage\) playAudio\("brick-hit", event\.damage\)/);
+  assert.match(presentation, /brick\.healthFlashKind = "area-damage"/);
+  assert.match(presentation, /text: isMagic \? `✦-\$\{roundedDamage\}` : `-\$\{roundedDamage\}`/);
+  assert.match(canvas, /effect\.points && effect\.points\.length > 1/);
+  assert.match(canvas, /for \(let pointIndex = 1; pointIndex < beamPoints\.length; pointIndex \+= 1\)/);
 });
 
 test("debug replay recorder is wired to the canonical simulation", () => {

@@ -625,6 +625,7 @@ test("healer pulses emit target-specific brick health events", () => {
 
   const result = engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
   assert.equal(target.hp, 2);
+  assert.equal(result.events.filter((event) => event.type === "brick-heal-pulse").length, 1);
   assert.ok(result.events.some((event) => event.type === "brick-healed" && event.brickIndex === target.id && event.amount === 1 && event.hp === 2 && event.maxHp === 3));
 });
 
@@ -1295,6 +1296,37 @@ test("ricochet and lightning share one chain path while evolved chains continue 
   assert.equal(state.skillMetrics["archer-ricochet"], undefined, "lightning must own the shared chain when both skills are ready");
   assert.equal(state.skillMetrics["mage-lightning"]?.activations, 1);
   assert.ok(state.bricks.every((brick) => !brick.alive));
+});
+
+test("area skills retain every target damage event without per-target combat decoration", () => {
+  const definitions = waves.WAVE_DEFINITIONS.map((wave) => ({ ...wave, pattern: [...wave.pattern] }));
+  definitions[0] = { ...definitions[0], pattern: ["ssss........"] };
+  const run = (skillId, originIndex) => {
+    const state = engine.createCanonicalState({ seed: 94061, targetWave: 1, waves: definitions, startingSkills: Array(3).fill(skillId) });
+    state.bricks.forEach((brick) => { brick.hp = brick.maxHp = 100; });
+    const origin = state.bricks[originIndex];
+    const ball = state.balls[0];
+    ball.x = origin.x + origin.w / 2;
+    ball.y = origin.y + origin.h + ball.radius - 1;
+    ball.vx = 0;
+    ball.vy = -320;
+    return engine.stepCanonicalEngine(state, { move: 0, aimX: 450, aimY: 80 }, engine.FIXED_STEP_SECONDS);
+  };
+
+  const shockwave = run("warrior-shockwave", 1);
+  const shockwaveDamage = shockwave.events.filter((event) => event.type === "brick-damaged" && event.source === "warrior-shockwave");
+  assert.ok(shockwaveDamage.length > 1);
+  assert.ok(shockwaveDamage.every((event) => event.delivery === "skill"));
+  assert.equal(shockwave.events.filter((event) => event.type === "combat-impact").length, 1, "only the primary ball collision keeps point-impact decoration");
+
+  const lightning = run("mage-lightning", 1);
+  const lightningDamage = lightning.events.filter((event) => event.type === "brick-damaged" && event.source === "mage-lightning");
+  const chain = lightning.events.find((event) => event.type === "skill-chain" && event.skillId === "mage-lightning");
+  assert.ok(lightningDamage.length > 0);
+  assert.ok(chain);
+  assert.equal(chain.points.length, lightningDamage.length + 1);
+  assert.deepEqual(chain.points.slice(1).map((point) => point.brickIndex), lightningDamage.map((event) => event.brickIndex));
+  assert.equal(lightning.events.filter((event) => event.type === "combat-impact").length, 1, "chain targets keep data events without duplicate point-impact decoration");
 });
 
 test("black-hole activations create independent seeded wells", () => {
