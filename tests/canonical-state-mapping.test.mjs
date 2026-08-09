@@ -17,7 +17,7 @@ after(async () => { await vite.close(); });
 function legacyState() {
   return {
     balls: [], bricks: [{ x: 72, y: 74, w: 60, h: 24, hp: 9, maxHp: 9, hue: 180, alive: true, drop: null, kind: "normal", trait: "standard", guardReady: false, healTimer: 3, poisonTime: 0, poisonTick: 0, poisonSourcePaddleId: null, burnTime: 0, burnTick: 0, burnLevel: 0, burnSourcePaddleId: null, healBlockTime: 0, blastVulnerability: 0, blastVulnerabilitySourcePaddleId: null, frostVulnerability: 0, traitLockTime: 0, lastHitPaddleId: null }],
-    paddleX: 450, paddleWidth: 128, ghostPaddles: [], elapsed: 0, score: 0, level: 1, combo: 0, maxCombo: 0, comboTimer: 0, bricksBroken: 0, upgrades: [], skillHistory: [], skillMetrics: {}, paddleTrack: [], particles: [], particlePool: [], particlePoolCursor: 0, flashes: [], effects: [], effectPool: [], effectPoolCursor: 0, items: [], safetyBlocks: [], gravityWells: [], paddleBarriers: {}, itemBarrierTime: 0, paddleCounters: {}, coreHp: 8, maxCoreHp: 8, bossActive: false, bossPending: false, bossStage: 0, nextBossWave: 5, bossTimeRemaining: 0, bossSkillTimer: 0, bossAttackPattern: 0, bossMultiballsRemaining: 0, bossRewards: [], bossEnhancements: {}, autoGuard: false, rowTimer: 0, rowInterval: 1, overdriveLevel: 0, shakeStrength: 0, shakeTime: 0, shakeDuration: 0, screenFlashColor: "", screenFlashTime: 0, screenFlashDuration: 0, coreBreakTime: 0, coreBreakDuration: 0, coreBreakX: 0, coreBreakY: 0, wave: 1, pendingWave: null, failed: false, failureReason: null, botMetrics: { maxBalls: 1, ballLosses: 0, missileActivations: 0, safetySaves: 0, gravityRescues: 0 }, botWaveSamples: [], botSampleKey: "",
+    paddleX: 450, paddleWidth: 128, ghostPaddles: [], elapsed: 0, score: 0, level: 1, combo: 0, maxCombo: 0, comboTimer: 0, bricksBroken: 0, upgrades: [], skillHistory: [], skillMetrics: {}, paddleTrack: [], particles: [], particlePool: [], particlePoolCursor: 0, flashes: [], effects: [], effectPool: [], effectPoolCursor: 0, items: [], safetyBlocks: [], gravityWells: [], paddleBarriers: {}, itemBarrierTime: 0, skillBarrierTime: 0, skillBarrierCharges: 0, paddleCounters: {}, coreHp: 8, maxCoreHp: 8, bossActive: false, bossPending: false, bossStage: 0, nextBossWave: 5, bossTimeRemaining: 0, bossSkillTimer: 0, bossAttackPattern: 0, bossMultiballsRemaining: 0, bossRewards: [], bossEnhancements: {}, autoGuard: false, rowTimer: 0, rowInterval: 1, overdriveLevel: 0, shakeStrength: 0, shakeTime: 0, shakeDuration: 0, screenFlashColor: "", screenFlashTime: 0, screenFlashDuration: 0, coreBreakTime: 0, coreBreakDuration: 0, coreBreakX: 0, coreBreakY: 0, wave: 1, pendingWave: null, failed: false, failureReason: null, botMetrics: { maxBalls: 1, ballLosses: 0, missileActivations: 0, safetySaves: 0, gravityRescues: 0 }, botWaveSamples: [], botSampleKey: "",
   };
 }
 
@@ -54,8 +54,10 @@ test("canonical projection copies bricks, items, metrics, and completion state",
   assert.equal(projected.bricksBroken, 8);
   assert.equal(projected.score, 900);
   assert.equal(projected.paddleBarriers.canonical, 2);
-  assert.equal(projected.safetyBlocks[0].y, engine.PLAYER_LINE_Y);
+  assert.deepEqual(projected.safetyBlocks, []);
   assert.equal(projected.itemBarrierTime, 6);
+  assert.equal(projected.skillBarrierTime, 4);
+  assert.equal(projected.skillBarrierCharges, 2);
   assert.equal(projected.rowTimer, 17.25);
   assert.equal(projected.overdriveLevel, 17);
   assert.equal(projected.failed, true);

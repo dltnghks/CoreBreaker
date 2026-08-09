@@ -17,6 +17,9 @@ const GAMEPLAY_ART = {
   items: {
     autoBarrier: "/assets/gameplay/items/auto-barrier.png",
   },
+  skills: {
+    warriorGuard: "/assets/ui/skills/forged-core/warrior/warrior-guard.png",
+  },
   bossPatterns: {
     barrier: "/assets/gameplay/boss-patterns/boss-rune-barrier.png",
     wall: "/assets/gameplay/boss-patterns/boss-wall-protrusion.png",
@@ -544,13 +547,13 @@ export function renderTransientFeedback(ctx: CanvasRendererContext, game: Pick<G
   }
 }
 
-export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor, safetyBlocks, playerCores = [], coreBreak, aim, elapsed = 0, itemBarrierTime = 0 }: {
+export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor, safetyBlocks, playerCores = [], coreBreak, aim, elapsed = 0, itemBarrierTime = 0, skillBarrierTime = 0, skillBarrierCharges = 0, skillBarrierMaxTime = 0 }: {
   ctx: CanvasRenderingContext2D; playerX: number; playerY: number; playerWidth: number; playerColor: string;
   safetyBlocks: ReadonlyArray<{ x: number; y: number; width: number; color: string }>;
   playerCores?: ReadonlyArray<{ x: number; y: number; scale?: number; alpha?: number; danger?: boolean }>;
   coreBreak?: { x: number; y: number; progress: number };
   aim?: { x: number; y: number; left: { x: number; y: number }; right: { x: number; y: number }; limited: boolean };
-  elapsed?: number; itemBarrierTime?: number;
+  elapsed?: number; itemBarrierTime?: number; skillBarrierTime?: number; skillBarrierCharges?: number; skillBarrierMaxTime?: number;
 }) {
   const draw = (x: number, y: number, width: number, color: string, alpha = 1, useArt = false) => {
     ctx.save(); ctx.globalAlpha = alpha; ctx.shadowColor = color; ctx.shadowBlur = 12;
@@ -569,11 +572,15 @@ export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor,
   safetyBlocks.forEach((b) => { ctx.save(); ctx.shadowColor = b.color; ctx.shadowBlur = 18; ctx.fillStyle = b.color; ctx.fillRect(b.x - b.width / 2, b.y, b.width, 7); ctx.shadowBlur = 0; ctx.fillStyle = "#07101b"; ctx.font = `900 8px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText("AUTO REFLECT", b.x, b.y + 6); ctx.restore(); });
   draw(playerX, playerY, playerWidth, playerColor, 1, true);
   playerCores.forEach((core) => drawCoreCrystal(ctx, core.x, core.y, core.scale ?? 1, core.alpha ?? 1, core.danger ?? false));
+  const itemBarrierActive = itemBarrierTime > 0;
+  const skillBarrierActive = skillBarrierCharges > 0;
+  const statusOffset = itemBarrierActive && skillBarrierActive ? 19 : 0;
   if (itemBarrierTime > 0) {
     const maxBarrierTime = 5;
     const progress = Math.min(1, itemBarrierTime / maxBarrierTime);
     const warning = itemBarrierTime <= 1;
     const color = warning ? "#ff6b87" : "#65dcff";
+    const centerX = playerX - statusOffset;
     const centerY = playerY - 34;
     const icon = gameplayImage("item-auto-barrier", GAMEPLAY_ART.items.autoBarrier);
     ctx.save();
@@ -581,18 +588,45 @@ export function renderPaddles({ ctx, playerX, playerY, playerWidth, playerColor,
     ctx.globalAlpha = warning ? 0.78 + Math.sin(elapsed * 18) * 0.2 : 1;
     ctx.shadowColor = color;
     ctx.shadowBlur = warning ? 16 : 10;
-    if (icon) ctx.drawImage(icon, playerX - 11, centerY - 11, 22, 22);
+    if (icon) ctx.drawImage(icon, centerX - 11, centerY - 11, 22, 22);
     ctx.shadowBlur = 0;
     ctx.lineWidth = 3;
     ctx.strokeStyle = "rgba(5, 12, 22, .86)";
-    ctx.beginPath(); ctx.arc(playerX, centerY, 15, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(centerX, centerY, 15, 0, Math.PI * 2); ctx.stroke();
     ctx.strokeStyle = color;
-    ctx.beginPath(); ctx.arc(playerX, centerY, 15, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress); ctx.stroke();
+    ctx.beginPath(); ctx.arc(centerX, centerY, 15, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress); ctx.stroke();
     ctx.fillStyle = "#f4fbff";
     ctx.font = `900 8px ${PIXEL_FONT}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(itemBarrierTime.toFixed(1), playerX, centerY);
+    ctx.fillText(itemBarrierTime.toFixed(1), centerX, centerY);
+    ctx.restore();
+  }
+  if (skillBarrierActive) {
+    const timed = skillBarrierTime > 0 && skillBarrierMaxTime > 0;
+    const progress = timed ? Math.min(1, skillBarrierTime / skillBarrierMaxTime) : 1;
+    const warning = timed && skillBarrierTime <= 1;
+    const color = warning ? "#ff6b87" : "#4ea8ff";
+    const centerX = playerX + statusOffset;
+    const centerY = playerY - 34;
+    const icon = gameplayImage("skill-warrior-guard", GAMEPLAY_ART.skills.warriorGuard);
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = warning ? 0.78 + Math.sin(elapsed * 18) * 0.2 : 1;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = warning ? 16 : 10;
+    if (icon) ctx.drawImage(icon, centerX - 11, centerY - 11, 22, 22);
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(5, 12, 22, .86)";
+    ctx.beginPath(); ctx.arc(centerX, centerY, 15, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.beginPath(); ctx.arc(centerX, centerY, 15, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress); ctx.stroke();
+    ctx.fillStyle = "#f4fbff";
+    ctx.font = `900 8px ${PIXEL_FONT}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(timed ? skillBarrierTime.toFixed(1) : `x${Math.max(1, Math.round(skillBarrierCharges))}`, centerX, centerY);
     ctx.restore();
   }
   if (coreBreak) {

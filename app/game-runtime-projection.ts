@@ -1,5 +1,5 @@
 import type { Ball, GameState, PayloadId, DropItem, GravityWell, SkillRunMetric } from "./_types/game";
-import { PLAYER_LINE_Y, type CanonicalBall, type CanonicalState } from "./canonical-engine";
+import type { CanonicalBall, CanonicalState } from "./canonical-engine";
 import { waveDefinitionFrom } from "./wave-config";
 
 const PLAYER_BALL_COLOR = "#ffffff";
@@ -71,16 +71,12 @@ function applyCanonicalStateProjection(target: GameState, source: CanonicalState
   target.bossEnhancements = { ...source.bossEnhancements };
   target.paddleBarriers = { canonical: source.barrierCharges };
   target.itemBarrierTime = source.itemBarrierTime;
+  target.skillBarrierTime = source.barrierTime;
+  target.skillBarrierCharges = source.barrierCharges;
   // Re-materialize paddle-owned presentation state that used to be updated by
-  // the legacy collision loop.  Canonical simulation owns the barrier and
-  // ball cooldowns, so the renderer must not be left with stale empty arrays.
-  if (source.barrierCharges > 0 || source.barrierTime > 0 || source.itemBarrierTime > 0) {
-    target.safetyBlocks = source.safetyBlocks.length
-      ? source.safetyBlocks.map((block) => ({ ...block }))
-      : [{ x: source.paddleX, y: PLAYER_LINE_Y, width: Math.min(150, source.paddleWidth * 0.9), color: "#55d6ff" }];
-  } else {
-    target.safetyBlocks = [];
-  }
+  // the legacy collision loop. Item Barrier and Iron Wall have their own
+  // render paths and must not be materialized as an AUTO REFLECT safety block.
+  target.safetyBlocks = source.safetyBlocks.map((block) => ({ ...block }));
   target.paddleCounters ??= {};
   const baseBall = source.balls[0];
   const playerCounter = target.paddleCounters.player ?? {

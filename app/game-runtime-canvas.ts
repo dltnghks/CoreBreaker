@@ -114,6 +114,13 @@ export function renderGameRuntimeCanvas({
     game.items.forEach((item) => { if (item.y > y + 12 || item.y < y - range || Math.abs(item.x - x) > range) return; magnetLinks.push({ x, y, itemX: item.x, itemY: item.y, alpha: .18 + .28 * (1 - Math.min(1, Math.abs(item.y - y) / range)), color: classSkillColor("common-magnet") }); });
   };
   addMagnetLinks(game.paddleX, PLAYER_PADDLE_Y, game.paddleWidth, game.upgrades);
+  const normalizedUpgrades = game.upgrades.map(canonicalUpgradeId);
+  const ironWallPickCount = normalizedUpgrades.filter((id) => id === "warrior-guard").length;
+  const ironWallLevel = Math.min(3, ironWallPickCount);
+  const ironWallEnhancement = Math.max(0, game.bossEnhancements["warrior-guard"] ?? 0);
+  const ironWallMaxTime = ironWallPickCount >= 4
+    ? 0
+    : skillValue("warrior-guard", ironWallLevel) + ironWallEnhancement;
 renderWorldOverlays({ ctx, elapsed: game.elapsed, gravityWells: game.gravityWells, bossBarriers: game.bossBarriers, bossWalls: game.bossWalls, bossShield: game.bossShield, bossArmorReformTimer: game.bossArmorReformTimer, bossArmorReformCells: game.bossArmorReformCells, bossIntroTimer: game.bossIntroTimer, bossReinforcementTelegraph: game.bossReinforcementTelegraph, bossReinforcementCount: game.bossReinforcementCount, bricks: game.bricks, skillSheets, skillSheetReady, itemBarrierTime: game.itemBarrierTime, itemBarrierY: ITEM_BARRIER_Y, width: W, barrierColor: ITEM_DATA["auto-barrier"].color, magnetLinks });
   renderPaddles({
     ctx,
@@ -124,6 +131,9 @@ renderWorldOverlays({ ctx, elapsed: game.elapsed, gravityWells: game.gravityWell
     safetyBlocks: game.safetyBlocks,
     elapsed: game.elapsed,
     itemBarrierTime: game.itemBarrierTime,
+    skillBarrierTime: game.skillBarrierTime,
+    skillBarrierCharges: game.skillBarrierCharges,
+    skillBarrierMaxTime: ironWallMaxTime,
     coreBreak: game.coreBreakTime > 0 ? { x: game.coreBreakX, y: game.coreBreakY, progress: 1 - game.coreBreakTime / Math.max(0.001, game.coreBreakDuration) } : undefined,
     aim: !botActive ? (() => {
       const a = paddleAimDirection(game.paddleX, PLAYER_PADDLE_Y, pointerX, pointerY);

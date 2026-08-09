@@ -519,6 +519,8 @@ function initialGame(balance: BalanceConfig): GameState {
     bossReinforcementCount: 0,
     paddleBarriers: {},
     itemBarrierTime: 0,
+    skillBarrierTime: 0,
+    skillBarrierCharges: 0,
     paddleCounters: { player: newPaddleCounter() },
     coreHp: MAX_CORE_HP,
     maxCoreHp: MAX_CORE_HP,
@@ -2044,9 +2046,8 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                   const cooldownRemaining = Math.max(0, Number(playerBall?.skillCooldowns[id as ClassSkillId] ?? gameRef.current?.paddleCounters?.player?.skillCooldowns[id as ClassSkillId] ?? 0));
                   const description = skillConfig ? [resolveSkillSummary(skillConfig, level), skillConfig.evolution && evolved ? `EVOLVED: ${skillConfig.evolution}` : ""].filter(Boolean).join(" ") : "";
                   const cooldownText = currentCooldown > 0 ? `CD ${currentCooldown}s` : "CD 없음";
-                  const hasInlineCooldown = Boolean(skillConfig?.description.includes("{cooldown}"));
                   return <div key={`side-${id}`} className={`in-game-skill-row class-${category}${evolved ? " evolved" : ""}`} tabIndex={0} aria-label={`${skill?.name ?? id} LEVEL ${level}`}>
-                    <span className="in-game-skill-tooltip" role="tooltip"><strong>{skill?.name ?? id}</strong><small>LEVEL {level}{enhancement > 0 ? ` 쨌 +${enhancement}` : ""}</small><p><SkillDescriptionText text={description} />{!hasInlineCooldown && <><br /><span className="skill-cooldown-text">{cooldownText}</span></>}</p></span>
+                    <span className="in-game-skill-tooltip" role="tooltip"><strong>{skill?.name ?? id}</strong><small>LEVEL {level}{enhancement > 0 ? ` 쨌 +${enhancement}` : ""}</small><p><SkillDescriptionText text={description} /><br /><span className="skill-cooldown-text">{cooldownText}</span></p></span>
                     <span className="in-game-skill-icon">
                       <SkillIconArt id={id} />
                       {cooldownRemaining > 0 && <span className="in-game-skill-cooldown" aria-label={`COOLDOWN ${cooldownRemaining.toFixed(1)}s`} />}
