@@ -72,6 +72,7 @@ export type DamagePacket = {
   sourceBall?: CanonicalBall;
   sourceSkillId?: UpgradeId;
   respectGuard?: boolean;
+  focusMultiplierApplied?: boolean;
 };
 export type DamageReceipt = { requested: number; applied: number; guardBroken: boolean; killed: boolean };
 export type CanonicalCombatStats = {
@@ -927,7 +928,16 @@ export function canonicalIntegerCombatAmount(amount: number) {
 }
 
 function applyBrickDamage(state: CanonicalState, brick: CanonicalBrick, packet: DamagePacket): DamageReceipt {
-  const requested = canonicalDamageAmount(packet.amount);
+  const focusConfig = skill(state, "archer-focus");
+  const focusApplies = packet.delivery !== "ball" && packet.delivery !== "environment"
+    && !packet.focusMultiplierApplied
+    && brick.focusStacks > 0
+    && focusConfig
+    && hasTrait(state, focusConfig, "focus");
+  const focusMultiplier = focusApplies
+    ? 1 + (traitValue(state, "archer-focus", "focus") * brick.focusStacks) / 100
+    : 1;
+  const requested = canonicalDamageAmount(packet.amount * focusMultiplier);
   if (!brick.alive || brick.trait === "indestructible") return { requested, applied: 0, guardBroken: false, killed: false };
   if (brick.kind !== "normal" && state.bossIntroTimer > 0) {
     emitCanonicalVisual(state, { kind: "impact", skillId: "original" as UpgradeId, x: brick.x + brick.w / 2, y: brick.y + brick.h / 2, radius: 40, duration: 0.22, color: "#ffd166", text: "BOSS INCOMING" });
@@ -1521,6 +1531,14 @@ function consumeDirectSkill(state: CanonicalState, ball: CanonicalBall, id: Upgr
 }
 
 function applyDirectSkillModifiers(state: CanonicalState, context: DirectHitContext) {
+  // Focus is a debuff on the brick, so every direct hit benefits from its
+  // stored stacks, including temporary arrows and echo-split balls. The
+  // skill activation itself remains restricted to skill-capable balls below.
+  const focusConfig = skill(state, "archer-focus");
+  if (focusConfig && context.brick.focusStacks > 0 && hasTrait(state, focusConfig, "focus")) {
+    const percent = traitValue(state, "archer-focus", "focus");
+    context.directDamageMultiplier *= 1 + (percent * context.brick.focusStacks) / 100;
+  }
   if (!context.ball.canTriggerSkills) {
     context.ball.lastHitBrickId = context.brick.id;
     return;
@@ -1548,13 +1566,10 @@ function applyDirectSkillModifiers(state: CanonicalState, context: DirectHitCont
 
     const focus = consumeDirectSkill(state, context.ball, "archer-focus", context);
     if (focus) {
-      const percent = traitValue(state, focus.config.id, "focus");
       context.brick.focusStacks = Math.min(3, context.brick.focusStacks + 1);
       context.brick.focusTimer = evolved(state, focus.config.id) ? Number.POSITIVE_INFINITY : 3;
-      context.directDamageMultiplier *= 1 + (percent * context.brick.focusStacks) / 100;
       context.skillActivations.push({ id: focus.config.id, level: focus.level });
     }
-
     const weakpoint = consumeDirectSkill(state, context.ball, "archer-weakpoint", context);
     if (weakpoint) {
       const multiplier = evolved(state, weakpoint.config.id) ? 4 : Math.max(1, traitValue(state, weakpoint.config.id, "weakpoint"));
@@ -1622,7 +1637,7 @@ function applyDirectHitDamage(state: CanonicalState, context: DirectHitContext) 
   }
   context.appliedDamage = applyBrickDamage(state, context.brick, { amount: context.physicalDamage * context.directDamageMultiplier, damageType: "physical", delivery: "ball", sourceBall: context.ball }).applied;
   for (const packet of context.skillDamagePackets) {
-    context.appliedDamage += applyBrickDamage(state, context.brick, { amount: packet.amount * context.directDamageMultiplier, damageType: packet.damageType, delivery: "skill", sourceBall: context.ball, sourceSkillId: packet.id }).applied;
+    context.appliedDamage += applyBrickDamage(state, context.brick, { amount: packet.amount * context.directDamageMultiplier, damageType: packet.damageType, delivery: "skill", sourceBall: context.ball, sourceSkillId: packet.id, focusMultiplierApplied: true }).applied;
   }
 }
 

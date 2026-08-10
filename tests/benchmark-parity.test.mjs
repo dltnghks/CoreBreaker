@@ -1158,7 +1158,7 @@ test("direct-damage skills modify one direct hit and honor boss enhancement valu
   collide(focus);
   focus.balls[0].cooldowns["archer-focus"] = 0;
   collide(focus);
-  assert.equal(focus.bricks[0].hp, 16, "focus must add damage only when the same ball repeats the target");
+  assert.equal(focus.bricks[0].hp, 16, "focus must apply again when its per-ball cooldown is ready");
 
   const crush = createHitState("warrior-crush", "g");
   collide(crush);

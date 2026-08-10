@@ -323,7 +323,7 @@ function hasScheduledMultiball(wave: number) {
 }
 
 function brickRuntimeState(trait: BrickTrait = "standard") {
-  return { trait, guardReady: trait === "guard", healTimer: 3, poisonTime: 0, poisonTick: 0, burnTime: 0, burnTick: 0, burnLevel: 0, healBlockTime: 0, blastVulnerability: 1, frostVulnerability: 0, traitLockTime: 0 };
+  return { trait, guardReady: trait === "guard", healTimer: 3, poisonTime: 0, poisonTick: 0, burnTime: 0, burnTick: 0, burnLevel: 0, healBlockTime: 0, blastVulnerability: 1, frostVulnerability: 0, traitLockTime: 0, focusStacks: 0, focusTimer: 0 };
 }
 
 function lateWaveHpMultiplier(waveNumber: number) {

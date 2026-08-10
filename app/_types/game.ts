@@ -123,6 +123,8 @@ export type Brick = {
   blastVulnerability: number;
   frostVulnerability: number;
   traitLockTime: number;
+  focusStacks: number;
+  focusTimer: number;
   healthFlashTime?: number;
   healthFlashDuration?: number;
   healthFlashKind?: "damage" | "area-damage" | "heal" | null;
