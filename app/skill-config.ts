@@ -931,7 +931,7 @@ export function normalizeSkillConfigs(saved: unknown): SkillConfig[] {
     const savedMagicDamage = Array.isArray(savedSkill?.magicDamage) && savedSkill.magicDamage.length === 3 && savedSkill.magicDamage.every((value) => Number.isFinite(Number(value)))
       ? savedSkill.magicDamage.map(Number) as [number, number, number]
       : base.magicDamage ? [...base.magicDamage] as [number, number, number] : null;
-    return syncExplicitPrimaryFields(savedSkill ?? {}, normalizeCommonSkillFields({ ...migrated, id: base.id, builtIn: true, category: base.category, mechanic: base.mechanic, color: base.color, evolution: base.evolution, magicDamage: savedMagicDamage, skillDamage: tuple3(savedSkill?.skillDamage, savedMagicDamage ?? base.skillDamage), levels: base.id === "common-xp" || legacyReflectionTrigger ? base.levels : levels, cooldown: legacyReflectionTrigger ? base.cooldown : savedCooldown, unit: base.id === "mage-fireball" ? base.unit : migrated?.unit ?? base.unit }, base));
+    return syncExplicitPrimaryFields(savedSkill ?? {}, normalizeCommonSkillFields({ ...migrated, id: base.id, builtIn: true, category: base.category, mechanic: base.mechanic, color: base.color, evolution: base.evolution, magicDamage: savedMagicDamage, skillDamage: tuple3(savedSkill?.skillDamage, savedMagicDamage ?? base.skillDamage), levels: base.id === "common-xp" || legacyReflectionTrigger ? base.levels : levels, cooldown: base.id === "warrior-guard" ? base.cooldown : legacyReflectionTrigger ? base.cooldown : savedCooldown, unit: base.id === "mage-fireball" ? base.unit : migrated?.unit ?? base.unit }, base));
   });
   const custom = entries.flatMap((entry): SkillConfig[] => {
     if (!entry || typeof entry !== "object") return [];
