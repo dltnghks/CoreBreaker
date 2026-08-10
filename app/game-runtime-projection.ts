@@ -128,6 +128,7 @@ function applyCanonicalStateProjection(target: GameState, source: CanonicalState
       burnTime: canonicalBrick.burnTime, burnTick: canonicalBrick.burnTick, burnLevel: 0,
       blastVulnerability: 1,
       frostVulnerability: canonicalBrick.frostVulnerability, traitLockTime: canonicalBrick.traitLockTime,
+      focusStacks: canonicalBrick.focusStacks, focusTimer: canonicalBrick.focusTimer,
       healthFlashTime: 0, healthFlashDuration: 0, healthFlashKind: null,
       bossRow: canonicalBrick.bossRow, bossCol: canonicalBrick.bossCol,
     };
@@ -148,6 +149,8 @@ function applyCanonicalStateProjection(target: GameState, source: CanonicalState
     brick.poisonTick = canonicalBrick.poisonTick;
     brick.frostVulnerability = canonicalBrick.frostVulnerability;
     brick.traitLockTime = canonicalBrick.traitLockTime;
+    brick.focusStacks = canonicalBrick.focusStacks;
+    brick.focusTimer = canonicalBrick.focusTimer;
     brick.drop = canonicalBrick.drop;
     brick.kind = canonicalBrick.kind === "boss-core" ? "boss-core" : canonicalBrick.kind === "boss-minion" ? "boss-minion" : "normal";
     brick.bossRow = canonicalBrick.bossRow;

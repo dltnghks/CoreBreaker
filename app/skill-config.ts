@@ -480,7 +480,7 @@ SKILL_EVOLUTIONS["common-skill-duration"] = "모든 지속 효과 시간이 30% 
 
 function builtinTriggerType(id: BuiltinClassSkillId): SkillTriggerType {
   if (id.startsWith("common-")) return "passive";
-  if (id === "archer-focus") return "repeat-hit";
+  if (id === "archer-focus") return "brick-hit";
   if (id === "warrior-crush" || id === "mage-mana-blast") return "special-brick-hit";
   return "brick-hit";
 }
@@ -603,7 +603,7 @@ const skill = (
   effects: [...createTraitEffects(createTraitConfigs(id, builtinTraits(id), levels, unit)), ...builtinEffects()],
   evolutionEffects: builtinEvolutionEffects(id),
   trigger: id === "archer-focus"
-    ? "같은 블록 반복 타격 시 발동"
+    ? "쿨타임 완료 후 블록 타격"
     : id === "warrior-crush" || id === "mage-mana-blast"
       ? "특수 블록 타격 시 발동"
       : SKILL_COOLDOWNS[id][0] > 0 ? "쿨타임 완료 후 블록 타격" : trigger,
@@ -677,7 +677,7 @@ export const DEFAULT_SKILLS: SkillConfig[] = [
   skill("archer-rapid", "연사", "archer", "블록 타격 시 자동 발동", "임시 화살 2발 생성", "임시 화살을 여러 개 생성하는 핵심 공격 스킬입니다. 기본 발동 시 임시 화살 {arrowCount}발을 생성하며 {levels}초 유지됩니다. 진화 화살은 원본 공과 독립적으로 존재하고 별도 스킬을 발동하지 않으며, 화면 아래로 떨어지거나 웨이브 종료 시 사라집니다.", [5, 7, 9], "seconds"),
   skill("archer-pierce", "관통 화살", "archer", "블록 타격 시 상시 적용", "쿨타임마다 블록 관통", "공이 여러 블록을 관통하는 핵심 공격 스킬입니다. 블록 {levels}개를 관통하고 각 블록에 일반 공과 동일한 피해(기본 물리 피해 + {physicalBonus})를 적용하며 관통에 따른 피해 감소는 없습니다.", [1, 2, 3], "count"),
   skill("archer-ricochet", "튕김 화살", "archer", "블록 타격 시 상시 적용", "주변 블록 연쇄 물리 공격", "주변 블록 {levels}개로 공격을 전파합니다. 연쇄된 각 대상에 원래 타격과 동일한 피해(기본 물리 피해 + {physicalBonus})를 적용하고, 1회차는 1.0배, 이후 매 회차 {ricochetStep}배씩 증가합니다. 진화로 추가되는 대상에도 같은 증가가 적용됩니다.", [1, 2, 3], "count"),
-  skill("archer-focus", "집중 사격", "archer", "블록 타격 시 상시 적용", "반복 타격 약화", "같은 블록을 반복 타격할수록 받는 피해가 중첩당 {levels}% 증가합니다. 최대 {maxStacks}중첩, 최대 약화량은 레벨별 30/60/90%이며, {focusReset}초 동안 타격이 없으면 초기화됩니다. 진화 시 웨이브 종료까지 유지됩니다.", [10, 20, 30], "percent"),
+  skill("archer-focus", "집중 사격", "archer", "블록 타격 시 상시 적용", "블록 약화 중첩", "쿨타임이 끝난 뒤 블록을 직접 타격하면 집중 약화를 부여합니다. 중첩당 받는 피해가 {levels}% 증가하고 최대 {maxStacks}중첩됩니다. 최대 약화량은 레벨별 30/60/90%이며, {focusReset}초 동안 추가 타격이 없으면 초기화됩니다. 진화 시 웨이브 종료까지 유지됩니다.", [10, 20, 30], "percent"),
   skill("archer-weakpoint", "약점 사격", "archer", "블록 타격 시 상시 적용", "직접 피해 증폭", "모든 직접 타격 피해를 증가시키는 단일 대상 화력 스킬입니다. 직접 타격 배율은 {levels}배이며 진화 시 레벨과 관계없이 4배를 적용합니다.", [2, 2.5, 3], "multiplier"),
 
   skill("mage-fireball", "화염 봉인", "mage", "블록 타격 시 자동 발동", "광역 회복 차단", "주변 모든 블록의 회복을 차단하는 광역 제어 스킬입니다. 범위 {trait:splash}px 내 모든 블록에 {trait:burn}초 동안 회복 차단을 적용하고, 진화 시 같은 시간 동안 초당 {fixedMagicDamage}의 고정 마법 화상을 추가합니다. 직접 피해는 없습니다.", [2, 4, 6], "seconds"),

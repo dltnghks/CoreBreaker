@@ -1,6 +1,6 @@
 import type { GameState } from "./_types/game";
 import type { Brick, ItemKind } from "./_types/game";
-import { SKILL_VFX_CONFIG, type ClassSkillId, type SkillConfig } from "./skill-config";
+import { canonicalUpgradeId, SKILL_VFX_CONFIG, type ClassSkillId, type SkillConfig } from "./skill-config";
 
 const GAMEPLAY_ART = {
   bricks: {
@@ -180,7 +180,7 @@ export function beginGameCanvasFrame(canvas: HTMLCanvasElement, game: Pick<GameS
 
 export function endGameCanvasFrame(frame: GameCanvasFrame) { frame.ctx.restore(); }
 
-export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor }: { ctx: CanvasRenderingContext2D; game: Pick<GameState, "bricks" | "elapsed" | "balls" | "bossStage">; width: number; height: number; traitColors: Record<string, string>; itemData: Record<ItemKind, { symbol: string; color: string }>; classSkillColor?: (id: ClassSkillId) => string }) {
+export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor }: { ctx: CanvasRenderingContext2D; game: Pick<GameState, "bricks" | "elapsed" | "balls" | "bossStage" | "upgrades">; width: number; height: number; traitColors: Record<string, string>; itemData: Record<ItemKind, { symbol: string; color: string }>; classSkillColor?: (id: ClassSkillId) => string }) {
   const trace = (b: Brick, inset = 0) => {
     const x = b.x + inset, y = b.y + inset, w = b.w - inset * 2, h = b.h - inset * 2;
     const cut = b.trait === "indestructible" ? 8 : b.trait === "explosive" ? 6 : b.trait === "reflector" ? 4 : 3;
@@ -190,6 +190,8 @@ export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor
     ctx.lineTo(x + w - (b.trait === "reflector" ? 2 : 0), y + h - cut); ctx.lineTo(x + w - cut, y + h);
     ctx.lineTo(x + cut, y + h); ctx.lineTo(x + (b.trait === "reflector" ? 2 : 0), y + h - cut); ctx.lineTo(x, y + cut); ctx.closePath();
   };
+  const focusPickCount = game.upgrades.map(canonicalUpgradeId).filter((id) => id === "archer-focus").length;
+  const focusEvolved = focusPickCount >= 4;
   game.bricks.forEach((brick: Brick) => {
     if (!brick.alive) return;
     const isBossTile = brick.bossRow !== undefined && brick.bossCol !== undefined;
@@ -257,6 +259,26 @@ export function renderBricks({ ctx, game, traitColors, itemData, classSkillColor
     if (brick.healBlockTime > 0) { ctx.save(); ctx.globalAlpha = .72 + Math.sin(game.elapsed * 7 + brick.x * .02) * .16; ctx.strokeStyle = "#ff9b5c"; ctx.setLineDash([5, 3]); ctx.lineWidth = 2; ctx.strokeRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4); ctx.setLineDash([]); ctx.fillStyle = "#ffe2bd"; ctx.font = `900 8px ${PIXEL_FONT}`; ctx.textAlign = "left"; ctx.fillText(`HEAL LOCK ${Math.ceil(brick.healBlockTime)}s`, brick.x + 5, brick.y + brick.h - 5); ctx.restore(); }
     if (brick.blastVulnerability > 1) { ctx.save(); ctx.globalAlpha = .7 + Math.sin(game.elapsed * 8) * .2; ctx.strokeStyle = "#ff6b87"; ctx.shadowColor = "#ff6b87"; ctx.shadowBlur = 10; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.strokeRect(brick.x - 2, brick.y - 2, brick.w + 4, brick.h + 4); ctx.setLineDash([]); ctx.fillStyle = "rgba(4,8,20,.86)"; ctx.fillRect(brick.x + brick.w / 2 - 24, brick.y - 9, 48, 10); ctx.fillStyle = "#ff8ca3"; ctx.font = `900 8px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText(`EXP ×${brick.blastVulnerability}`, brick.x + brick.w / 2, brick.y - 1); ctx.restore(); }
     if (brick.frostVulnerability > 0) { ctx.save(); ctx.globalAlpha = .72 + Math.sin(game.elapsed * 7 + brick.x * .02) * .18; ctx.fillStyle = "rgba(101,220,255,.18)"; ctx.fillRect(brick.x + 2, brick.y + 2, brick.w - 4, brick.h - 4); ctx.strokeStyle = "#b9f4ff"; ctx.shadowColor = "#65dcff"; ctx.shadowBlur = 12; ctx.lineWidth = 2; ctx.strokeRect(brick.x - 2, brick.y - 2, brick.w + 4, brick.h + 4); ctx.fillStyle = "#e8fcff"; ctx.font = `900 10px ${PIXEL_FONT}`; ctx.textAlign = "left"; ctx.fillText(`×+${brick.frostVulnerability}`, brick.x + 5, brick.y + 12); ctx.restore(); }
+    if (brick.focusStacks > 0) {
+      const stacks = Math.min(3, Math.max(1, Math.round(brick.focusStacks)));
+      const timed = !focusEvolved && Number.isFinite(brick.focusTimer) && brick.focusTimer > 0;
+      const timer = timed ? Math.max(0, brick.focusTimer) : 0;
+      const stackColor = stacks === 3 ? "#fff3a1" : stacks === 2 ? "#ffd166" : "#ffe45e";
+      const stackScale = 1 + stacks * 0.08;
+      ctx.save();
+      ctx.globalAlpha = .84 + Math.sin(game.elapsed * 8 + brick.x * .04) * .12;
+      ctx.shadowColor = stackColor;
+      ctx.shadowBlur = 14 + stacks * 7;
+      ctx.fillStyle = stackColor;
+      ctx.font = `900 ${Math.round(7 * stackScale)}px ${PIXEL_FONT}`;
+      ctx.textAlign = "center";
+      ctx.fillText(`FOCUS x${stacks}`, brick.x + brick.w / 2, brick.y - 9);
+      if (timed) ctx.fillText(`${timer.toFixed(1)}s`, brick.x + brick.w / 2, brick.y + brick.h + 9);
+      ctx.strokeStyle = stackColor;
+      ctx.lineWidth = 2 + stacks * 1.2;
+      ctx.strokeRect(brick.x - 2, brick.y - 2, brick.w + 4, brick.h + 4);
+      ctx.restore();
+    }
     if (brick.traitLockTime > 0) { ctx.save(); ctx.globalAlpha = .72 + Math.sin(game.elapsed * 9 + brick.x * .025) * .18; ctx.strokeStyle = classSkillColor?.("mage-mana-blast") ?? "#c18cff"; ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 14; ctx.lineWidth = 3; ctx.setLineDash([7, 4]); ctx.strokeRect(brick.x - 4, brick.y - 4, brick.w + 8, brick.h + 8); ctx.setLineDash([]); ctx.fillStyle = "rgba(7,4,18,.9)"; ctx.fillRect(brick.x + brick.w / 2 - 26, brick.y + brick.h - 12, 52, 12); ctx.fillStyle = "#e4b7ff"; ctx.font = `900 9px ${PIXEL_FONT}`; ctx.textAlign = "center"; ctx.fillText(`LOCK ${Math.ceil(brick.traitLockTime)}s`, brick.x + brick.w / 2, brick.y + brick.h - 3); ctx.restore(); }
     if (damageRatio > 0.08) {
       const crackCount = Math.min(4, Math.max(1, Math.ceil(damageRatio * 4)));
