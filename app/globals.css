@@ -5646,6 +5646,27 @@ html {
    width: 100% !important;
 }
 
+.gameplay-shell .gameplay-stage > .left-rail-stack {
+   grid-column: 1;
+   grid-row: 1;
+   position: relative !important;
+   inset: auto !important;
+   display: flex;
+   flex-direction: column;
+   align-self: stretch;
+   gap: 12px;
+   width: 100% !important;
+   height: calc(100% - var(--game-ui-frame-bottom-space));
+   min-width: 0
+}
+
+.gameplay-shell .gameplay-stage > .left-rail-stack > .in-game-skill-panel {
+   position: relative !important;
+   inset: auto !important;
+   width: 100% !important;
+   flex: 0 0 auto
+}
+
 .gameplay-shell .gameplay-stage > .right-rail-stack {
    grid-column: 3;
    grid-row: 1;
@@ -5655,22 +5676,45 @@ html {
 }
 
 .gameplay-shell.mode-lobby .gameplay-stage > .in-game-skill-panel,
+.gameplay-shell.mode-lobby .gameplay-stage > .left-rail-stack > .in-game-skill-panel,
+.gameplay-shell.mode-lobby .gameplay-stage > .right-rail-stack > .in-game-stat-panel {
+   display: none !important
+}
+
+.gameplay-shell.mode-lobby .gameplay-stage > .left-rail-stack,
 .gameplay-shell.mode-lobby .gameplay-stage > .right-rail-stack {
-   display: block !important;
-   visibility: hidden !important;
-   opacity: 0;
-   pointer-events: none
+   display: flex !important;
+   flex-direction: column;
+   align-self: stretch;
+   gap: 12px;
+   height: calc(100% - var(--game-ui-frame-bottom-space));
+   visibility: visible !important;
+   opacity: 1;
+   pointer-events: auto
 }
 
 .gameplay-shell:not(.mode-lobby) .gameplay-stage > .in-game-skill-panel,
-.gameplay-shell:not(.mode-lobby) .gameplay-stage > .right-rail-stack {
+.gameplay-shell:not(.mode-lobby) .gameplay-stage > .left-rail-stack > .in-game-skill-panel,
+.gameplay-shell:not(.mode-lobby) .gameplay-stage > .right-rail-stack > .in-game-stat-panel {
    display: block !important;
    visibility: visible !important;
    opacity: 1;
    pointer-events: auto
 }
 
+.gameplay-shell:not(.mode-lobby) .gameplay-stage > .left-rail-stack,
+.gameplay-shell:not(.mode-lobby) .gameplay-stage > .right-rail-stack {
+   display: flex !important;
+   visibility: visible !important;
+   opacity: 1;
+   pointer-events: auto
+}
+
 .gameplay-shell.first-game-entry .gameplay-stage > .in-game-skill-panel {
+   animation: left-rail-reveal .52s cubic-bezier(.2, .82, .25, 1) both
+}
+
+.gameplay-shell.first-game-entry .gameplay-stage > .left-rail-stack {
    animation: left-rail-reveal .52s cubic-bezier(.2, .82, .25, 1) both
 }
 
@@ -5685,6 +5729,8 @@ html {
 /* Purpose-specific connected 9-slice frames. */
 .gameplay-shell .gameplay-stage > .game-frame,
 .gameplay-shell .gameplay-stage > .in-game-skill-panel,
+.gameplay-shell .gameplay-stage > .left-rail-stack > .in-game-skill-panel,
+.gameplay-shell .gameplay-stage > .left-rail-stack > .control-guide-panel,
 .gameplay-shell .gameplay-stage > .right-rail-stack > .in-game-stat-panel,
 .gameplay-shell .gameplay-stage > .right-rail-stack > .runtime-controls-panel {
    border: 12px solid transparent !important;
@@ -5703,6 +5749,14 @@ html {
 
 .gameplay-shell .gameplay-stage > .in-game-skill-panel {
    border-image-source: url("/assets/ui/core-breaker/frames/frame-skills-9slice.png") !important
+}
+
+.gameplay-shell .gameplay-stage > .left-rail-stack > .in-game-skill-panel {
+   border-image-source: url("/assets/ui/core-breaker/frames/frame-skills-9slice.png") !important
+}
+
+.gameplay-shell .gameplay-stage > .left-rail-stack > .control-guide-panel {
+   border-image-source: url("/assets/ui/core-breaker/frames/frame-controls-9slice.png") !important
 }
 
 .gameplay-shell .gameplay-stage > .right-rail-stack > .in-game-stat-panel {
@@ -6098,7 +6152,7 @@ html {
    letter-spacing: .16em !important
 }
 
-.gameplay-shell:not(.mode-lobby) .gameplay-stage > .right-rail-stack {
+.gameplay-shell .gameplay-stage > .right-rail-stack {
    display: flex !important;
    flex-direction: column;
    align-self: stretch;
@@ -6106,17 +6160,99 @@ html {
    gap: 12px
 }
 
-.gameplay-shell:not(.mode-lobby) .runtime-controls-panel {
+.gameplay-shell .runtime-controls-panel {
    margin-top: auto;
+   flex: 0 0 198px;
+   height: 198px;
+   min-height: 198px;
    padding: 14px 12px 16px !important;
+   box-sizing: border-box;
    color: #eef2f7;
    background: linear-gradient(180deg, rgba(15, 22, 32, .97), rgba(6, 10, 17, .96)) !important
 }
 
-.gameplay-shell:not(.mode-lobby) .runtime-controls-panel h2 {
+.gameplay-shell .control-guide-panel {
+   z-index: 20;
+   margin-top: auto;
+   flex: 0 0 198px;
+   height: 198px;
+   min-height: 198px;
+   padding: 14px 12px 16px !important;
+   box-sizing: border-box;
+   color: #eef2f7;
+   background: linear-gradient(180deg, rgba(15, 22, 32, .97), rgba(6, 10, 17, .96)) !important
+}
+
+.gameplay-shell .control-guide-panel h2 {
    margin: 0 0 10px;
    color: #e8cc84;
-   font-size: 13px;
+   font-size: 15px;
+   letter-spacing: .08em
+}
+
+.gameplay-shell .control-guide-panel > .controls-divider {
+   margin-bottom: 10px
+}
+
+.control-guide-list {
+   display: grid;
+   gap: 7px;
+   margin: 0
+}
+
+.control-guide-list > div {
+   display: grid;
+   grid-template-columns: 52px minmax(0, 1fr);
+   align-items: center;
+   min-height: 24px
+}
+
+.control-guide-list dt {
+   color: #d8bd7a;
+   font: 700 10px/1 var(--pixel-font);
+   letter-spacing: .04em
+}
+
+.control-guide-list dd {
+   display: flex;
+   align-items: center;
+   justify-content: flex-end;
+   gap: 4px;
+   margin: 0;
+   color: #e7edf6;
+   white-space: nowrap
+}
+
+.control-guide-list kbd,
+.control-mouse-label {
+   display: inline-grid;
+   min-width: 24px;
+   height: 24px;
+   place-items: center;
+   padding: 0 5px;
+   border: 1px solid rgba(139, 166, 196, .7);
+   border-bottom-color: rgba(216, 196, 142, .72);
+   background: linear-gradient(180deg, #263446, #111a27);
+   box-shadow: inset 0 1px rgba(255, 255, 255, .1), 0 2px 0 #070b12;
+   color: #f3e8cc;
+   font: 700 10px/1 var(--pixel-font);
+   box-sizing: border-box
+}
+
+.control-guide-list .control-wide-key {
+   min-width: 42px
+}
+
+.control-mouse-label {
+   min-width: 50px;
+   color: #8edfff;
+   font-size: 9px
+}
+
+.gameplay-shell .runtime-controls-panel h2 {
+   margin: 0 0 10px;
+   color: #e8cc84;
+   font-size: 15px;
    letter-spacing: .08em
 }
 
@@ -6141,7 +6277,7 @@ html {
    background-repeat: no-repeat;
    background-position: center;
    background-size: 160px 40px;
-   font: 700 11px/1 var(--pixel-font);
+   font: 700 12px/1 var(--pixel-font);
    image-rendering: pixelated;
    cursor: pointer
 }
@@ -6184,7 +6320,7 @@ html {
    gap: 6px;
    min-height: 28px;
    color: #d8bd7a;
-   font-size: 9px
+   font-size: 10px
 }
 
 .runtime-volume-control input {
@@ -6196,7 +6332,74 @@ html {
 .runtime-volume-control output {
    color: #e7edf6;
    text-align: right;
-   font-size: 9px
+   font-size: 10px
+}
+
+@media(max-width:1280px) {
+   .gameplay-shell .runtime-controls-panel,
+   .gameplay-shell .control-guide-panel {
+      flex-basis: 133px;
+      height: 133px;
+      min-height: 133px;
+      padding: 7px 7px 8px !important
+   }
+
+   .gameplay-shell .runtime-controls-panel h2,
+   .gameplay-shell .control-guide-panel h2 {
+      margin-bottom: 4px;
+      font-size: 15px
+   }
+
+   .gameplay-shell .runtime-controls-panel > .controls-divider,
+   .gameplay-shell .control-guide-panel > .controls-divider {
+      margin-bottom: 5px
+   }
+
+   .runtime-pause-button {
+      width: 146px;
+      height: 34px;
+      margin-bottom: 6px;
+      background-size: 146px 34px;
+      font-size: 12px
+   }
+
+   .runtime-volume-control {
+      min-height: 20px;
+      font-size: 10px
+   }
+
+   .runtime-volume-control output {
+      font-size: 10px
+   }
+
+   .control-guide-list {
+      gap: 3px
+   }
+
+   .control-guide-list > div {
+      grid-template-columns: 44px minmax(0, 1fr);
+      min-height: 17px
+   }
+
+   .control-guide-list dt {
+      font-size: 10px
+   }
+
+   .control-guide-list kbd,
+   .control-mouse-label {
+      height: 17px;
+      min-width: 20px;
+      padding: 0 3px;
+      font-size: 10px
+   }
+
+   .control-guide-list .control-wide-key {
+      min-width: 34px
+   }
+
+   .control-mouse-label {
+      min-width: 42px
+   }
 }
 
 .pause-screen-overlay {

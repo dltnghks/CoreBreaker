@@ -2033,6 +2033,7 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
       <section className={benchmarkMode ? "workspace" : "workspace solo-workspace"}>
         <div className="game-column">
           <div className="gameplay-stage">
+            <div className="left-rail-stack">
             <aside className="in-game-side-panel in-game-skill-panel" aria-label="OWNED SKILLS">
               <h2>OWNED SKILLS</h2>
               <div className="in-game-skill-list">
@@ -2067,6 +2068,17 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
                 </div>
               )}
             </aside>
+            <section className="in-game-side-panel control-guide-panel" aria-label="GAMEPLAY GUIDE">
+              <h2>HOW TO PLAY</h2>
+              <span className="controls-divider" aria-hidden="true" />
+              <dl className="control-guide-list">
+                <div><dt>MOVE</dt><dd><kbd>A</kbd><kbd>D</kbd></dd></div>
+                <div><dt>AIM</dt><dd><span className="control-mouse-label">MOUSE</span></dd></div>
+                <div><dt>LAUNCH</dt><dd><span className="control-mouse-label">CLICK</span></dd></div>
+                <div><dt>PAUSE</dt><dd><kbd className="control-wide-key">ESC</kbd></dd></div>
+              </dl>
+            </section>
+            </div>
 
             <div className="game-frame">
             <canvas
@@ -2241,7 +2253,6 @@ export function GameRuntime({ benchmarkMode = false }: GameRuntimeProps) {
               {(gameRef.current ? upgradeCounts(gameRef.current.upgrades) : []).map((u) => <span key={u.id} style={{ borderColor: u.color, color: u.color }}>{u.tag} <b>×{u.count}</b></span>)}
               {(!gameRef.current || gameRef.current.upgrades.length === 0) && <em>웨이브 보상을 선택하면 조합이 여기에 기록됩니다.</em>}
             </div>
-            <div className="controls">MOVE <kbd>A</kbd><kbd>D</kbd> · AIM / MOUSE OR <kbd>←</kbd><kbd>→</kbd></div>
           </div>}
         </div>
 
